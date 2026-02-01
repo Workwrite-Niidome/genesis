@@ -197,3 +197,12 @@
   from { transform: scale(0); opacity: 0.8; }
   to { transform: scale(1); opacity: 0; }
 }
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}

@@ -1,5 +1,6 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAIStore } from '../../stores/aiStore';
 import type { AIEntity as AIEntityType } from '../../types/world';
@@ -98,6 +99,31 @@ export default function AIEntity({ ai }: Props) {
 
       {/* Inner point light for bloom */}
       <pointLight color={color} intensity={0.6} distance={size * 12} decay={2} />
+
+      {/* Floating name label */}
+      {ai.name && (
+        <Html
+          position={[0, size * 3.5, 0]}
+          center
+          distanceFactor={150}
+          style={{ pointerEvents: 'none' }}
+        >
+          <div
+            style={{
+              color: ai.appearance?.primaryColor || '#7c5bf5',
+              fontSize: '11px',
+              fontWeight: 600,
+              fontFamily: 'monospace',
+              textShadow: `0 0 8px ${ai.appearance?.primaryColor || '#7c5bf5'}80, 0 0 20px rgba(0,0,0,0.8)`,
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+              opacity: 0.9,
+            }}
+          >
+            {ai.name}
+          </div>
+        </Html>
+      )}
     </group>
   );
 }

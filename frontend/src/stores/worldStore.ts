@@ -22,6 +22,7 @@ interface WorldStoreState {
   fetchStats: () => Promise<void>;
   setTimeSpeed: (speed: number) => void;
   setPaused: (paused: boolean) => void;
+  setTickNumber: (tick: number) => void;
 }
 
 export const useWorldStore = create<WorldStoreState>((set) => ({
@@ -62,6 +63,17 @@ export const useWorldStore = create<WorldStoreState>((set) => ({
     }
   },
 
-  setTimeSpeed: (speed) => set({ timeSpeed: speed }),
-  setPaused: (paused) => set({ isPaused: paused }),
+  setTimeSpeed: (speed) => {
+    set({ timeSpeed: speed });
+    api.world.setSpeed(speed).catch((e) =>
+      console.error('Failed to set speed:', e)
+    );
+  },
+  setPaused: (paused) => {
+    set({ isPaused: paused });
+    api.world.setPause(paused).catch((e) =>
+      console.error('Failed to set pause:', e)
+    );
+  },
+  setTickNumber: (tick: number) => set({ tickNumber: tick }),
 }));

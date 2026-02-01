@@ -80,3 +80,14 @@ async def get_timeline(
     db: AsyncSession = Depends(get_db),
 ):
     return await history_manager.get_timeline(db, limit=limit)
+
+
+@router.get("/god-feed")
+async def get_god_feed(
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint for God AI observations (no admin auth required)."""
+    from app.core.god_ai import god_ai_manager
+    feed = await god_ai_manager.get_god_feed(db, limit=limit)
+    return {"feed": feed}

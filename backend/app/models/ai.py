@@ -14,16 +14,18 @@ class AI(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     creator_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ais.id"), nullable=True
     )
     creator_type: Mapped[str] = mapped_column(
         String(20), nullable=False
-    )  # 'god', 'ai', 'spontaneous'
+    )  # 'god', 'ai', 'spontaneous', 'observer'
     position_x: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     position_y: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     appearance: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    personality_traits: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     is_alive: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -33,6 +35,9 @@ class AI(Base):
     )
 
     memories: Mapped[list["AIMemory"]] = relationship(
+        back_populates="ai", cascade="all, delete-orphan"
+    )
+    thoughts: Mapped[list["AIThought"]] = relationship(
         back_populates="ai", cascade="all, delete-orphan"
     )
 

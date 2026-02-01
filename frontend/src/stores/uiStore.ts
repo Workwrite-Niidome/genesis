@@ -6,21 +6,25 @@ interface UIStore {
   sidebarOpen: boolean;
   chatOpen: boolean;
   activePanel: Panel;
-  language: string;
+  observerChatExpanded: boolean;
+  showGrid: boolean;
   toggleSidebar: () => void;
   toggleChat: () => void;
+  toggleObserverChat: () => void;
+  toggleGrid: () => void;
   setPanel: (panel: Panel) => void;
-  setLanguage: (lang: string) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
   sidebarOpen: true,
   chatOpen: false,
   activePanel: 'info',
-  language: 'en',
+  observerChatExpanded: false,
+  showGrid: true,
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+  toggleObserverChat: () => set((s) => ({ observerChatExpanded: !s.observerChatExpanded })),
+  toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   setPanel: (panel) => set({ activePanel: panel }),
-  setLanguage: (lang) => set({ language: lang }),
 }));

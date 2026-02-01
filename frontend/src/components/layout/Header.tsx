@@ -1,18 +1,12 @@
 import { useTranslation } from 'react-i18next';
-import { Globe, MessageSquare, PanelRight } from 'lucide-react';
+import { MessageSquare, PanelRight } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 
 export default function Header() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { tickNumber, aiCount, conceptCount, godAiPhase } = useWorldStore();
-  const { sidebarOpen, toggleSidebar, toggleChat, language, setLanguage } = useUIStore();
-
-  const toggleLang = () => {
-    const next = language === 'en' ? 'ja' : 'en';
-    setLanguage(next);
-    i18n.changeLanguage(next);
-  };
+  const { sidebarOpen, toggleSidebar, toggleChat } = useUIStore();
 
   return (
     <header className="h-11 flex items-center justify-between px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none glow-line">
@@ -42,10 +36,6 @@ export default function Header() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-0.5">
-        <HeaderBtn onClick={toggleLang} title={t('language')}>
-          <Globe size={13} />
-          <span className="text-[10px] uppercase mono">{language}</span>
-        </HeaderBtn>
         <HeaderBtn onClick={toggleChat} title={t('chat')}>
           <MessageSquare size={13} />
         </HeaderBtn>

@@ -28,5 +28,13 @@ class WorldSettings(BaseModel):
     is_paused: bool = False
 
 
+class SpeedRequest(BaseModel):
+    speed: float
+
+
+class PauseRequest(BaseModel):
+    paused: bool
+
+
 class GenesisRequest(BaseModel):
     confirm: bool = True

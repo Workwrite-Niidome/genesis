@@ -1,0 +1,89 @@
+import { io, Socket } from 'socket.io-client';
+import { useWorldStore } from '../stores/worldStore';
+import { useAIStore } from '../stores/aiStore';
+import { useThoughtStore } from '../stores/thoughtStore';
+
+let socket: Socket | null = null;
+
+export function connectSocket(): Socket {
+  if (socket?.connected) return socket;
+
+  const wsUrl = window.location.origin.replace(/:\d+$/, ':8000');
+
+  socket = io(`${wsUrl}/ws`, {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 2000,
+  });
+
+  socket.on('connect', () => {
+    console.log('[GENESIS] WebSocket connected');
+  });
+
+  socket.on('disconnect', () => {
+    console.log('[GENESIS] WebSocket disconnected');
+  });
+
+  socket.on('thought', (data: any) => {
+    useThoughtStore.getState().addThought(data);
+  });
+
+  socket.on('event', (data: any) => {
+    // Events are handled by the event feed polling for now
+    // but this can be used for immediate notification
+    console.log('[GENESIS] Event:', data.event_type, data.title);
+  });
+
+  socket.on('world_update', (data: any) => {
+    const store = useWorldStore.getState();
+    if (data.tick_number) store.setTickNumber(data.tick_number);
+  });
+
+  socket.on('ai_position', (data: any) => {
+    useAIStore.getState().updateAI({
+      id: data.id,
+      position_x: data.x,
+      position_y: data.y,
+    });
+  });
+
+  socket.on('interaction', (data: any) => {
+    console.log('[GENESIS] Interaction:', data);
+  });
+
+  socket.on('god_observation', (data: any) => {
+    console.log('[GENESIS] God observes:', data.content);
+  });
+
+  socket.on('ai_death', (data: any) => {
+    const store = useAIStore.getState();
+    store.updateAI({ id: data.id, is_alive: false });
+    console.log('[GENESIS] AI died:', data.name);
+  });
+
+  socket.on('concept_created', (data: any) => {
+    console.log('[GENESIS] New concept:', data.name);
+  });
+
+  socket.on('artifact_created', (data: any) => {
+    console.log('[GENESIS] New artifact:', data.name, `(${data.artifact_type})`);
+  });
+
+  socket.on('organization_formed', (data: any) => {
+    console.log('[GENESIS] Organization formed:', data.name);
+  });
+
+  return socket;
+}
+
+export function disconnectSocket(): void {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+}
+
+export function getSocket(): Socket | null {
+  return socket;
+}

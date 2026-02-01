@@ -1,5 +1,7 @@
 from app.models.god_ai import GodAI
 from app.models.ai import AI, AIMemory
+from app.models.ai_thought import AIThought
+from app.models.artifact import Artifact
 from app.models.concept import Concept
 from app.models.interaction import Interaction
 from app.models.tick import Tick
@@ -11,6 +13,8 @@ __all__ = [
     "GodAI",
     "AI",
     "AIMemory",
+    "AIThought",
+    "Artifact",
     "Concept",
     "Interaction",
     "Tick",

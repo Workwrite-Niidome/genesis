@@ -48,7 +48,7 @@ export default function EventsPanel() {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <span className={`badge ${cfg.bg} ${cfg.color} text-[9px]`}>
-                    {event.event_type.replace('_', ' ')}
+                    {t(`event_type_${event.event_type}`, { defaultValue: event.event_type.replace('_', ' ') })}
                   </span>
                   <span className="text-[10px] mono text-text-3 ml-auto">
                     T:{event.tick_number}

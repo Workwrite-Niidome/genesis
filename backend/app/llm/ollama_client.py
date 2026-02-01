@@ -34,7 +34,7 @@ class OllamaClient:
                         return json.loads(result["response"])
                     except json.JSONDecodeError:
                         logger.warning(f"Failed to parse JSON from Ollama: {result['response'][:200]}")
-                        return {"thoughts": result["response"], "action": {"type": "observe", "details": {}}}
+                        return {"thought": result["response"], "action": {"type": "observe", "details": {}}}
 
                 return result["response"]
         except httpx.HTTPError as e:

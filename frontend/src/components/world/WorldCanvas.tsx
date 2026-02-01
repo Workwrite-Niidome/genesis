@@ -4,13 +4,19 @@ import { OrbitControls, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { useWorldStore } from '../../stores/worldStore';
 import { useAIStore } from '../../stores/aiStore';
+import { useUIStore } from '../../stores/uiStore';
 import AIEntity from './AIEntity';
 import GridBackground from './GridBackground';
 import VoidOverlay from './VoidOverlay';
 
-export default function WorldCanvas() {
+interface WorldCanvasProps {
+  showGenesis?: boolean;
+}
+
+export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
   const { godAiPhase } = useWorldStore();
   const { ais } = useAIStore();
+  const showGrid = useUIStore((s) => s.showGrid);
 
   return (
     <div className="w-full h-full relative bg-bg">
@@ -35,7 +41,7 @@ export default function WorldCanvas() {
             speed={0.2}
           />
 
-          <GridBackground />
+          {showGrid && <GridBackground />}
 
           {ais.map((ai) => (
             <AIEntity key={ai.id} ai={ai} />
@@ -66,7 +72,7 @@ export default function WorldCanvas() {
         </Suspense>
       </Canvas>
 
-      {godAiPhase === 'pre_genesis' && <VoidOverlay />}
+      {showGenesis && godAiPhase === 'pre_genesis' && <VoidOverlay />}
     </div>
   );
 }

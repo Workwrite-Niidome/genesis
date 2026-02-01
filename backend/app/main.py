@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.routes import api_router
 from app.db.database import engine, Base
+from app.realtime.socket_manager import socket_app
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -29,6 +30,9 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+# Mount Socket.IO at /ws
+app.mount("/ws", socket_app)
 
 
 @app.on_event("startup")

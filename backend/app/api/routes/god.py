@@ -1,11 +1,25 @@
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.core.god_ai import god_ai_manager
 from app.core.ai_manager import ai_manager
 from app.schemas.god import GodAIState, GodMessageRequest, GodMessageResponse
+from app.models.ai import AI, AIMemory
+from app.models.artifact import Artifact
+from app.models.concept import Concept
+from app.models.event import Event
+from app.models.tick import Tick
+from app.models.god_ai import GodAI
+from app.models.interaction import Interaction
+from app.models.chat import ChatMessage
+from app.models.observer import Observer
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -38,6 +52,16 @@ async def get_god_history(db: AsyncSession = Depends(get_db)):
     return {"history": history}
 
 
+@router.get("/feed")
+async def get_god_feed(
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get God AI observations and messages for the feed."""
+    feed = await god_ai_manager.get_god_feed(db, limit=limit)
+    return {"feed": feed}
+
+
 class SpawnAIRequest(BaseModel):
     count: int = 1
 
@@ -62,3 +86,39 @@ async def god_spawn_ai(
         })
 
     return {"success": True, "spawned": spawned, "count": len(spawned)}
+
+
+class ResetWorldRequest(BaseModel):
+    confirm: bool = False
+    confirmation_text: str = ""
+
+
+@router.post("/reset-world")
+async def reset_world(
+    request: ResetWorldRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset the entire world — delete all AIs, memories, concepts, events, ticks, and God AI state.
+    This allows re-running Genesis from a clean state.
+    Requires confirmation_text='default' to proceed."""
+    if not request.confirm or request.confirmation_text != "default":
+        return {"success": False, "message": "Must confirm reset by sending confirmation_text='default'"}
+
+    # Delete in dependency order (children before parents)
+    await db.execute(delete(ChatMessage))
+    await db.execute(delete(Observer))
+    await db.execute(delete(AIMemory))
+    await db.execute(delete(Interaction))
+    await db.execute(delete(Artifact))
+    await db.execute(delete(Event))
+    await db.execute(delete(Tick))
+    await db.execute(delete(Concept))
+    await db.execute(delete(AI))
+    await db.execute(delete(GodAI))
+    await db.commit()
+
+    logger.info("World has been reset — all data cleared")
+    return {
+        "success": True,
+        "message": "World reset complete. All AIs, concepts, events, ticks, and God AI state have been deleted. You can now run Genesis again.",
+    }

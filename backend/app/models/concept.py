@@ -18,6 +18,9 @@ class Concept(Base):
         UUID(as_uuid=True), ForeignKey("ais.id"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="philosophy",
+    )  # philosophy, religion, government, economy, art, technology, social_norm, organization
     definition: Mapped[str] = mapped_column(Text, nullable=False)
     effects: Mapped[dict] = mapped_column(JSONB, default=dict)
     adoption_count: Mapped[int] = mapped_column(Integer, default=1)

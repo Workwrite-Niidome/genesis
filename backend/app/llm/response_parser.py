@@ -12,15 +12,20 @@ def parse_ai_decision(response: dict | str) -> dict:
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse AI decision: {response[:200]}")
             return {
-                "thoughts": response,
+                "thought": response,
                 "action": {"type": "observe", "details": {}},
                 "new_memory": None,
             }
 
     return {
-        "thoughts": response.get("thoughts", ""),
+        "thought": response.get("thought") or response.get("thoughts", ""),
+        "thought_type": response.get("thought_type", "reflection"),
         "action": response.get("action", {"type": "observe", "details": {}}),
         "new_memory": response.get("new_memory"),
+        "concept_proposal": response.get("concept_proposal"),
+        "artifact_proposal": response.get("artifact_proposal"),
+        "organization_proposal": response.get("organization_proposal"),
+        "speech": response.get("speech"),
     }
 
 

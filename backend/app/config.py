@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     INITIAL_AI_COUNT: int = 0
     MAX_AI_COUNT: int = 1000
     TICK_INTERVAL_MS: int = 1000
-    AI_THINKING_INTERVAL_MS: int = 10000
+    AI_THINKING_INTERVAL_MS: int = 3000
+
+    # Admin Auth
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "change-this-password"
 
     # Translation
     DEEPL_API_KEY: Optional[str] = None

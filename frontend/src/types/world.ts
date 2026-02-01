@@ -11,15 +11,18 @@ export interface WorldState {
 
 export interface AIEntity {
   id: string;
+  name: string;
   creator_type: string;
   creator_id?: string;
   position_x: number;
   position_y: number;
   appearance: AIAppearance;
   state: Record<string, any>;
+  personality_traits: string[];
   is_alive: boolean;
   created_at: string;
   updated_at?: string;
+  recent_thoughts?: AIThought[];
 }
 
 export interface AIAppearance {
@@ -45,9 +48,22 @@ export interface Concept {
   id: string;
   creator_id?: string;
   name: string;
+  category: string;
   definition: string;
   effects: Record<string, any>;
   adoption_count: number;
+  tick_created: number;
+  created_at: string;
+}
+
+export interface Artifact {
+  id: string;
+  creator_id: string;
+  name: string;
+  artifact_type: string;
+  description: string;
+  content: Record<string, any>;
+  appreciation_count: number;
   tick_created: number;
   created_at: string;
 }
@@ -62,8 +78,79 @@ export interface WorldEvent {
   created_at: string;
 }
 
+export interface AIThought {
+  id: string;
+  ai_id: string;
+  ai_name?: string;
+  tick_number: number;
+  thought_type: 'reflection' | 'reaction' | 'intention' | 'observation';
+  content: string;
+  action?: Record<string, any>;
+  created_at: string;
+}
+
 export interface GodConversationEntry {
   role: 'admin' | 'god';
   content: string;
   timestamp: string;
+}
+
+export interface DeployAIResponse {
+  success: boolean;
+  ai: {
+    id: string;
+    name: string;
+    personality_traits: string[];
+    position: { x: number; y: number };
+    appearance: AIAppearance;
+    creator_type: string;
+  };
+  remaining: number;
+}
+
+export interface Interaction {
+  id: string;
+  participant_ids: string[];
+  interaction_type: string;
+  content: {
+    ai1: {
+      id: string;
+      name: string;
+      thought: string;
+      action: Record<string, any>;
+      message: string;
+    };
+    ai2: {
+      id: string;
+      name: string;
+      thought: string;
+      action: Record<string, any>;
+      message: string;
+    };
+  };
+  concepts_involved: string[];
+  tick_number: number;
+  created_at: string;
+}
+
+export interface AIRanking {
+  id: string;
+  name: string;
+  evolution_score: number;
+  energy: number;
+  age: number;
+  personality_traits: string[];
+  appearance: AIAppearance;
+  is_alive: boolean;
+  relationships_count: number;
+  adopted_concepts_count: number;
+}
+
+export interface Relationship {
+  name: string;
+  score: number;
+  type: 'ally' | 'friendly' | 'neutral' | 'wary' | 'rival';
+  interaction_count: number;
+  first_met: number;
+  last_interaction: number;
 }

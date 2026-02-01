@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, Plus } from 'lucide-react';
+import { ArrowUp, Plus, RotateCcw, AlertTriangle, X } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAIStore } from '../../stores/aiStore';
 import type { GodConversationEntry } from '../../types/world';
@@ -10,6 +10,9 @@ export default function GodAIConsole() {
   const [history, setHistory] = useState<GodConversationEntry[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetting, setResetting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fetchAIs = useAIStore((s) => s.fetchAIs);
 
@@ -58,6 +61,24 @@ export default function GodAIConsole() {
     }
   };
 
+  const handleResetWorld = async () => {
+    if (resetConfirmText !== 'default') return;
+    setResetting(true);
+    try {
+      const result = await api.god.resetWorld(resetConfirmText);
+      if (result.success) {
+        setHistory([]);
+        setShowResetDialog(false);
+        setResetConfirmText('');
+        fetchAIs();
+      }
+    } catch (e) {
+      console.error('Reset failed:', e);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full fade-in">
       <div className="flex items-center justify-between mb-3">
@@ -65,16 +86,28 @@ export default function GodAIConsole() {
           <div className="w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
           {t('god_console')}
         </h3>
-        <button
-          onClick={handleSpawn}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] text-accent
-                     border border-accent/20 hover:bg-accent-dim hover:border-accent/30
-                     transition-all duration-200"
-          title="Spawn AIs"
-        >
-          <Plus size={10} />
-          Spawn AI
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleSpawn}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] text-accent
+                       border border-accent/20 hover:bg-accent-dim hover:border-accent/30
+                       transition-all duration-200"
+            title="Spawn AIs"
+          >
+            <Plus size={10} />
+            Spawn AI
+          </button>
+          <button
+            onClick={() => setShowResetDialog(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] text-rose
+                       border border-rose/20 hover:bg-rose/10 hover:border-rose/30
+                       transition-all duration-200"
+            title={t('admin_reset_world')}
+          >
+            <RotateCcw size={10} />
+            {t('admin_reset_world')}
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -162,6 +195,54 @@ export default function GodAIConsole() {
           <ArrowUp size={14} />
         </button>
       </div>
+
+      {/* Reset World Confirmation Dialog */}
+      {showResetDialog && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowResetDialog(false)} />
+          <div className="relative bg-surface border border-rose/20 rounded-2xl p-5 w-80 shadow-[0_16px_60px_rgba(0,0,0,0.6)]">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={14} className="text-rose" />
+                <h3 className="text-sm font-semibold text-text">{t('admin_reset_confirm_title')}</h3>
+              </div>
+              <button
+                onClick={() => { setShowResetDialog(false); setResetConfirmText(''); }}
+                className="p-1 rounded-lg hover:bg-white/[0.06] text-text-3 hover:text-text transition-colors"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <p className="text-[11px] text-text-2 leading-relaxed mb-4">
+              {t('admin_reset_confirm_desc')}
+            </p>
+            <input
+              type="text"
+              value={resetConfirmText}
+              onChange={(e) => setResetConfirmText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && resetConfirmText === 'default' && handleResetWorld()}
+              placeholder={t('admin_reset_placeholder')}
+              className="w-full px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-rose/40 transition-colors font-mono mb-3"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowResetDialog(false); setResetConfirmText(''); }}
+                className="flex-1 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-text-2 hover:bg-white/[0.08] transition-colors"
+              >
+                {t('admin_reset_cancel')}
+              </button>
+              <button
+                onClick={handleResetWorld}
+                disabled={resetConfirmText !== 'default' || resetting}
+                className="flex-1 py-2 rounded-xl bg-rose/20 border border-rose/30 text-xs text-rose font-medium hover:bg-rose/30 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
+              >
+                {resetting ? t('admin_resetting') : t('admin_reset_execute')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

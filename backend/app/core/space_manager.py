@@ -13,7 +13,7 @@ class SpaceManager:
     """Manages the infinite 2D space of the GENESIS world."""
 
     def __init__(self):
-        self.encounter_radius = 20.0
+        self.encounter_radius = 50.0
 
     def distance(self, x1: float, y1: float, x2: float, y2: float) -> float:
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
