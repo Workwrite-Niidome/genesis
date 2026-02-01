@@ -106,6 +106,7 @@ export default function AIEntity({ ai }: Props) {
           position={[0, size * 3.5, 0]}
           center
           distanceFactor={150}
+          zIndexRange={[0, 0]}
           style={{ pointerEvents: 'none' }}
         >
           <div
