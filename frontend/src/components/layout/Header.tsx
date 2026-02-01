@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Globe, Settings, MessageCircle, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { Globe, MessageSquare, PanelRight } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -14,63 +14,62 @@ export default function Header() {
     i18n.changeLanguage(next);
   };
 
-  const phaseLabel =
-    godAiPhase === 'pre_genesis' ? t('pre_genesis') : t('post_genesis');
-
   return (
-    <header className="h-12 flex items-center justify-between px-4 glass-panel rounded-none border-t-0 border-x-0 z-50">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-bold tracking-widest glow-text text-glow-cyan">
-          GENESIS
-        </h1>
-        <span className="text-xs text-text-secondary hidden sm:block">
-          {t('app_subtitle')}
-        </span>
+    <header className="h-11 flex items-center justify-between px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none">
+      {/* Left: Logo */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
+          <span className="text-sm font-semibold tracking-[0.2em] text-text">GENESIS</span>
+        </div>
+        <span className="text-[11px] text-text-3 hidden sm:block">{t('app_subtitle')}</span>
       </div>
 
-      <div className="flex items-center gap-6 text-sm">
-        <div className="flex items-center gap-4 text-text-secondary">
-          <span>
-            {t('tick')}:{' '}
-            <span className="text-glow-cyan font-mono">{tickNumber.toLocaleString()}</span>
-          </span>
-          <span>
-            {t('ais')}:{' '}
-            <span className="text-glow-green font-mono">{aiCount}</span>
-          </span>
-          <span>
-            {t('concepts')}:{' '}
-            <span className="text-glow-purple font-mono">{conceptCount}</span>
-          </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-void-lighter border border-panel-border">
-            {phaseLabel}
-          </span>
+      {/* Center: Stats */}
+      <div className="flex items-center gap-5">
+        <Stat label={t('tick')} value={tickNumber.toLocaleString()} color="text-cyan" />
+        <Stat label={t('ais')} value={String(aiCount)} color="text-green" />
+        <Stat label={t('concepts')} value={String(conceptCount)} color="text-accent" />
+        <div className="badge bg-surface-3 text-text-2">
+          <div className={`w-1 h-1 rounded-full ${godAiPhase === 'post_genesis' ? 'bg-green' : 'bg-orange'}`} />
+          {godAiPhase === 'pre_genesis' ? t('pre_genesis') : t('post_genesis')}
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={toggleLang}
-          className="p-1.5 rounded-lg hover:bg-panel-hover transition-colors text-text-secondary hover:text-glow-cyan"
-          title={t('language')}
-        >
-          <Globe size={16} />
-          <span className="text-xs ml-1 uppercase">{language}</span>
-        </button>
-        <button
-          onClick={toggleChat}
-          className="p-1.5 rounded-lg hover:bg-panel-hover transition-colors text-text-secondary hover:text-glow-cyan"
-          title={t('chat')}
-        >
-          <MessageCircle size={16} />
-        </button>
-        <button
-          onClick={toggleSidebar}
-          className="p-1.5 rounded-lg hover:bg-panel-hover transition-colors text-text-secondary hover:text-glow-cyan"
-        >
-          {sidebarOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-        </button>
+      {/* Right: Actions */}
+      <div className="flex items-center gap-1">
+        <HeaderBtn onClick={toggleLang} title={t('language')}>
+          <Globe size={14} />
+          <span className="text-[10px] uppercase">{language}</span>
+        </HeaderBtn>
+        <HeaderBtn onClick={toggleChat} title={t('chat')}>
+          <MessageSquare size={14} />
+        </HeaderBtn>
+        <HeaderBtn onClick={toggleSidebar}>
+          <PanelRight size={14} className={sidebarOpen ? 'text-accent' : ''} />
+        </HeaderBtn>
       </div>
     </header>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px]">
+      <span className="text-text-3">{label}</span>
+      <span className={`mono font-medium ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+function HeaderBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="flex items-center gap-1 px-2 py-1 rounded-md text-text-2 hover:text-text hover:bg-surface-3 transition-colors duration-150"
+    >
+      {children}
+    </button>
   );
 }

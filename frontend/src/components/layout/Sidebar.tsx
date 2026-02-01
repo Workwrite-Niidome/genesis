@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Info, Zap, BarChart3, Sparkles } from 'lucide-react';
+import { Info, Zap, BarChart2, Sparkles } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import InfoPanel from '../panels/InfoPanel';
 import EventsPanel from '../panels/EventsPanel';
@@ -9,7 +9,7 @@ import GodAIConsole from '../admin/GodAIConsole';
 const tabs = [
   { id: 'info' as const, icon: Info, labelKey: 'info_panel' },
   { id: 'events' as const, icon: Zap, labelKey: 'events_panel' },
-  { id: 'stats' as const, icon: BarChart3, labelKey: 'stats_panel' },
+  { id: 'stats' as const, icon: BarChart2, labelKey: 'stats_panel' },
   { id: 'god' as const, icon: Sparkles, labelKey: 'god_console' },
 ];
 
@@ -18,28 +18,30 @@ export default function Sidebar() {
   const { activePanel, setPanel } = useUIStore();
 
   return (
-    <div className="h-full flex flex-col glass-panel rounded-none border-y-0 border-r-0">
-      {/* Tab bar */}
-      <div className="flex border-b border-panel-border">
+    <div className="h-full flex flex-col bg-surface border-l border-border">
+      {/* Tabs */}
+      <div className="flex border-b border-border">
         {tabs.map(({ id, icon: Icon, labelKey }) => (
           <button
             key={id}
             onClick={() => setPanel(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-medium transition-all duration-150 relative ${
               activePanel === id
-                ? 'text-glow-cyan border-b-2 border-glow-cyan bg-panel-hover'
-                : 'text-text-secondary hover:text-text-primary hover:bg-panel-hover'
+                ? 'text-text'
+                : 'text-text-3 hover:text-text-2'
             }`}
-            title={t(labelKey)}
           >
-            <Icon size={14} />
-            <span className="hidden xl:inline">{t(labelKey)}</span>
+            <Icon size={13} />
+            <span className="hidden lg:inline">{t(labelKey)}</span>
+            {activePanel === id && (
+              <div className="absolute bottom-0 left-2 right-2 h-[1.5px] bg-accent rounded-full" />
+            )}
           </button>
         ))}
       </div>
 
-      {/* Panel content */}
-      <div className="flex-1 overflow-y-auto p-3">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
         {activePanel === 'info' && <InfoPanel />}
         {activePanel === 'events' && <EventsPanel />}
         {activePanel === 'stats' && <StatsPanel />}

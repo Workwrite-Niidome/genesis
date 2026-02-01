@@ -14,33 +14,34 @@ export default function StatsPanel() {
 
   const items = stats
     ? [
-        { label: t('total_ticks'), value: stats.total_ticks.toLocaleString(), color: '#4fc3f7' },
-        { label: t('total_born'), value: stats.total_ais_born, color: '#81c784' },
-        { label: t('total_alive'), value: stats.total_ais_alive, color: '#81c784' },
-        { label: t('concepts'), value: stats.total_concepts, color: '#ce93d8' },
-        { label: t('total_interactions'), value: stats.total_interactions, color: '#f48fb1' },
-        { label: t('events'), value: stats.total_events, color: '#ff8a65' },
+        { label: t('total_ticks'), value: stats.total_ticks.toLocaleString(), color: 'text-cyan' },
+        { label: t('total_born'), value: stats.total_ais_born, color: 'text-green' },
+        { label: t('total_alive'), value: stats.total_ais_alive, color: 'text-green' },
+        { label: t('concepts'), value: stats.total_concepts, color: 'text-accent' },
+        { label: t('total_interactions'), value: stats.total_interactions, color: 'text-rose' },
+        { label: t('events'), value: stats.total_events, color: 'text-orange' },
       ]
     : [];
 
   return (
     <div className="space-y-3 fade-in">
-      <h3 className="text-sm font-medium text-glow-cyan">{t('world_stats')}</h3>
+      <h3 className="text-xs font-medium text-text">{t('world_stats')}</h3>
 
-      <div className="grid grid-cols-2 gap-2">
-        {items.map(({ label, value, color }) => (
-          <div key={label} className="p-3 rounded-lg bg-void-lighter text-center">
-            <div className="text-xl font-mono font-bold" style={{ color }}>
-              {value}
+      {stats ? (
+        <div className="grid grid-cols-2 gap-2">
+          {items.map(({ label, value, color }) => (
+            <div
+              key={label}
+              className="p-3 rounded-lg bg-surface-2 border border-border"
+            >
+              <div className={`text-lg mono font-medium ${color}`}>{value}</div>
+              <div className="text-[10px] text-text-3 mt-1 tracking-wide">{label}</div>
             </div>
-            <div className="text-[10px] text-text-dim mt-1">{label}</div>
-          </div>
-        ))}
-      </div>
-
-      {!stats && (
-        <div className="text-center py-8">
-          <div className="text-text-dim text-xs">Loading...</div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <div className="text-text-3 text-[11px]">Loading...</div>
         </div>
       )}
     </div>

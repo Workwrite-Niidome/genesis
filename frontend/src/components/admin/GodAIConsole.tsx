@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send } from 'lucide-react';
+import { ArrowUp, Plus } from 'lucide-react';
 import { api } from '../../services/api';
+import { useAIStore } from '../../stores/aiStore';
 import type { GodConversationEntry } from '../../types/world';
 
 export default function GodAIConsole() {
@@ -10,6 +11,7 @@ export default function GodAIConsole() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fetchAIs = useAIStore((s) => s.fetchAIs);
 
   useEffect(() => {
     api.god.getHistory().then((data) => setHistory(data.history)).catch(console.error);
@@ -25,7 +27,6 @@ export default function GodAIConsole() {
     setInput('');
     setSending(true);
 
-    // Optimistic: add admin message
     setHistory((h) => [...h, { role: 'admin', content: msg, timestamp: new Date().toISOString() }]);
 
     try {
@@ -35,23 +36,50 @@ export default function GodAIConsole() {
         { role: 'god', content: result.god_response, timestamp: result.timestamp },
       ]);
     } catch (e) {
-      console.error('Failed to send to God AI:', e);
+      console.error('Failed to send:', e);
     } finally {
       setSending(false);
     }
   };
 
+  const handleSpawn = async () => {
+    try {
+      const res = await fetch('/api/god/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 3 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchAIs();
+      }
+    } catch (e) {
+      console.error('Spawn failed:', e);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full fade-in">
-      <h3 className="text-sm font-medium text-glow-purple mb-3 flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-glow-purple pulse-slow" />
-        {t('god_console')}
-      </h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-medium text-text flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
+          {t('god_console')}
+        </h3>
+        <button
+          onClick={handleSpawn}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-accent
+                     border border-accent/20 hover:bg-accent-dim transition-colors"
+          title="Spawn AIs (Fallback)"
+        >
+          <Plus size={10} />
+          Spawn AI
+        </button>
+      </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-3 mb-3 min-h-0">
+      <div className="flex-1 overflow-y-auto space-y-2.5 mb-3 min-h-0">
         {history.length === 0 && (
-          <div className="text-center py-6 text-text-dim text-xs">
+          <div className="text-center py-10 text-text-3 text-[11px]">
             {t('genesis_waiting')}
           </div>
         )}
@@ -59,25 +87,33 @@ export default function GodAIConsole() {
         {history.map((entry, i) => (
           <div
             key={i}
-            className={`p-3 rounded-lg text-xs leading-relaxed ${
+            className={`p-3 rounded-lg text-[12px] leading-[1.7] fade-in ${
               entry.role === 'god'
-                ? 'bg-nebula/30 border border-nebula-light/20 text-star'
-                : 'bg-void-lighter text-text-secondary ml-4'
+                ? 'bg-accent-dim/40 border border-accent/10'
+                : 'bg-surface-2 border border-border ml-6'
             }`}
           >
-            <div className="text-[10px] mb-1.5 uppercase tracking-wider"
-              style={{ color: entry.role === 'god' ? '#ce93d8' : '#4fc3f7' }}
+            <div
+              className="text-[9px] font-medium mb-1.5 uppercase tracking-[0.15em]"
+              style={{ color: entry.role === 'god' ? '#7c5bf5' : '#58d5f0' }}
             >
-              {entry.role === 'god' ? '神 AI' : 'Admin'}
+              {entry.role === 'god' ? 'GOD AI' : 'ADMIN'}
             </div>
-            <div className="whitespace-pre-wrap">{entry.content}</div>
+            <div className="text-text whitespace-pre-wrap font-light">{entry.content}</div>
           </div>
         ))}
 
         {sending && (
-          <div className="p-3 rounded-lg bg-nebula/20 border border-nebula-light/10 text-xs">
-            <div className="text-[10px] text-glow-purple mb-1 uppercase tracking-wider">神 AI</div>
-            <div className="text-text-dim pulse-slow">{t('god_speaking')}</div>
+          <div className="p-3 rounded-lg bg-accent-dim/20 border border-accent/10 fade-in">
+            <div className="text-[9px] text-accent font-medium mb-1 uppercase tracking-[0.15em]">GOD AI</div>
+            <div className="flex items-center gap-1.5 text-text-3 text-[11px]">
+              <div className="flex gap-0.5">
+                <div className="w-1 h-1 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1 h-1 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1 h-1 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              {t('god_speaking')}
+            </div>
           </div>
         )}
 
@@ -93,19 +129,20 @@ export default function GodAIConsole() {
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder={t('god_placeholder')}
           disabled={sending}
-          className="flex-1 bg-void-lighter border border-panel-border rounded-lg px-3 py-2
-                     text-xs text-text-primary placeholder-text-dim
-                     focus:outline-none focus:border-glow-purple/40
-                     disabled:opacity-50"
+          className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2
+                     text-[12px] text-text placeholder-text-3
+                     focus:outline-none focus:border-accent/30
+                     disabled:opacity-40 transition-colors"
         />
         <button
           onClick={handleSend}
           disabled={sending || !input.trim()}
-          className="p-2 rounded-lg bg-nebula/40 border border-nebula-light/30
-                     hover:bg-nebula/60 transition-colors
-                     disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-8 h-8 flex items-center justify-center rounded-lg
+                     bg-accent/80 hover:bg-accent text-bg
+                     transition-colors duration-150
+                     disabled:opacity-20 disabled:cursor-not-allowed"
         >
-          <Send size={14} className="text-glow-purple" />
+          <ArrowUp size={14} />
         </button>
       </div>
     </div>

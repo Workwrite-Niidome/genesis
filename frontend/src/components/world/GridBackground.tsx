@@ -2,25 +2,31 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 
 export default function GridBackground() {
-  const gridHelper = useMemo(() => {
+  const material = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        color: new THREE.Color('#7c5bf5'),
+        transparent: true,
+        opacity: 0.03,
+      }),
+    []
+  );
+
+  const geometry = useMemo(() => {
+    const points: THREE.Vector3[] = [];
     const size = 2000;
-    const divisions = 100;
-    const color1 = new THREE.Color('#1a1a3e');
-    const color2 = new THREE.Color('#0a0a20');
-    return { size, divisions, color1, color2 };
+    const step = 40;
+
+    for (let i = -size; i <= size; i += step) {
+      points.push(new THREE.Vector3(i, -size, -8));
+      points.push(new THREE.Vector3(i, size, -8));
+      points.push(new THREE.Vector3(-size, i, -8));
+      points.push(new THREE.Vector3(size, i, -8));
+    }
+
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    return geo;
   }, []);
 
-  return (
-    <group position={[0, 0, -5]}>
-      <gridHelper
-        args={[
-          gridHelper.size,
-          gridHelper.divisions,
-          gridHelper.color1,
-          gridHelper.color2,
-        ]}
-        rotation={[Math.PI / 2, 0, 0]}
-      />
-    </group>
-  );
+  return <lineSegments geometry={geometry} material={material} />;
 }

@@ -10,80 +10,71 @@ interface Props {
 
 export default function AIEntity({ ai }: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const glowRef = useRef<THREE.Mesh>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
   const selectAI = useAIStore((s) => s.selectAI);
 
   const color = useMemo(
-    () => new THREE.Color(ai.appearance?.primaryColor || '#4fc3f7'),
+    () => new THREE.Color(ai.appearance?.primaryColor || '#7c5bf5'),
     [ai.appearance?.primaryColor]
   );
 
-  const size = (ai.appearance?.size || 10) * 0.3;
+  const size = (ai.appearance?.size || 10) * 0.25;
+  const hash = ai.id.charCodeAt(0) + ai.id.charCodeAt(1);
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
     const t = clock.getElapsedTime();
 
-    // Gentle floating animation
-    meshRef.current.position.y = ai.position_y + Math.sin(t * 1.5 + ai.position_x) * 1.5;
+    // Subtle float
+    meshRef.current.position.y = ai.position_y + Math.sin(t * 0.8 + hash) * 1.2;
 
-    // Pulse effect
-    if (ai.appearance?.pulse && glowRef.current) {
-      const scale = 1 + Math.sin(t * 2) * 0.15;
-      glowRef.current.scale.setScalar(scale);
+    // Orbit ring rotation
+    if (ringRef.current) {
+      ringRef.current.rotation.z = t * 0.3 + hash;
+      ringRef.current.rotation.x = Math.sin(t * 0.2) * 0.3;
     }
   });
 
   const geometry = useMemo(() => {
     switch (ai.appearance?.shape) {
       case 'square':
-        return <boxGeometry args={[size, size, size * 0.3]} />;
+        return <octahedronGeometry args={[size * 0.55, 0]} />;
       case 'triangle':
-        return <coneGeometry args={[size * 0.6, size, 3]} />;
+        return <tetrahedronGeometry args={[size * 0.6, 0]} />;
       default:
-        return <sphereGeometry args={[size * 0.5, 16, 16]} />;
+        return <icosahedronGeometry args={[size * 0.45, 1]} />;
     }
   }, [ai.appearance?.shape, size]);
 
   return (
     <group position={[ai.position_x, ai.position_y, 0]}>
-      {/* Main body */}
+      {/* Core */}
       <mesh
         ref={meshRef}
         onClick={() => selectAI(ai.id)}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'pointer';
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = 'default';
-        }}
+        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={() => { document.body.style.cursor = 'default'; }}
       >
         {geometry}
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={0.6}
+          emissiveIntensity={0.8}
+          roughness={0.2}
+          metalness={0.5}
           transparent
-          opacity={0.9}
+          opacity={0.95}
         />
       </mesh>
 
-      {/* Glow aura */}
-      {ai.appearance?.glow && (
-        <mesh ref={glowRef}>
-          <sphereGeometry args={[size * 0.9, 16, 16]} />
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={0.08}
-            side={THREE.BackSide}
-          />
-        </mesh>
-      )}
+      {/* Orbit ring */}
+      <mesh ref={ringRef}>
+        <torusGeometry args={[size * 1.2, 0.08, 8, 48]} />
+        <meshBasicMaterial color={color} transparent opacity={0.15} />
+      </mesh>
 
-      {/* Point light per entity */}
-      <pointLight color={color} intensity={0.3} distance={size * 8} />
+      {/* Inner glow */}
+      <pointLight color={color} intensity={0.4} distance={size * 10} decay={2} />
     </group>
   );
 }

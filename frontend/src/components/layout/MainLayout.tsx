@@ -9,39 +9,37 @@ export default function MainLayout() {
   const { sidebarOpen, chatOpen } = useUIStore();
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-void overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-bg overflow-hidden">
       <Header />
 
       <div className="flex-1 flex overflow-hidden relative">
-        {/* World Canvas - main area */}
+        {/* Canvas */}
         <div className="flex-1 relative">
           <WorldCanvas />
+
+          {/* Chat overlay at bottom-left */}
+          <div
+            className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] z-40 ${
+              chatOpen ? 'h-72 opacity-100' : 'h-0 opacity-0'
+            } overflow-hidden`}
+          >
+            <ChatPanel />
+          </div>
         </div>
 
         {/* Sidebar */}
         <div
-          className={`transition-all duration-300 ease-in-out ${
-            sidebarOpen ? 'w-80' : 'w-0'
-          } overflow-hidden`}
+          className={`transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden ${
+            sidebarOpen ? 'w-[340px]' : 'w-0'
+          }`}
         >
-          <div className="w-80 h-full">
+          <div className="w-[340px] h-full">
             <Sidebar />
           </div>
         </div>
       </div>
 
-      {/* Timeline */}
       <TimelineBar />
-
-      {/* Chat Panel */}
-      <div
-        className={`absolute bottom-12 left-0 right-0 transition-all duration-300 ease-in-out z-40 ${
-          chatOpen ? 'h-64' : 'h-0'
-        } overflow-hidden`}
-        style={{ right: sidebarOpen ? '320px' : '0' }}
-      >
-        <ChatPanel />
-      </div>
     </div>
   );
 }

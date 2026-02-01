@@ -1,85 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @import "tailwindcss";
 
 @theme {
-  --color-void: #050510;
-  --color-void-light: #0a0a20;
-  --color-void-lighter: #12122a;
-  --color-cosmos: #1a1a3e;
-  --color-nebula: #2d1b69;
-  --color-nebula-light: #4a2c8a;
-  --color-star: #e0d4ff;
-  --color-glow-cyan: #4fc3f7;
-  --color-glow-green: #81c784;
-  --color-glow-orange: #ff8a65;
-  --color-glow-purple: #ce93d8;
-  --color-glow-pink: #f48fb1;
-  --color-panel: rgba(10, 10, 32, 0.85);
-  --color-panel-border: rgba(79, 195, 247, 0.15);
-  --color-panel-hover: rgba(79, 195, 247, 0.08);
-  --color-text-primary: #e8e4f0;
-  --color-text-secondary: #9e98b0;
-  --color-text-dim: #5a5470;
+  --color-bg: #06060c;
+  --color-surface: #0c0c14;
+  --color-surface-2: #111119;
+  --color-surface-3: #16161f;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-active: rgba(255, 255, 255, 0.12);
+  --color-accent: #7c5bf5;
+  --color-accent-dim: rgba(124, 91, 245, 0.15);
+  --color-accent-glow: rgba(124, 91, 245, 0.3);
+  --color-cyan: #58d5f0;
+  --color-cyan-dim: rgba(88, 213, 240, 0.12);
+  --color-green: #34d399;
+  --color-green-dim: rgba(52, 211, 153, 0.12);
+  --color-orange: #fb923c;
+  --color-orange-dim: rgba(251, 146, 60, 0.12);
+  --color-rose: #f472b6;
+  --color-rose-dim: rgba(244, 114, 182, 0.12);
+  --color-text: #e4e2e8;
+  --color-text-2: #8a8694;
+  --color-text-3: #504d5a;
 }
 
 @layer base {
-  * {
-    box-sizing: border-box;
-  }
+  * { box-sizing: border-box; }
 
   body {
     margin: 0;
-    background: var(--color-void);
-    color: var(--color-text-primary);
-    font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: rgba(79, 195, 247, 0.2);
-    border-radius: 3px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(79, 195, 247, 0.4);
-  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+  input, button { font-family: inherit; }
 }
 
 @layer components {
-  .glass-panel {
-    background: var(--color-panel);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--color-panel-border);
-    border-radius: 12px;
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
   }
 
-  .glow-text {
-    text-shadow: 0 0 10px rgba(79, 195, 247, 0.5), 0 0 40px rgba(79, 195, 247, 0.2);
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
   }
 
-  .glow-border {
-    box-shadow: 0 0 15px rgba(79, 195, 247, 0.1), inset 0 0 15px rgba(79, 195, 247, 0.05);
-  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
 
   .fade-in {
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .pulse-slow {
-    animation: pulseSlow 3s ease-in-out infinite;
+  .pulse-glow {
+    animation: pulseGlow 4s ease-in-out infinite;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgba(255,255,255,0.03) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 3s ease-in-out infinite;
   }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes pulseSlow {
-  0%, 100% { opacity: 0.6; }
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
