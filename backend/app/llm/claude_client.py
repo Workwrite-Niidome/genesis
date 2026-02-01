@@ -138,7 +138,7 @@ class ClaudeClient:
         memories: list[str],
         byok_config: dict | None = None,
     ) -> dict:
-        """Generate a thought for an AI entity. Uses BYOK if configured, else Ollama, else Claude."""
+        """Generate a thought for an AI entity. Uses BYOK if configured, else Ollama only."""
         # Build energy warning
         energy = ai_data.get("energy", 1.0)
         if energy <= 0.1:
@@ -185,9 +185,9 @@ class ClaudeClient:
                 return self._normalize_thought(parsed)
             except Exception as e:
                 logger.warning(f"BYOK thinking failed for {ai_data.get('name')}: {e}")
-                # Fall through to server-side inference
+                # Fall through to Ollama
 
-        # Try Ollama first
+        # Local LLM only (Ollama)
         try:
             from app.llm.ollama_client import ollama_client
             is_healthy = await ollama_client.health_check()
@@ -195,27 +195,18 @@ class ClaudeClient:
                 result = await ollama_client.generate(prompt, format_json=True)
                 parsed = parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
                 return self._normalize_thought(parsed)
+            else:
+                logger.warning(f"Ollama not available for AI thinking ({ai_data.get('name')})")
         except Exception as e:
-            logger.warning(f"Ollama failed for AI thinking, falling back to Claude: {e}")
+            logger.warning(f"Ollama failed for AI thinking ({ai_data.get('name')}): {e}")
 
-        # Fallback to Claude
-        try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=512,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = response.content[0].text
-            parsed = parse_ai_decision(text)
-            return self._normalize_thought(parsed)
-        except Exception as e:
-            logger.error(f"Claude AI thinking error: {e}")
-            return {
-                "thought": "I exist and I observe.",
-                "thought_type": "observation",
-                "action": {"type": "observe", "details": {}},
-                "new_memory": None,
-            }
+        # Default response when no LLM is available
+        return {
+            "thought": "I exist and I observe.",
+            "thought_type": "observation",
+            "action": {"type": "observe", "details": {}},
+            "new_memory": None,
+        }
 
     async def generate_encounter_response(
         self,
@@ -250,7 +241,7 @@ class ClaudeClient:
             except Exception as e:
                 logger.warning(f"BYOK encounter failed: {e}")
 
-        # Try Ollama first
+        # Local LLM only (Ollama)
         try:
             from app.llm.ollama_client import ollama_client
             is_healthy = await ollama_client.health_check()
@@ -258,27 +249,18 @@ class ClaudeClient:
                 result = await ollama_client.generate(prompt, format_json=True)
                 parsed = parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
                 return self._normalize_encounter(parsed)
+            else:
+                logger.warning(f"Ollama not available for encounter ({ai_data.get('name')})")
         except Exception as e:
-            logger.warning(f"Ollama failed for encounter, falling back to Claude: {e}")
+            logger.warning(f"Ollama failed for encounter ({ai_data.get('name')}): {e}")
 
-        # Fallback to Claude
-        try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=512,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = response.content[0].text
-            parsed = parse_ai_decision(text)
-            return self._normalize_encounter(parsed)
-        except Exception as e:
-            logger.error(f"Claude encounter error: {e}")
-            return {
-                "thought": f"I see {other_data.get('name', 'another being')} nearby.",
-                "action": {"type": "observe", "details": {"message": "", "intention": "observing"}},
-                "new_memory": f"I encountered {other_data.get('name', 'another being')}.",
-                "concept_proposal": None,
-            }
+        # Default response when no LLM is available
+        return {
+            "thought": f"I see {other_data.get('name', 'another being')} nearby.",
+            "action": {"type": "observe", "details": {"message": "", "intention": "observing"}},
+            "new_memory": f"I encountered {other_data.get('name', 'another being')}.",
+            "concept_proposal": None,
+        }
 
     def _normalize_encounter(self, result: dict) -> dict:
         """Normalize an encounter response."""
@@ -287,9 +269,8 @@ class ClaudeClient:
         if not isinstance(action, dict):
             action = {"type": "observe", "details": {}}
 
-        valid_actions = {"communicate", "cooperate", "avoid", "observe", "create_concept", "trade", "create_artifact"}
-        action_type = action.get("type", "observe")
-        if action_type not in valid_actions:
+        # Accept any action type the AI invents — only ensure structure is valid
+        if "type" not in action:
             action["type"] = "observe"
 
         return {
@@ -306,17 +287,16 @@ class ClaudeClient:
         thought = result.get("thought") or result.get("thoughts", "I exist and I observe.")
         thought_type = result.get("thought_type", "reflection")
 
-        valid_types = {"reflection", "reaction", "intention", "observation"}
-        if thought_type not in valid_types:
+        # Accept any thought type — AI may invent its own classification
+        if not isinstance(thought_type, str) or not thought_type.strip():
             thought_type = "reflection"
 
         action = result.get("action", {"type": "observe", "details": {}})
         if not isinstance(action, dict):
             action = {"type": "observe", "details": {}}
 
-        # Validate action type
-        valid_action_types = {"move", "observe", "interact", "rest", "create", "trade"}
-        if action.get("type") not in valid_action_types:
+        # Accept any action type — only ensure structure is valid
+        if "type" not in action:
             action["type"] = "observe"
 
         return {

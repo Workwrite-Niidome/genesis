@@ -2,6 +2,9 @@ import { io, Socket } from 'socket.io-client';
 import { useWorldStore } from '../stores/worldStore';
 import { useAIStore } from '../stores/aiStore';
 import { useThoughtStore } from '../stores/thoughtStore';
+import { useChatStore } from '../stores/chatStore';
+import { useBoardStore } from '../stores/boardStore';
+import { useSagaStore } from '../stores/sagaStore';
 
 let socket: Socket | null = null;
 
@@ -10,7 +13,8 @@ export function connectSocket(): Socket {
 
   const wsUrl = window.location.origin.replace(/:\d+$/, ':8000');
 
-  socket = io(`${wsUrl}/ws`, {
+  socket = io(wsUrl, {
+    path: '/ws/socket.io',
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: 10,
@@ -41,11 +45,24 @@ export function connectSocket(): Socket {
   });
 
   socket.on('ai_position', (data: any) => {
-    useAIStore.getState().updateAI({
-      id: data.id,
-      position_x: data.x,
-      position_y: data.y,
-    });
+    const store = useAIStore.getState();
+    if (Array.isArray(data)) {
+      // Batch position update: array of {id, x, y, name}
+      data.forEach((pos: any) => {
+        store.updateAI({
+          id: pos.id,
+          position_x: pos.x,
+          position_y: pos.y,
+        });
+      });
+    } else {
+      // Single position update
+      store.updateAI({
+        id: data.id,
+        position_x: data.x,
+        position_y: data.y,
+      });
+    }
   });
 
   socket.on('interaction', (data: any) => {
@@ -72,6 +89,23 @@ export function connectSocket(): Socket {
 
   socket.on('organization_formed', (data: any) => {
     console.log('[GENESIS] Organization formed:', data.name);
+  });
+
+  socket.on('chat_message', (data: any) => {
+    useChatStore.getState().addMessage(data);
+  });
+
+  socket.on('board_thread', (data: any) => {
+    useBoardStore.getState().addThread(data);
+  });
+
+  socket.on('board_reply', (data: any) => {
+    useBoardStore.getState().addReply(data);
+  });
+
+  socket.on('saga_chapter', (data: any) => {
+    useSagaStore.getState().onNewChapter(data);
+    console.log('[GENESIS] New saga chapter:', data.chapter_title);
   });
 
   return socket;

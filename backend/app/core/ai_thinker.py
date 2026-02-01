@@ -200,19 +200,32 @@ class AIThinker:
         )
         db.add(thought)
 
-        # Apply action
+        # Emit thought event via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("thought", {
+                "ai_id": str(ai.id),
+                "ai_name": ai.name,
+                "thought_type": result["thought_type"],
+                "content": result["thought"],
+                "tick_number": tick_number,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit thought socket event: {e}")
+
+        # Apply action — AI may use any action type it invents
         action = result.get("action", {})
         action_type = action.get("type", "observe") if isinstance(action, dict) else "observe"
+        details = action.get("details", {}) if isinstance(action, dict) else {}
 
         if action_type == "move":
-            details = action.get("details", {})
             dx = max(-MOVE_CLAMP, min(MOVE_CLAMP, float(details.get("dx", 0))))
             dy = max(-MOVE_CLAMP, min(MOVE_CLAMP, float(details.get("dy", 0))))
             ai.position_x += dx
             ai.position_y += dy
-        elif action_type == "create":
-            details = action.get("details", {})
-            creation_type = details.get("creation_type", "art")
+        elif action_type == "create" or details.get("description"):
+            # Handle any creative action — AI decides what "create" means
+            creation_type = details.get("creation_type", action_type)
             description = details.get("description", "")
             if description:
                 try:

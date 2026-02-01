@@ -8,6 +8,8 @@ from app.models.tick import Tick
 from app.models.event import Event
 from app.models.observer import Observer
 from app.models.chat import ChatMessage
+from app.models.board import BoardThread, BoardReply
+from app.models.saga import WorldSaga
 
 __all__ = [
     "GodAI",
@@ -21,4 +23,7 @@ __all__ = [
     "Event",
     "Observer",
     "ChatMessage",
+    "BoardThread",
+    "BoardReply",
+    "WorldSaga",
 ]

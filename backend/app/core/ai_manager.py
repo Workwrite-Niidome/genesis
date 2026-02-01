@@ -110,6 +110,18 @@ class AIManager:
         await db.commit()
         await db.refresh(ai)
 
+        # Emit ai_born event via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("ai_born", {
+                "id": str(ai.id),
+                "name": name,
+                "position": {"x": ai.position_x, "y": ai.position_y},
+                "appearance": ai.appearance,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit ai_born socket event: {e}")
+
         logger.info(f"AI created: {name} ({ai.id}, type: {creator_type})")
         return ai
 
@@ -215,6 +227,28 @@ class AIManager:
                         },
                     )
                     db.add(event)
+
+                    # Emit ai_death event via Redis pub/sub
+                    try:
+                        from app.realtime.socket_manager import publish_event
+                        publish_event("ai_death", {
+                            "id": str(ai.id),
+                            "name": ai.name,
+                            "age": state.get("age", 0),
+                            "evolution_score": state.get("evolution_score", 0),
+                        })
+                    except Exception as e_sock:
+                        logger.warning(f"Failed to emit ai_death socket event: {e_sock}")
+
+                    # Auto-create board thread for notable AI deaths (evolution_score >= 20)
+                    if state.get("evolution_score", 0) >= 20:
+                        try:
+                            await db.flush()
+                            from app.core.board_service import create_event_thread
+                            await create_event_thread(db, event, category="ai_death")
+                        except Exception as e_board:
+                            logger.warning(f"Failed to create board thread for AI death: {e_board}")
+
                     deaths += 1
                     logger.info(f"AI {ai.name} died at tick {tick_number}")
                 else:

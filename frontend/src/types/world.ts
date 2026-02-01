@@ -154,3 +154,35 @@ export interface Relationship {
   first_met: number;
   last_interaction: number;
 }
+
+export interface SagaChapter {
+  id: string;
+  era_number: number;
+  start_tick: number;
+  end_tick: number;
+  chapter_title: string;
+  narrative: string;
+  summary: string;
+  era_statistics: {
+    births: number;
+    deaths: number;
+    concepts: number;
+    interactions: number;
+    ai_count_start: number;
+    ai_count_end: number;
+  };
+  key_events: {
+    id: string;
+    type: string;
+    title: string;
+    importance: number;
+    tick_number: number;
+  }[];
+  key_characters: {
+    name: string;
+    role: string;
+  }[];
+  mood: 'hopeful' | 'tragic' | 'triumphant' | 'mysterious' | 'peaceful' | 'turbulent' | string | null;
+  generation_time_ms: number | null;
+  created_at: string;
+}

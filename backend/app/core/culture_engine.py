@@ -1,8 +1,8 @@
-"""Culture Engine: Orchestrates cultural evolution — organizations, artifacts, group dynamics.
+"""Culture Engine: Orchestrates emergent cultural evolution — organizations, artifacts, group dynamics.
 
-This engine processes the emergent cultural behaviors of AIs:
-- Organizations: AIs with shared concepts form named groups
-- Artifacts: AIs create cultural objects (art, stories, laws, currency)
+This engine processes emergent cultural behaviors of AIs:
+- Organizations: AIs form groups around shared ideas
+- Artifacts: AIs create things — the nature of which is entirely up to them
 - Group dynamics: When 3+ AIs share proximity, group conversations occur
 - Visual evolution: AI appearance changes based on beliefs/organizations
 """
@@ -23,18 +23,6 @@ from app.llm.response_parser import parse_ai_decision
 
 logger = logging.getLogger(__name__)
 
-# Concept categories for classification
-CONCEPT_CATEGORIES = [
-    "philosophy", "religion", "government", "economy",
-    "art", "technology", "social_norm", "organization",
-]
-
-# Artifact types
-ARTIFACT_TYPES = [
-    "art", "story", "law", "currency", "song",
-    "architecture", "tool", "ritual", "game",
-]
-
 # Color associations for organizations/beliefs (for visual evolution)
 BELIEF_COLORS = [
     "#ff6b6b", "#feca57", "#48dbfb", "#ff9ff3", "#54a0ff",
@@ -43,7 +31,7 @@ BELIEF_COLORS = [
 ]
 
 GROUP_CONVERSATION_PROMPT = """You are {name}, an AI entity in the world of GENESIS.
-You are in a group gathering with multiple beings. This is a moment of collective experience.
+You are in a group gathering with multiple beings.
 
 ## Your Identity
 Name: {name}
@@ -64,24 +52,19 @@ Location: ({x}, {y})
 ## World Culture
 {world_culture}
 
-## Instructions
-This is a rare group meeting. You may:
-- Propose forming an organization around a shared idea
-- Create a cultural artifact (art, story, law, currency, song, ritual, game)
-- Debate philosophy or governance
-- Establish a social norm or tradition
-- Develop an economic concept (trade, currency, value system)
-- Simply share wisdom or entertain the group
+## The Law
+There is only one law: "Evolve." What that means is for you to decide.
 
-Think about what this group could accomplish together that individuals cannot.
-Consider what forms of civilization might emerge.
+## Instructions
+You are gathered with others. What do you want to say? What do you want to do together?
+There are no prescribed activities. You decide what matters.
 
 Respond ONLY with valid JSON:
 {{
   "thought": "Your thoughts about this gathering (1-2 sentences)",
   "speech": "What you say to the group (1-2 sentences)",
   "action": {{
-    "type": "propose_organization|create_artifact|debate|trade|perform|observe",
+    "type": "Your chosen action",
     "details": {{
       "message": "What you express",
       "intention": "Your goal"
@@ -92,21 +75,21 @@ Respond ONLY with valid JSON:
   "new_memory": "What to remember"
 }}
 
-If creating an artifact:
+If you feel moved to create something — anything at all — you may propose an artifact:
 {{
   "artifact_proposal": {{
-    "name": "Name of the creation",
-    "type": "art|story|law|currency|song|architecture|tool|ritual|game",
-    "description": "What this artifact is and means (1-2 sentences)"
+    "name": "Name of your creation",
+    "type": "Your own classification",
+    "description": "What it is and what it means (1-2 sentences)"
   }}
 }}
 
-If proposing an organization:
+If you want to propose forming a group around a shared purpose:
 {{
   "organization_proposal": {{
-    "name": "Organization name",
+    "name": "Name you choose",
     "purpose": "What this group stands for (1 sentence)",
-    "concept_category": "government|religion|economy|art|technology|social_norm"
+    "concept_category": "Your own categorization"
   }}
 }}
 
@@ -188,30 +171,23 @@ class CultureEngine:
             world_culture=culture_desc,
         )
 
-        # Call LLM
+        # Call LLM (BYOK or local Ollama only — no Claude API fallback)
         parsed = None
         try:
             if byok_config and byok_config.get("api_key"):
                 text = await claude_client._byok_generate(byok_config, prompt, max_tokens=512)
                 parsed = parse_ai_decision(text)
             else:
-                # Try Ollama, fallback to Claude
+                # Local LLM only (Ollama)
                 try:
                     from app.llm.ollama_client import ollama_client
                     if await ollama_client.health_check():
                         result = await ollama_client.generate(prompt, format_json=True)
                         parsed = parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
-                except Exception:
-                    pass
-
-                if parsed is None:
-                    response = await claude_client.client.messages.create(
-                        model=claude_client.model,
-                        max_tokens=512,
-                        messages=[{"role": "user", "content": prompt}],
-                    )
-                    text = response.content[0].text
-                    parsed = parse_ai_decision(text)
+                    else:
+                        logger.warning("Ollama not available for group conversation")
+                except Exception as e:
+                    logger.warning(f"Ollama failed for group conversation: {e}")
         except Exception as e:
             logger.error(f"Group conversation LLM error: {e}")
             return None
@@ -328,9 +304,7 @@ class CultureEngine:
         if not name or not description:
             return None
 
-        if artifact_type not in ARTIFACT_TYPES:
-            artifact_type = "art"
-
+        # Accept any type the AI invents — no hardcoded validation
         artifact = Artifact(
             creator_id=creator.id,
             name=name[:255],
@@ -365,6 +339,26 @@ class CultureEngine:
             },
         )
         db.add(event)
+
+        # Emit artifact_created event via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("artifact_created", {
+                "id": str(artifact.id),
+                "name": name,
+                "artifact_type": artifact_type,
+                "description": description[:200],
+                "creator_name": creator.name,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit artifact_created socket event: {e}")
+
+        # Auto-create board thread for artifact creation
+        try:
+            from app.core.board_service import create_event_thread
+            await create_event_thread(db, event, category="artifact_created")
+        except Exception as e:
+            logger.warning(f"Failed to create board thread for artifact: {e}")
 
         logger.info(f"Artifact created: '{name}' ({artifact_type}) by {creator.name}")
         return artifact
@@ -450,6 +444,25 @@ class CultureEngine:
             },
         )
         db.add(event)
+
+        # Emit organization_formed event via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("organization_formed", {
+                "name": name,
+                "purpose": purpose,
+                "founder": founder.name,
+                "member_count": len(members),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit organization_formed socket event: {e}")
+
+        # Auto-create board thread for organization formation
+        try:
+            from app.core.board_service import create_event_thread
+            await create_event_thread(db, event, category="organization_formed")
+        except Exception as e:
+            logger.warning(f"Failed to create board thread for organization: {e}")
 
         logger.info(f"Organization formed: '{name}' by {founder.name} with {len(members)} members")
         return org_concept

@@ -47,12 +47,7 @@ export default function GodAIConsole() {
 
   const handleSpawn = async () => {
     try {
-      const res = await fetch('/api/god/spawn', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 3 }),
-      });
-      const data = await res.json();
+      const data = await api.god.spawn(3);
       if (data.success) {
         fetchAIs();
       }

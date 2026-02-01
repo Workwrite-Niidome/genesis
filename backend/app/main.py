@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import FastAPI
@@ -6,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api.routes import api_router
 from app.db.database import engine, Base
-from app.realtime.socket_manager import socket_app
+from app.realtime.socket_manager import socket_app, start_event_subscriber
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -39,7 +40,9 @@ app.mount("/ws", socket_app)
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("GENESIS backend started")
+    # Launch Redis -> Socket.IO event bridge as background task
+    asyncio.create_task(start_event_subscriber())
+    logger.info("GENESIS backend started (with Socket.IO event subscriber)")
 
 
 @app.get("/health")

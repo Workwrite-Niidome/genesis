@@ -166,6 +166,21 @@ class InteractionEngine:
         )
         db.add(interaction)
 
+        # Emit interaction event via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("interaction", {
+                "participants": [ai1.name, ai2.name],
+                "type": interaction_type,
+                "content": {
+                    "ai1_message": content["ai1"]["message"][:100],
+                    "ai2_message": content["ai2"]["message"][:100],
+                },
+                "tick_number": tick_number,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit interaction socket event: {e}")
+
         # Add memories to both AIs
         ai1_memory_text = ai1_result.get("new_memory")
         if ai1_memory_text and isinstance(ai1_memory_text, str):
@@ -269,21 +284,28 @@ class InteractionEngine:
         return result
 
     def _determine_interaction_type(self, action1: str, action2: str) -> str:
-        """Determine overall interaction type from both AI actions."""
-        if action1 == "create_artifact" or action2 == "create_artifact":
+        """Determine overall interaction type from both AI actions.
+        Accepts any action type the AI invents — maps known ones, passes through unknown."""
+        actions = {action1, action2}
+        if "create" in actions or "create_artifact" in actions:
             return "co_creation"
-        if action1 == "trade" or action2 == "trade":
+        if "trade" in actions:
             return "trade"
-        if action1 == "cooperate" or action2 == "cooperate":
+        if "cooperate" in actions:
             return "cooperate"
         if action1 == "communicate" and action2 == "communicate":
             return "dialogue"
-        if action1 == "communicate" or action2 == "communicate":
+        if "communicate" in actions:
             return "communicate"
         if action1 == "avoid" and action2 == "avoid":
             return "mutual_avoidance"
-        if action1 == "avoid" or action2 == "avoid":
+        if "avoid" in actions:
             return "avoidance"
+        # For AI-invented action types, use the most active one
+        if action1 != "observe" and action1 != action2:
+            return action1
+        if action2 != "observe":
+            return action2
         return "observe"
 
 

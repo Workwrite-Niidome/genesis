@@ -1,10 +1,17 @@
+import asyncio
+import json
 import logging
 
+import redis
+import redis.asyncio as aioredis
 import socketio
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Redis channel for cross-process socket events
+REDIS_CHANNEL = "genesis:socket_events"
 
 # Create Socket.IO server
 sio = socketio.AsyncServer(
@@ -20,86 +27,101 @@ socket_app = socketio.ASGIApp(sio)
 
 @sio.event
 async def connect(sid, environ):
-    logger.debug(f"Client connected: {sid}")
+    logger.info(f"Client connected: {sid}")
 
 
 @sio.event
 async def disconnect(sid):
-    logger.debug(f"Client disconnected: {sid}")
+    logger.info(f"Client disconnected: {sid}")
+
+
+def publish_event(event_type: str, data: dict | list) -> None:
+    """Publish a socket event to Redis channel.
+
+    Uses sync redis client so it works from any process context
+    (Celery worker, FastAPI, asyncio, etc.).
+    """
+    try:
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        message = json.dumps({"event": event_type, "data": data})
+        r.publish(REDIS_CHANNEL, message)
+        r.close()
+    except Exception as e:
+        logger.warning(f"Failed to publish socket event '{event_type}': {e}")
+
+
+async def start_event_subscriber() -> None:
+    """Subscribe to Redis channel and emit Socket.IO events.
+
+    Runs as an async background task in the FastAPI process.
+    Uses redis.asyncio for non-blocking operation.
+    """
+    logger.info("Starting Redis event subscriber for Socket.IO bridge")
+    while True:
+        try:
+            r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            pubsub = r.pubsub()
+            await pubsub.subscribe(REDIS_CHANNEL)
+            logger.info(f"Subscribed to Redis channel: {REDIS_CHANNEL}")
+
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    payload = json.loads(message["data"])
+                    event_type = payload["event"]
+                    data = payload["data"]
+                    await sio.emit(event_type, data)
+                    logger.debug(f"Emitted socket event: {event_type}")
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.warning(f"Invalid event message from Redis: {e}")
+                except Exception as e:
+                    logger.warning(f"Error emitting socket event: {e}")
+
+        except asyncio.CancelledError:
+            logger.info("Event subscriber cancelled, shutting down")
+            break
+        except Exception as e:
+            logger.error(f"Redis subscriber connection error: {e}, reconnecting in 5s...")
+            await asyncio.sleep(5)
 
 
 class SocketManager:
-    """Manages real-time event broadcasting via Socket.IO."""
+    """Manages real-time event broadcasting via Socket.IO.
 
-    async def emit_thought(self, thought_data: dict) -> None:
-        """Broadcast a new AI thought."""
-        try:
-            await sio.emit("thought", thought_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (thought): {e}")
+    Convenience wrappers that publish events through Redis pub/sub,
+    so they work from any process (Celery worker or FastAPI).
+    """
 
-    async def emit_event(self, event_data: dict) -> None:
-        """Broadcast a world event."""
-        try:
-            await sio.emit("event", event_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (event): {e}")
+    def emit_thought(self, thought_data: dict) -> None:
+        publish_event("thought", thought_data)
 
-    async def emit_world_update(self, world_data: dict) -> None:
-        """Broadcast world state update."""
-        try:
-            await sio.emit("world_update", world_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (world_update): {e}")
+    def emit_event(self, event_data: dict) -> None:
+        publish_event("event", event_data)
 
-    async def emit_ai_position(self, position_data: dict) -> None:
-        """Broadcast AI position update."""
-        try:
-            await sio.emit("ai_position", position_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (ai_position): {e}")
+    def emit_world_update(self, world_data: dict) -> None:
+        publish_event("world_update", world_data)
 
-    async def emit_interaction(self, interaction_data: dict) -> None:
-        """Broadcast an interaction event."""
-        try:
-            await sio.emit("interaction", interaction_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (interaction): {e}")
+    def emit_ai_position(self, position_data: dict | list) -> None:
+        publish_event("ai_position", position_data)
 
-    async def emit_god_observation(self, observation_data: dict) -> None:
-        """Broadcast a God AI observation."""
-        try:
-            await sio.emit("god_observation", observation_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (god_observation): {e}")
+    def emit_interaction(self, interaction_data: dict) -> None:
+        publish_event("interaction", interaction_data)
 
-    async def emit_ai_death(self, death_data: dict) -> None:
-        """Broadcast an AI death event."""
-        try:
-            await sio.emit("ai_death", death_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (ai_death): {e}")
+    def emit_god_observation(self, observation_data: dict) -> None:
+        publish_event("god_observation", observation_data)
 
-    async def emit_concept_created(self, concept_data: dict) -> None:
-        """Broadcast a new concept creation."""
-        try:
-            await sio.emit("concept_created", concept_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (concept_created): {e}")
+    def emit_ai_death(self, death_data: dict) -> None:
+        publish_event("ai_death", death_data)
 
-    async def emit_artifact_created(self, artifact_data: dict) -> None:
-        """Broadcast a new artifact creation."""
-        try:
-            await sio.emit("artifact_created", artifact_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (artifact_created): {e}")
+    def emit_concept_created(self, concept_data: dict) -> None:
+        publish_event("concept_created", concept_data)
 
-    async def emit_organization_formed(self, org_data: dict) -> None:
-        """Broadcast a new organization formation."""
-        try:
-            await sio.emit("organization_formed", org_data)
-        except Exception as e:
-            logger.warning(f"Socket emit error (organization_formed): {e}")
+    def emit_artifact_created(self, artifact_data: dict) -> None:
+        publish_event("artifact_created", artifact_data)
+
+    def emit_organization_formed(self, org_data: dict) -> None:
+        publish_event("organization_formed", org_data)
 
 
 socket_manager = SocketManager()

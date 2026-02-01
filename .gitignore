@@ -35,3 +35,7 @@ logs/
 
 # Database
 *.sql.bak
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.*

@@ -239,6 +239,16 @@ class GodAIManager:
         state["observations"] = observations[-20:]
         god.state = state
 
+        # Emit god_observation event via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("god_observation", {
+                "content": observation[:500],
+                "tick_number": tick_number,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit god_observation socket event: {e}")
+
         logger.info(f"God AI observed the world at tick {tick_number}")
         return observation
 

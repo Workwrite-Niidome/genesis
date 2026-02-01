@@ -3,6 +3,7 @@ import { Eye, Grid3x3, Rocket } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useDeployStore } from '../../stores/deployStore';
+import LanguageSwitcher from '../ui/LanguageSwitcher';
 
 export default function ObserverHeader() {
   const { t } = useTranslation();
@@ -56,7 +57,7 @@ export default function ObserverHeader() {
           >
             <Rocket size={12} />
             <span className="text-[10px] font-medium tracking-wide">{t('deploy_title')}</span>
-            <span className="text-[9px] bg-cyan/15 px-1.5 py-0.5 rounded-md mono">
+            <span className="badge bg-cyan/15 text-cyan text-[9px] mono">
               {remainingDeploys}/{maxDeploys}
             </span>
           </button>
@@ -70,6 +71,9 @@ export default function ObserverHeader() {
           >
             <Grid3x3 size={12} />
           </button>
+
+          {/* Language switcher */}
+          <LanguageSwitcher />
         </div>
       </div>
     </header>

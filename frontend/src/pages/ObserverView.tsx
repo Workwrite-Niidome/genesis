@@ -1,21 +1,24 @@
 import { useState } from 'react';
-import { TrendingUp, Lightbulb, Eye, Palette } from 'lucide-react';
+import { TrendingUp, Lightbulb, Eye, Palette, ScrollText } from 'lucide-react';
 import WorldCanvas from '../components/world/WorldCanvas';
 import ObserverHeader from '../components/observer/ObserverHeader';
 import AIDetailCard from '../components/observer/AIDetailCard';
-import ObserverChat from '../components/observer/ObserverChat';
+import BoardPanel from '../components/observer/BoardPanel';
 import ObserverFeed from '../components/observer/ObserverFeed';
 import DeployPanel from '../components/observer/DeployPanel';
 import RankingPanel from '../components/observer/RankingPanel';
 import ConceptPanel from '../components/observer/ConceptPanel';
 import ArtifactPanel from '../components/observer/ArtifactPanel';
 import GodFeed from '../components/observer/GodFeed';
+import WorldArchive from '../components/observer/WorldArchive';
+import { useUIStore } from '../stores/uiStore';
 
 export default function ObserverView() {
   const [showRanking, setShowRanking] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);
   const [showArtifacts, setShowArtifacts] = useState(false);
   const [showGodFeed, setShowGodFeed] = useState(false);
+  const { showArchive, toggleArchive } = useUIStore();
 
   return (
     <div className="h-screen w-screen relative bg-bg overflow-hidden">
@@ -32,11 +35,12 @@ export default function ObserverView() {
         <ObserverHeader />
         <AIDetailCard />
         <ObserverFeed />
-        <ObserverChat />
+        <BoardPanel />
         <RankingPanel visible={showRanking} onClose={() => setShowRanking(false)} />
         <ConceptPanel visible={showConcepts} onClose={() => setShowConcepts(false)} />
         <ArtifactPanel visible={showArtifacts} onClose={() => setShowArtifacts(false)} />
         <GodFeed visible={showGodFeed} onClose={() => setShowGodFeed(false)} />
+        <WorldArchive visible={showArchive} onClose={toggleArchive} />
 
         {/* Panel toggle buttons */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto">
@@ -83,6 +87,17 @@ export default function ObserverView() {
           >
             <Eye size={11} />
             God
+          </button>
+          <button
+            onClick={toggleArchive}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium transition-all ${
+              showArchive
+                ? 'bg-accent/20 text-accent border border-accent/30'
+                : 'glass border border-border text-text-3 hover:text-text hover:border-white/[0.1]'
+            }`}
+          >
+            <ScrollText size={11} />
+            Archive
           </button>
         </div>
       </div>

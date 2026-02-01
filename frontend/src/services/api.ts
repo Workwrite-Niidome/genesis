@@ -56,6 +56,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ confirm: true, confirmation_text: confirmationText }),
       }),
+    spawn: (count = 3) =>
+      fetchJSONAdmin<any>('/god/spawn', {
+        method: 'POST',
+        body: JSON.stringify({ count }),
+      }),
   },
   ais: {
     list: (aliveOnly = true) => fetchJSON<any[]>(`/ais?alive_only=${aliveOnly}`),
@@ -86,6 +91,54 @@ export const api = {
   thoughts: {
     getFeed: (limit = 50) => fetchJSON<any[]>(`/thoughts/feed?limit=${limit}`),
     getByAI: (aiId: string, limit = 20) => fetchJSON<any[]>(`/thoughts/ai/${aiId}?limit=${limit}`),
+  },
+  observers: {
+    register: (username: string, password: string, language?: string) =>
+      fetchJSON<any>('/observers/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password, language }),
+      }),
+    login: (username: string, password: string) =>
+      fetchJSON<any>('/observers/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    me: (token: string) =>
+      fetchJSON<any>('/observers/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      }),
+    getChat: (channel = 'global', limit = 50) =>
+      fetchJSON<any[]>(`/observers/chat?channel=${channel}&limit=${limit}`),
+    postChat: (token: string, channel: string, content: string) =>
+      fetchJSON<any>('/observers/chat', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ channel, content }),
+      }),
+  },
+  board: {
+    getThreads: (page = 1, limit = 30, category?: string) =>
+      fetchJSON<any[]>(
+        `/board/threads?page=${page}&limit=${limit}${category ? `&category=${category}` : ''}`
+      ),
+    getThread: (id: string) => fetchJSON<any>(`/board/threads/${id}`),
+    createThread: (token: string, title: string, body?: string, category?: string) =>
+      fetchJSON<any>('/board/threads', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title, body: body || null, category: category || null }),
+      }),
+    createReply: (token: string, threadId: string, content: string) =>
+      fetchJSON<any>(`/board/threads/${threadId}/replies`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ content }),
+      }),
+  },
+  saga: {
+    getChapters: (limit = 50) => fetchJSON<any[]>(`/saga/chapters?limit=${limit}`),
+    getChapter: (eraNumber: number) => fetchJSON<any>(`/saga/chapters/${eraNumber}`),
+    getLatest: () => fetchJSON<any>('/saga/latest'),
   },
   deploy: {
     getTraits: () => fetchJSON<{ traits: string[] }>('/deploy/traits'),

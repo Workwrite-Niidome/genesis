@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { MessageSquare, PanelRight } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
+import LanguageSwitcher from '../ui/LanguageSwitcher';
 
 export default function Header() {
   const { t } = useTranslation();
@@ -36,6 +37,7 @@ export default function Header() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-0.5">
+        <LanguageSwitcher />
         <HeaderBtn onClick={toggleChat} title={t('chat')}>
           <MessageSquare size={13} />
         </HeaderBtn>

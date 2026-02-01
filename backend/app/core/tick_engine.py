@@ -24,6 +24,9 @@ GROUP_CONVERSATION_INTERVAL = 2
 # How many ticks between visual evolution updates
 VISUAL_EVOLUTION_INTERVAL = 10
 
+# Era size for saga generation
+SAGA_ERA_SIZE = 50
+
 # Fractional accumulator for sub-1x speed
 _speed_accumulator = 0.0
 
@@ -32,6 +35,10 @@ _speed_accumulator = 0.0
 def process_tick():
     """Process a single world tick. Called periodically by Celery Beat."""
     import asyncio
+    from app.db.database import engine
+    # Dispose stale connections from previous event loops to avoid
+    # "another operation is in progress" errors with asyncpg.
+    asyncio.run(engine.dispose())
     asyncio.run(_process_tick_with_speed_control())
 
 
@@ -238,6 +245,16 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"God AI observation error at tick {tick_number}: {e}")
 
+        # Saga generation (every 50 ticks)
+        if tick_number > 0 and tick_number % SAGA_ERA_SIZE == 0:
+            try:
+                from app.core.saga_service import saga_service
+                saga_result = await saga_service.generate_era_saga(db, tick_number)
+                if saga_result:
+                    logger.info(f"Tick {tick_number}: Saga chapter generated for era {tick_number // SAGA_ERA_SIZE}")
+            except Exception as e:
+                logger.error(f"Saga generation error at tick {tick_number}: {e}")
+
         # God succession check (every 50 ticks after tick 100)
         if tick_number >= 100 and tick_number % 50 == 0:
             try:
@@ -279,6 +296,31 @@ async def _process_tick_async():
             events=[],
             processing_time_ms=processing_time_ms,
         )
+
+        # Emit real-time socket events via Redis pub/sub
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("world_update", {
+                "tick_number": tick_number,
+                "ai_count": ai_count,
+                "concept_count": concept_count,
+                "encounter_count": len(encounters),
+                "interactions_processed": interactions_processed,
+                "thoughts_generated": thoughts_generated,
+                "deaths": deaths,
+                "processing_time_ms": processing_time_ms,
+            })
+            publish_event("ai_position", [
+                {
+                    "id": str(ai.id),
+                    "x": ai.position_x,
+                    "y": ai.position_y,
+                    "name": ai.name,
+                }
+                for ai in ais if ai.is_alive
+            ])
+        except Exception as e:
+            logger.warning(f"Failed to emit tick socket events: {e}")
 
         logger.debug(
             f"Tick {tick_number}: {ai_count} AIs, {concept_count} concepts, "

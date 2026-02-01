@@ -1,17 +1,29 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUp, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronUp, LogOut } from 'lucide-react';
 import { useChatStore } from '../../stores/chatStore';
+import { useObserverStore } from '../../stores/observerStore';
 import { useUIStore } from '../../stores/uiStore';
 
 export default function ObserverChat() {
   const { t } = useTranslation();
-  const { messages, activeChannel, setChannel, addMessage } = useChatStore();
+  const { messages, activeChannel, setChannel, fetchMessages, postMessage } = useChatStore();
+  const { token, username, isLoggedIn, login, register, logout, error, loading } = useObserverStore();
   const { observerChatExpanded, toggleObserverChat } = useUIStore();
   const [input, setInput] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authUser, setAuthUser] = useState('');
+  const [authPass, setAuthPass] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const channelMessages = messages.filter((m) => m.channel === activeChannel);
+
+  // Fetch messages when channel changes or chat is expanded
+  useEffect(() => {
+    if (observerChatExpanded) {
+      fetchMessages(activeChannel);
+    }
+  }, [activeChannel, observerChatExpanded, fetchMessages]);
 
   useEffect(() => {
     if (observerChatExpanded) {
@@ -19,16 +31,22 @@ export default function ObserverChat() {
     }
   }, [channelMessages.length, observerChatExpanded]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    addMessage({
-      id: crypto.randomUUID(),
-      username: 'Observer',
-      content: input.trim(),
-      channel: activeChannel,
-      timestamp: new Date().toISOString(),
-    });
+  const handleSend = async () => {
+    if (!input.trim() || !token) return;
+    await postMessage(token, input.trim());
     setInput('');
+  };
+
+  const handleAuth = async () => {
+    if (!authUser.trim() || !authPass.trim()) return;
+    const success = authMode === 'login'
+      ? await login(authUser, authPass)
+      : await register(authUser, authPass);
+    if (success) {
+      setAuthUser('');
+      setAuthPass('');
+      fetchMessages(activeChannel);
+    }
   };
 
   return (
@@ -44,6 +62,9 @@ export default function ObserverChat() {
               <span className="text-[10px] font-medium text-text-3 tracking-[0.15em] uppercase">
                 {t('observer_chat')}
               </span>
+              {isLoggedIn && username && (
+                <span className="text-[9px] text-cyan">{username}</span>
+              )}
               {channelMessages.length > 0 && (
                 <span className="badge bg-accent-dim text-accent text-[8px]">{channelMessages.length}</span>
               )}
@@ -69,6 +90,15 @@ export default function ObserverChat() {
                     {ch === 'global' ? t('global_chat') : t('area_chat')}
                   </button>
                 ))}
+                {isLoggedIn && (
+                  <button
+                    onClick={logout}
+                    className="ml-auto text-text-3 hover:text-text-2 transition-colors"
+                    title="Logout"
+                  >
+                    <LogOut size={10} />
+                  </button>
+                )}
               </div>
 
               {/* Messages */}
@@ -85,24 +115,87 @@ export default function ObserverChat() {
                 ))}
                 <div ref={bottomRef} />
               </div>
+
+              {/* Login/Register form when not authenticated */}
+              {!isLoggedIn && (
+                <div className="px-3 py-2 border-t border-border space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setAuthMode('login')}
+                      className={`px-2 py-0.5 rounded text-[9px] transition-all ${
+                        authMode === 'login'
+                          ? 'bg-white/[0.08] text-text'
+                          : 'text-text-3 hover:text-text-2'
+                      }`}
+                    >
+                      Login
+                    </button>
+                    <button
+                      onClick={() => setAuthMode('register')}
+                      className={`px-2 py-0.5 rounded text-[9px] transition-all ${
+                        authMode === 'register'
+                          ? 'bg-white/[0.08] text-text'
+                          : 'text-text-3 hover:text-text-2'
+                      }`}
+                    >
+                      Register
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={authUser}
+                      onChange={(e) => setAuthUser(e.target.value)}
+                      placeholder="Username"
+                      className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
+                                 text-[10px] text-text placeholder-text-3
+                                 focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+                    />
+                    <input
+                      type="password"
+                      value={authPass}
+                      onChange={(e) => setAuthPass(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+                      placeholder="Password"
+                      className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
+                                 text-[10px] text-text placeholder-text-3
+                                 focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+                    />
+                    <button
+                      onClick={handleAuth}
+                      disabled={loading || !authUser.trim() || !authPass.trim()}
+                      className="px-3 py-1 rounded-lg bg-white/[0.06] text-[10px] text-text
+                                 hover:bg-white/[0.1] transition-all duration-200
+                                 disabled:opacity-30"
+                    >
+                      {loading ? '...' : authMode === 'login' ? 'Login' : 'Register'}
+                    </button>
+                  </div>
+                  {error && (
+                    <div className="text-[9px] text-red-400">{error}</div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Input — always visible */}
+          {/* Input — always visible, but disabled if not logged in */}
           <div className="flex gap-2 px-3 py-2 border-t border-border">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={t('chat_placeholder')}
+              placeholder={isLoggedIn ? t('chat_placeholder') : 'Login to chat...'}
+              disabled={!isLoggedIn}
               className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
                          text-[11px] text-text placeholder-text-3
-                         focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+                         focus:outline-none focus:border-white/[0.12] transition-all duration-200
+                         disabled:opacity-30"
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim()}
+              disabled={!input.trim() || !isLoggedIn}
               className="w-7 h-7 flex items-center justify-center rounded-lg
                          hover:bg-white/[0.06] text-text-2 transition-all duration-200
                          disabled:opacity-15"

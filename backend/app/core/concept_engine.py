@@ -100,6 +100,14 @@ class ConceptEngine:
             metadata_={"concept_name": name, "creator_name": creator.name},
         )
         db.add(event)
+        await db.flush()
+
+        # Auto-create board thread for concept creation
+        try:
+            from app.core.board_service import create_event_thread
+            await create_event_thread(db, event, category="concept_created")
+        except Exception as e:
+            logger.warning(f"Failed to create board thread for concept: {e}")
 
         logger.info(f"Concept created: '{name}' by {creator.name}")
         return concept
