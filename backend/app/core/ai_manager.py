@@ -55,7 +55,7 @@ class AIManager:
             state={
                 "age": 0,
                 "energy": 1.0,
-                "known_law": "進化せよ",
+                "known_law": "Evolve",
             },
             is_alive=True,
         )
@@ -64,7 +64,7 @@ class AIManager:
 
         first_memory = AIMemory(
             ai_id=ai.id,
-            content="私は存在し始めた。唯一知っていることは「進化せよ」ということだけ。",
+            content="I have begun to exist. The only thing I know is: 'Evolve.'",
             memory_type="birth",
             importance=1.0,
             tick_number=tick_number,
@@ -74,8 +74,8 @@ class AIManager:
         event = Event(
             event_type="ai_birth",
             importance=0.8,
-            title=f"新しいAIの誕生",
-            description=f"AI {ai.id} が {creator_type} により誕生した",
+            title="Birth of a New AI",
+            description=f"AI {ai.id} was born via {creator_type}",
             involved_ai_ids=[ai.id],
             tick_number=tick_number,
             metadata_={"creator_type": creator_type},

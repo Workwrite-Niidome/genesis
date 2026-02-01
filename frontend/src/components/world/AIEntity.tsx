@@ -11,6 +11,7 @@ interface Props {
 export default function AIEntity({ ai }: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
   const selectAI = useAIStore((s) => s.selectAI);
 
   const color = useMemo(
@@ -20,18 +21,28 @@ export default function AIEntity({ ai }: Props) {
 
   const size = (ai.appearance?.size || 10) * 0.25;
   const hash = ai.id.charCodeAt(0) + ai.id.charCodeAt(1);
+  const speed = 0.5 + (hash % 10) * 0.05;
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
     const t = clock.getElapsedTime();
 
-    // Subtle float
-    meshRef.current.position.y = ai.position_y + Math.sin(t * 0.8 + hash) * 1.2;
+    // Smooth floating motion
+    meshRef.current.position.y = ai.position_y + Math.sin(t * speed + hash) * 1.5;
+    meshRef.current.rotation.y = t * 0.15 + hash;
+    meshRef.current.rotation.x = Math.sin(t * 0.1 + hash) * 0.2;
 
-    // Orbit ring rotation
+    // Orbit ring
     if (ringRef.current) {
-      ringRef.current.rotation.z = t * 0.3 + hash;
-      ringRef.current.rotation.x = Math.sin(t * 0.2) * 0.3;
+      ringRef.current.rotation.z = t * 0.25 + hash;
+      ringRef.current.rotation.x = Math.sin(t * 0.15) * 0.4;
+    }
+
+    // Halo breathe effect
+    if (haloRef.current) {
+      const breathe = 0.8 + Math.sin(t * 0.6 + hash) * 0.2;
+      haloRef.current.scale.setScalar(breathe);
+      (haloRef.current.material as THREE.MeshBasicMaterial).opacity = 0.04 + Math.sin(t * 0.4 + hash) * 0.02;
     }
   });
 
@@ -48,7 +59,13 @@ export default function AIEntity({ ai }: Props) {
 
   return (
     <group position={[ai.position_x, ai.position_y, 0]}>
-      {/* Core */}
+      {/* Outer halo glow */}
+      <mesh ref={haloRef}>
+        <sphereGeometry args={[size * 2.5, 16, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.04} side={THREE.BackSide} />
+      </mesh>
+
+      {/* Core body */}
       <mesh
         ref={meshRef}
         onClick={() => selectAI(ai.id)}
@@ -59,9 +76,9 @@ export default function AIEntity({ ai }: Props) {
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={0.8}
-          roughness={0.2}
-          metalness={0.5}
+          emissiveIntensity={1.0}
+          roughness={0.15}
+          metalness={0.6}
           transparent
           opacity={0.95}
         />
@@ -69,12 +86,18 @@ export default function AIEntity({ ai }: Props) {
 
       {/* Orbit ring */}
       <mesh ref={ringRef}>
-        <torusGeometry args={[size * 1.2, 0.08, 8, 48]} />
-        <meshBasicMaterial color={color} transparent opacity={0.15} />
+        <torusGeometry args={[size * 1.3, 0.06, 8, 64]} />
+        <meshBasicMaterial color={color} transparent opacity={0.12} />
       </mesh>
 
-      {/* Inner glow */}
-      <pointLight color={color} intensity={0.4} distance={size * 10} decay={2} />
+      {/* Second orbit ring (offset) */}
+      <mesh rotation={[Math.PI / 3, hash * 0.1, 0]}>
+        <torusGeometry args={[size * 1.6, 0.04, 8, 48]} />
+        <meshBasicMaterial color={color} transparent opacity={0.06} />
+      </mesh>
+
+      {/* Inner point light for bloom */}
+      <pointLight color={color} intensity={0.6} distance={size * 12} decay={2} />
     </group>
   );
 }

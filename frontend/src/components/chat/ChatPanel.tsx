@@ -28,9 +28,9 @@ export default function ChatPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface/95 backdrop-blur-xl border-t border-border">
+    <div className="h-full flex flex-col glass border-t border-border">
       {/* Channel bar */}
-      <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border">
+      <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border">
         <span className="text-[10px] text-text-3 mr-3 tracking-wider uppercase font-medium">
           {t('observer_chat')}
         </span>
@@ -38,9 +38,9 @@ export default function ChatPanel() {
           <button
             key={ch}
             onClick={() => setChannel(ch)}
-            className={`px-2.5 py-0.5 rounded-md text-[11px] transition-colors duration-150 ${
+            className={`px-2.5 py-0.5 rounded-lg text-[11px] transition-all duration-150 ${
               activeChannel === ch
-                ? 'bg-surface-3 text-text'
+                ? 'bg-surface-3 text-text shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
                 : 'text-text-3 hover:text-text-2'
             }`}
           >
@@ -72,16 +72,16 @@ export default function ChatPanel() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder={t('chat_placeholder')}
-          className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-1.5
+          className="flex-1 bg-surface-2 border border-border rounded-xl px-3.5 py-1.5
                      text-[12px] text-text placeholder-text-3
-                     focus:outline-none focus:border-border-active transition-colors"
+                     focus:outline-none focus:border-border-active transition-all duration-200"
         />
         <button
           onClick={handleSend}
           disabled={!input.trim()}
           className="w-7 h-7 flex items-center justify-center rounded-lg
-                     hover:bg-surface-3 text-text-2 transition-colors
-                     disabled:opacity-20"
+                     hover:bg-surface-3 text-text-2 transition-all duration-200
+                     disabled:opacity-15"
         >
           <ArrowUp size={13} />
         </button>

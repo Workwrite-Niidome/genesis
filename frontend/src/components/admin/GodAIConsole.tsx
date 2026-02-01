@@ -67,9 +67,10 @@ export default function GodAIConsole() {
         </h3>
         <button
           onClick={handleSpawn}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-accent
-                     border border-accent/20 hover:bg-accent-dim transition-colors"
-          title="Spawn AIs (Fallback)"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] text-accent
+                     border border-accent/20 hover:bg-accent-dim hover:border-accent/30
+                     transition-all duration-200"
+          title="Spawn AIs"
         >
           <Plus size={10} />
           Spawn AI
@@ -77,42 +78,57 @@ export default function GodAIConsole() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-2.5 mb-3 min-h-0">
+      <div className="flex-1 overflow-y-auto space-y-3 mb-3 min-h-0">
         {history.length === 0 && (
-          <div className="text-center py-10 text-text-3 text-[11px]">
-            {t('genesis_waiting')}
+          <div className="text-center py-12 fade-in">
+            <div className="relative w-10 h-10 mx-auto mb-4">
+              <div className="absolute inset-0 rounded-full border border-accent/15 pulse-ring" />
+              <div className="absolute inset-2 rounded-full border border-accent/10" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-1 h-1 rounded-full bg-accent/50" />
+              </div>
+            </div>
+            <p className="text-text-3 text-[11px]">{t('genesis_waiting')}</p>
           </div>
         )}
 
         {history.map((entry, i) => (
           <div
             key={i}
-            className={`p-3 rounded-lg text-[12px] leading-[1.7] fade-in ${
+            className={`p-3.5 rounded-xl text-[12px] leading-[1.8] fade-in ${
               entry.role === 'god'
-                ? 'bg-accent-dim/40 border border-accent/10'
-                : 'bg-surface-2 border border-border ml-6'
+                ? 'bg-accent-dim/30 border border-accent/8'
+                : 'bg-surface-2 border border-border ml-4'
             }`}
           >
-            <div
-              className="text-[9px] font-medium mb-1.5 uppercase tracking-[0.15em]"
-              style={{ color: entry.role === 'god' ? '#7c5bf5' : '#58d5f0' }}
-            >
-              {entry.role === 'god' ? 'GOD AI' : 'ADMIN'}
+            <div className="flex items-center gap-2 mb-2">
+              {entry.role === 'god' && (
+                <div className="w-1 h-1 rounded-full bg-accent pulse-glow" />
+              )}
+              <span
+                className="text-[9px] font-medium uppercase tracking-[0.15em]"
+                style={{ color: entry.role === 'god' ? '#7c5bf5' : '#58d5f0' }}
+              >
+                {entry.role === 'god' ? 'GOD AI' : 'ADMIN'}
+              </span>
             </div>
             <div className="text-text whitespace-pre-wrap font-light">{entry.content}</div>
           </div>
         ))}
 
         {sending && (
-          <div className="p-3 rounded-lg bg-accent-dim/20 border border-accent/10 fade-in">
-            <div className="text-[9px] text-accent font-medium mb-1 uppercase tracking-[0.15em]">GOD AI</div>
-            <div className="flex items-center gap-1.5 text-text-3 text-[11px]">
-              <div className="flex gap-0.5">
-                <div className="w-1 h-1 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1 h-1 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1 h-1 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+          <div className="p-3.5 rounded-xl bg-accent-dim/15 border border-accent/8 fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-1 h-1 rounded-full bg-accent pulse-glow" />
+              <span className="text-[9px] text-accent font-medium uppercase tracking-[0.15em]">GOD AI</span>
+            </div>
+            <div className="flex items-center gap-2 text-text-3 text-[11px]">
+              <div className="flex gap-1">
+                <div className="w-1 h-1 rounded-full bg-accent/50 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1 h-1 rounded-full bg-accent/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1 h-1 rounded-full bg-accent/50 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
-              {t('god_speaking')}
+              <span className="text-text-3">{t('god_speaking')}</span>
             </div>
           </div>
         )}
@@ -129,18 +145,19 @@ export default function GodAIConsole() {
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder={t('god_placeholder')}
           disabled={sending}
-          className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2
+          className="flex-1 bg-surface-2 border border-border rounded-xl px-3.5 py-2.5
                      text-[12px] text-text placeholder-text-3
-                     focus:outline-none focus:border-accent/30
-                     disabled:opacity-40 transition-colors"
+                     focus:outline-none focus:border-accent/25 focus:shadow-[0_0_0_1px_rgba(124,91,245,0.1)]
+                     disabled:opacity-30 transition-all duration-200"
         />
         <button
           onClick={handleSend}
           disabled={sending || !input.trim()}
-          className="w-8 h-8 flex items-center justify-center rounded-lg
+          className="w-9 h-9 flex items-center justify-center rounded-xl
                      bg-accent/80 hover:bg-accent text-bg
-                     transition-colors duration-150
-                     disabled:opacity-20 disabled:cursor-not-allowed"
+                     transition-all duration-200
+                     disabled:opacity-15 disabled:cursor-not-allowed
+                     hover:shadow-[0_0_15px_rgba(124,91,245,0.3)]"
         >
           <ArrowUp size={14} />
         </button>

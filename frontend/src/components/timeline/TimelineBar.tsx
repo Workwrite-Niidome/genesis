@@ -23,7 +23,10 @@ export default function TimelineBar() {
   const progress = Math.min(100, (tickNumber / Math.max(tickNumber, 100)) * 100);
 
   return (
-    <div className="h-9 flex items-center gap-3 px-4 bg-surface/90 backdrop-blur-xl border-t border-border z-50">
+    <div className="h-9 flex items-center gap-3 px-4 bg-surface/90 backdrop-blur-xl border-t border-border z-50 relative">
+      {/* Subtle top glow line */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/15 to-transparent" />
+
       {/* Playback controls */}
       <div className="flex items-center gap-0.5">
         <button
@@ -59,13 +62,13 @@ export default function TimelineBar() {
       {/* Timeline track */}
       <div className="flex-1 h-[3px] bg-surface-3 rounded-full overflow-visible relative mx-2 group">
         <div
-          className="h-full bg-gradient-to-r from-accent/40 to-cyan/40 rounded-full transition-all duration-300"
+          className="h-full bg-gradient-to-r from-accent/40 to-cyan/40 rounded-full transition-all duration-500"
           style={{ width: `${progress}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-cyan transition-all duration-300
-                     shadow-[0_0_6px_rgba(88,213,240,0.4)] group-hover:shadow-[0_0_10px_rgba(88,213,240,0.6)]
-                     group-hover:scale-125"
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-cyan transition-all duration-500
+                     shadow-[0_0_6px_rgba(88,213,240,0.4)] group-hover:shadow-[0_0_12px_rgba(88,213,240,0.6)]
+                     group-hover:scale-150"
           style={{ left: `${progress}%` }}
         />
       </div>

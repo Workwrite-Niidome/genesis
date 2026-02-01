@@ -28,19 +28,25 @@ export default function StatsPanel() {
       <h3 className="text-xs font-medium text-text">{t('world_stats')}</h3>
 
       {stats ? (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2.5">
           {items.map(({ label, value, color }) => (
             <div
               key={label}
-              className="p-3 rounded-lg bg-surface-2 border border-border"
+              className="p-3.5 rounded-xl bg-surface-2 border border-border hover-lift"
             >
               <div className={`text-lg mono font-medium ${color}`}>{value}</div>
-              <div className="text-[10px] text-text-3 mt-1 tracking-wide">{label}</div>
+              <div className="text-[10px] text-text-3 mt-1.5 tracking-wide">{label}</div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="text-center py-12">
+        <div className="text-center py-14">
+          <div className="relative w-12 h-12 mx-auto mb-5">
+            <div className="absolute inset-0 rounded-full border border-border pulse-ring" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-1.5 h-1.5 rounded-full bg-text-3" />
+            </div>
+          </div>
           <div className="text-text-3 text-[11px]">Loading...</div>
         </div>
       )}

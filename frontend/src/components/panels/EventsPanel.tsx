@@ -27,9 +27,13 @@ export default function EventsPanel() {
       <h3 className="text-xs font-medium text-text">{t('events_panel')}</h3>
 
       {events.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-10 h-10 rounded-full border border-border mx-auto mb-4 flex items-center justify-center">
-            <div className="w-1 h-1 rounded-full bg-text-3" />
+        <div className="text-center py-14">
+          <div className="relative w-12 h-12 mx-auto mb-5">
+            <div className="absolute inset-0 rounded-full border border-border pulse-ring" />
+            <div className="absolute inset-3 rounded-full border border-border/50" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-1 h-1 rounded-full bg-text-3" />
+            </div>
           </div>
           <p className="text-text-3 text-[11px]">{t('no_events')}</p>
         </div>
@@ -40,9 +44,9 @@ export default function EventsPanel() {
             return (
               <div
                 key={event.id}
-                className="p-3 rounded-lg bg-surface-2 border border-border fade-in"
+                className="p-3.5 rounded-xl bg-surface-2 border border-border fade-in hover-lift"
               >
-                <div className="flex items-center gap-2 mb-1.5">
+                <div className="flex items-center gap-2 mb-2">
                   <span className={`badge ${cfg.bg} ${cfg.color} text-[9px]`}>
                     {event.event_type.replace('_', ' ')}
                   </span>
@@ -52,7 +56,7 @@ export default function EventsPanel() {
                 </div>
                 <div className="text-[11px] text-text leading-relaxed">{event.title}</div>
                 {event.description && (
-                  <div className="text-[11px] text-text-3 mt-1 line-clamp-2 leading-relaxed">
+                  <div className="text-[11px] text-text-3 mt-1.5 line-clamp-2 leading-relaxed">
                     {event.description}
                   </div>
                 )}

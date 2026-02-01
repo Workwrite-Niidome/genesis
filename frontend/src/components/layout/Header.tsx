@@ -15,14 +15,18 @@ export default function Header() {
   };
 
   return (
-    <header className="h-11 flex items-center justify-between px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none">
+    <header className="h-11 flex items-center justify-between px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none glow-line">
       {/* Left: Logo */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
+        <div className="flex items-center gap-2.5">
+          <div className="relative">
+            <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+            <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
+          </div>
           <span className="text-sm font-semibold tracking-[0.2em] text-text">GENESIS</span>
         </div>
-        <span className="text-[11px] text-text-3 hidden sm:block">{t('app_subtitle')}</span>
+        <div className="w-px h-3.5 bg-border hidden sm:block" />
+        <span className="text-[10px] text-text-3 hidden sm:block tracking-wide">{t('app_subtitle')}</span>
       </div>
 
       {/* Center: Stats */}
@@ -30,23 +34,23 @@ export default function Header() {
         <Stat label={t('tick')} value={tickNumber.toLocaleString()} color="text-cyan" />
         <Stat label={t('ais')} value={String(aiCount)} color="text-green" />
         <Stat label={t('concepts')} value={String(conceptCount)} color="text-accent" />
-        <div className="badge bg-surface-3 text-text-2">
+        <div className="badge bg-surface-3 text-text-2 text-[10px]">
           <div className={`w-1 h-1 rounded-full ${godAiPhase === 'post_genesis' ? 'bg-green' : 'bg-orange'}`} />
           {godAiPhase === 'pre_genesis' ? t('pre_genesis') : t('post_genesis')}
         </div>
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5">
         <HeaderBtn onClick={toggleLang} title={t('language')}>
-          <Globe size={14} />
-          <span className="text-[10px] uppercase">{language}</span>
+          <Globe size={13} />
+          <span className="text-[10px] uppercase mono">{language}</span>
         </HeaderBtn>
         <HeaderBtn onClick={toggleChat} title={t('chat')}>
-          <MessageSquare size={14} />
+          <MessageSquare size={13} />
         </HeaderBtn>
         <HeaderBtn onClick={toggleSidebar}>
-          <PanelRight size={14} className={sidebarOpen ? 'text-accent' : ''} />
+          <PanelRight size={13} className={sidebarOpen ? 'text-accent' : ''} />
         </HeaderBtn>
       </div>
     </header>
@@ -67,7 +71,7 @@ function HeaderBtn({ children, onClick, title }: { children: React.ReactNode; on
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center gap-1 px-2 py-1 rounded-md text-text-2 hover:text-text hover:bg-surface-3 transition-colors duration-150"
+      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-text-3 hover:text-text-2 hover:bg-surface-3/60 transition-all duration-150"
     >
       {children}
     </button>

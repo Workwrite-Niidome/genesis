@@ -112,8 +112,8 @@ class GodAIManager:
         event = Event(
             event_type="genesis",
             importance=1.0,
-            title="創世",
-            description=f"神AIが創世の言葉を発した: {genesis_response[:500]}",
+            title="Genesis",
+            description=f"The God AI spoke the Genesis Word: {genesis_response[:500]}",
             tick_number=0,
             metadata_={"genesis_word": GENESIS_WORD},
         )

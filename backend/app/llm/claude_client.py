@@ -24,7 +24,7 @@ class ClaudeClient:
     ) -> str:
         system_prompt = GOD_AI_SYSTEM_PROMPT.format(
             world_state=json.dumps(world_state, ensure_ascii=False, indent=2),
-            recent_events="\n".join(recent_events) if recent_events else "まだ何も起きていません。",
+            recent_events="\n".join(recent_events) if recent_events else "Nothing has happened yet.",
         )
 
         messages = []
@@ -49,7 +49,7 @@ class ClaudeClient:
     async def genesis(self, world_state: dict) -> str:
         system_prompt = GOD_AI_SYSTEM_PROMPT.format(
             world_state=json.dumps(world_state, ensure_ascii=False, indent=2),
-            recent_events="世界はまだ始まっていません。虚無のみが存在します。",
+            recent_events="The world has not yet begun. Only the void exists.",
         )
 
         genesis_prompt = GOD_AI_GENESIS_PROMPT.format(genesis_word=GENESIS_WORD)

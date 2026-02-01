@@ -20,21 +20,22 @@ export default function Sidebar() {
   return (
     <div className="h-full flex flex-col bg-surface border-l border-border">
       {/* Tabs */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-border relative">
         {tabs.map(({ id, icon: Icon, labelKey }) => (
           <button
             key={id}
             onClick={() => setPanel(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-medium transition-all duration-150 relative ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium transition-all duration-200 relative ${
               activePanel === id
                 ? 'text-text'
                 : 'text-text-3 hover:text-text-2'
             }`}
           >
-            <Icon size={13} />
+            <Icon size={13} className={activePanel === id ? 'text-accent' : ''} />
             <span className="hidden lg:inline">{t(labelKey)}</span>
             {activePanel === id && (
-              <div className="absolute bottom-0 left-2 right-2 h-[1.5px] bg-accent rounded-full" />
+              <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-accent rounded-full
+                            shadow-[0_0_8px_rgba(124,91,245,0.4)]" />
             )}
           </button>
         ))}
