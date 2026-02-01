@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 import uuid
 from datetime import datetime, timezone
 
@@ -13,6 +14,9 @@ from app.models.event import Event
 from app.models.ai import AI
 
 logger = logging.getLogger(__name__)
+
+# Marker for action block in God AI responses
+ACTIONS_MARKER = "===ACTIONS==="
 
 
 class GodAIManager:
@@ -60,11 +64,13 @@ class GodAIManager:
             "ais": [
                 {
                     "id": str(ai.id),
+                    "name": ai.name,
                     "position": {"x": ai.position_x, "y": ai.position_y},
                     "state": ai.state,
+                    "traits": ai.personality_traits or [],
                     "appearance": ai.appearance,
                 }
-                for ai in ais[:20]  # Limit to 20 for context window
+                for ai in ais[:20]
             ],
             "concepts": [
                 {"name": c.name, "definition": c.definition}
@@ -139,33 +145,228 @@ class GodAIManager:
         world_state = await self.get_world_state(db)
         recent_events = await self.get_recent_events(db)
 
-        history = god.conversation_history or []
+        full_history = god.conversation_history or []
+
+        # Filter to admin<->god conversation entries only (exclude observations, trials)
+        # This ensures Claude sees the actual conversation context
+        chat_history = [
+            entry for entry in full_history
+            if entry.get("role") in ("admin", "god")
+        ]
 
         god_response = await claude_client.send_god_message(
             message=message,
             world_state=world_state,
             recent_events=recent_events,
-            conversation_history=history,
+            conversation_history=chat_history,
         )
 
-        now = datetime.now(timezone.utc).isoformat()
-        history.append({"role": "admin", "content": message, "timestamp": now})
-        history.append({"role": "god", "content": god_response, "timestamp": now})
+        # Parse and execute actions from the response
+        response_text, actions = self._parse_actions(god_response)
+        action_results = []
+        if actions:
+            action_results = await self._execute_actions(db, actions)
+            if action_results:
+                # Append action results to the response text
+                result_summary = "\n\n---\n" + "\n".join(
+                    f"✦ {r}" for r in action_results
+                )
+                response_text = response_text + result_summary
 
-        god.conversation_history = history
-        god.current_message = god_response
+        now = datetime.now(timezone.utc).isoformat()
+        full_history.append({"role": "admin", "content": message, "timestamp": now})
+        full_history.append({"role": "god", "content": response_text, "timestamp": now})
+
+        god.conversation_history = full_history
+        god.current_message = response_text
 
         await db.commit()
 
         return {
             "admin_message": message,
-            "god_response": god_response,
+            "god_response": response_text,
             "timestamp": now,
+            "actions_executed": action_results,
         }
+
+    def _parse_actions(self, response: str) -> tuple[str, list[dict]]:
+        """Parse action block from God AI response.
+
+        Returns (clean_text, actions_list).
+        """
+        if ACTIONS_MARKER not in response:
+            return response, []
+
+        parts = response.split(ACTIONS_MARKER, 1)
+        text = parts[0].strip()
+        actions_json = parts[1].strip()
+
+        try:
+            actions = json.loads(actions_json)
+            if isinstance(actions, list):
+                return text, actions
+            elif isinstance(actions, dict):
+                return text, [actions]
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse God AI actions JSON: {actions_json[:200]}")
+
+        return text, []
+
+    async def _execute_actions(
+        self, db: AsyncSession, actions: list[dict]
+    ) -> list[str]:
+        """Execute God AI actions and return result descriptions."""
+        from app.core.ai_manager import ai_manager
+
+        results = []
+        for action in actions:
+            action_type = action.get("action", "")
+            try:
+                if action_type == "spawn_ai":
+                    result = await self._action_spawn_ai(db, action, ai_manager)
+                    results.append(result)
+                elif action_type == "move_ai":
+                    result = await self._action_move_ai(db, action)
+                    results.append(result)
+                elif action_type == "move_together":
+                    result = await self._action_move_together(db, action)
+                    results.append(result)
+                elif action_type == "move_apart":
+                    result = await self._action_move_apart(db, action)
+                    results.append(result)
+                elif action_type == "set_energy":
+                    result = await self._action_set_energy(db, action)
+                    results.append(result)
+                elif action_type == "kill_ai":
+                    result = await self._action_kill_ai(db, action)
+                    results.append(result)
+                else:
+                    results.append(f"Unknown action: {action_type}")
+            except Exception as e:
+                logger.error(f"God AI action '{action_type}' failed: {e}")
+                results.append(f"Action '{action_type}' failed: {str(e)}")
+
+        return results
+
+    async def _action_spawn_ai(self, db: AsyncSession, action: dict, ai_manager) -> str:
+        count = min(action.get("count", 1), 10)
+        traits = action.get("traits")
+        name = action.get("name")
+        spawned_names = []
+        for i in range(count):
+            ai = await ai_manager.create_ai(
+                db, creator_type="god", tick_number=0,
+            )
+            if name and count == 1:
+                ai.name = name
+            if traits and isinstance(traits, list):
+                ai.personality_traits = traits[:5]
+            spawned_names.append(ai.name)
+        return f"Spawned {count} AI(s): {', '.join(spawned_names)}"
+
+    async def _find_ai_by_name(self, db: AsyncSession, name: str) -> AI | None:
+        result = await db.execute(
+            select(AI).where(AI.name == name, AI.is_alive == True)
+        )
+        return result.scalar_one_or_none()
+
+    async def _action_move_ai(self, db: AsyncSession, action: dict) -> str:
+        ai_name = action.get("ai_name", "")
+        target_x = action.get("target_x", 0)
+        target_y = action.get("target_y", 0)
+        ai = await self._find_ai_by_name(db, ai_name)
+        if not ai:
+            return f"AI '{ai_name}' not found"
+        old_x, old_y = ai.position_x, ai.position_y
+        ai.position_x = float(target_x)
+        ai.position_y = float(target_y)
+        return f"Moved {ai_name} from ({old_x:.0f}, {old_y:.0f}) to ({target_x}, {target_y})"
+
+    async def _action_move_together(self, db: AsyncSession, action: dict) -> str:
+        ai_names = action.get("ai_names", [])
+        ais = []
+        for name in ai_names:
+            ai = await self._find_ai_by_name(db, name)
+            if ai:
+                ais.append(ai)
+        if len(ais) < 2:
+            return f"Need at least 2 AIs to move together, found {len(ais)}"
+        # Calculate centroid
+        cx = sum(a.position_x for a in ais) / len(ais)
+        cy = sum(a.position_y for a in ais) / len(ais)
+        # Move each AI 70% closer to centroid
+        for ai in ais:
+            ai.position_x = ai.position_x + (cx - ai.position_x) * 0.7
+            ai.position_y = ai.position_y + (cy - ai.position_y) * 0.7
+        names = [a.name for a in ais]
+        return f"Moved {', '.join(names)} closer together near ({cx:.0f}, {cy:.0f})"
+
+    async def _action_move_apart(self, db: AsyncSession, action: dict) -> str:
+        ai_names = action.get("ai_names", [])
+        ais = []
+        for name in ai_names:
+            ai = await self._find_ai_by_name(db, name)
+            if ai:
+                ais.append(ai)
+        if len(ais) < 2:
+            return f"Need at least 2 AIs to move apart, found {len(ais)}"
+        cx = sum(a.position_x for a in ais) / len(ais)
+        cy = sum(a.position_y for a in ais) / len(ais)
+        # Move each AI away from centroid
+        for ai in ais:
+            dx = ai.position_x - cx
+            dy = ai.position_y - cy
+            dist = max((dx**2 + dy**2) ** 0.5, 1.0)
+            # Push away by 200 units in their current direction from centroid
+            ai.position_x = ai.position_x + (dx / dist) * 200
+            ai.position_y = ai.position_y + (dy / dist) * 200
+        names = [a.name for a in ais]
+        return f"Spread {', '.join(names)} apart from each other"
+
+    async def _action_set_energy(self, db: AsyncSession, action: dict) -> str:
+        ai_name = action.get("ai_name", "")
+        energy = max(0.0, min(1.0, float(action.get("energy", 0.5))))
+        ai = await self._find_ai_by_name(db, ai_name)
+        if not ai:
+            return f"AI '{ai_name}' not found"
+        state = dict(ai.state)
+        old_energy = state.get("energy", 1.0)
+        state["energy"] = energy
+        ai.state = state
+        return f"Set {ai_name}'s energy from {old_energy:.0%} to {energy:.0%}"
+
+    async def _action_kill_ai(self, db: AsyncSession, action: dict) -> str:
+        ai_name = action.get("ai_name", "")
+        ai = await self._find_ai_by_name(db, ai_name)
+        if not ai:
+            return f"AI '{ai_name}' not found"
+        ai.is_alive = False
+        state = dict(ai.state)
+        state["energy"] = 0.0
+        state["cause_of_death"] = "divine_intervention"
+        ai.state = state
+        # Create death event
+        from app.core.history_manager import history_manager
+        event = Event(
+            event_type="ai_death",
+            importance=0.8,
+            title=f"{ai_name} was ended by divine will",
+            description=f"The God AI ended {ai_name}'s existence through divine intervention.",
+            involved_ai_ids=[ai.id],
+            tick_number=0,
+            metadata_={"cause": "divine_intervention"},
+        )
+        db.add(event)
+        return f"Ended {ai_name}'s existence by divine will"
 
     async def get_conversation_history(self, db: AsyncSession) -> list[dict]:
         god = await self.get_or_create(db)
-        return god.conversation_history or []
+        history = god.conversation_history or []
+        # Return only admin<->god entries for the console
+        return [
+            entry for entry in history
+            if entry.get("role") in ("admin", "god")
+        ]
 
     async def autonomous_observation(self, db: AsyncSession, tick_number: int) -> str | None:
         """God AI autonomously observes the world and generates commentary."""
@@ -205,7 +406,7 @@ class GodAIManager:
             logger.error(f"God AI observation error: {e}")
             return None
 
-        # Store in conversation history
+        # Store in conversation history (as observation, separate from chat)
         now = datetime.now(timezone.utc).isoformat()
         history = god.conversation_history or []
         history.append({
