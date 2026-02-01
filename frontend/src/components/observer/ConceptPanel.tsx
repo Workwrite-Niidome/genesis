@@ -85,7 +85,7 @@ export default function ConceptPanel({ visible, onClose, fullScreen }: Props) {
               </div>
             </button>
           );
-        }))
+        })
       )}
     </div>
   );
