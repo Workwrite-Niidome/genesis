@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useSagaStore } from '../../stores/sagaStore';
+import { useDetailStore } from '../../stores/detailStore';
 import SagaView from './SagaView';
 import DraggablePanel from '../ui/DraggablePanel';
 
@@ -433,12 +434,14 @@ function TimelineEventCard({
   event: TimelineEvent;
   style?: React.CSSProperties;
 }) {
+  const openDetail = useDetailStore((s) => s.openDetail);
   const Icon = getIcon(event.event_type);
   const color = getColor(event.event_type);
 
   return (
-    <div
-      className="relative p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-all duration-200 fade-in"
+    <button
+      onClick={() => openDetail('event', event)}
+      className="relative w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-all duration-200 fade-in cursor-pointer"
       style={style}
     >
       <div
@@ -476,7 +479,7 @@ function TimelineEventCard({
           {(event.importance * 100).toFixed(0)}%
         </span>
       </div>
-    </div>
+    </button>
   );
 }
 

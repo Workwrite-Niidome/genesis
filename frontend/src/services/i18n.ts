@@ -253,6 +253,20 @@ const en = {
     saga_mood_mysterious: 'Mysterious',
     saga_mood_peaceful: 'Peaceful',
     saga_mood_turbulent: 'Turbulent',
+
+    // Detail modal
+    detail_thought: 'Thought Detail',
+    detail_event: 'Event Detail',
+    detail_artifact: 'Artifact Detail',
+    detail_concept: 'Concept Detail',
+    detail_memory: 'Memory Detail',
+    detail_god: 'God Observation',
+    detail_content: 'Content',
+    detail_action: 'Action',
+    detail_description: 'Description',
+    detail_data: 'Data',
+    detail_definition: 'Definition',
+    detail_effects: 'Effects',
   },
 };
 
@@ -508,6 +522,20 @@ const ja = {
     saga_mood_mysterious: '神秘',
     saga_mood_peaceful: '平穏',
     saga_mood_turbulent: '激動',
+
+    // Detail modal
+    detail_thought: '思考の詳細',
+    detail_event: 'イベントの詳細',
+    detail_artifact: 'アーティファクトの詳細',
+    detail_concept: '概念の詳細',
+    detail_memory: '記憶の詳細',
+    detail_god: 'GOD AIの観察',
+    detail_content: '内容',
+    detail_action: 'アクション',
+    detail_description: '説明',
+    detail_data: 'データ',
+    detail_definition: '定義',
+    detail_effects: '効果',
   },
 };
 

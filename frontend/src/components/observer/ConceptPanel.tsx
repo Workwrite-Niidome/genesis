@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lightbulb, Users } from 'lucide-react';
 import { api } from '../../services/api';
+import { useDetailStore } from '../../stores/detailStore';
 import type { Concept } from '../../types/world';
 import DraggablePanel from '../ui/DraggablePanel';
 
@@ -44,9 +45,10 @@ export default function ConceptPanel({ visible, onClose }: Props) {
           </div>
         ) : (
           concepts.map((concept) => (
-            <div
+            <button
               key={concept.id}
-              className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]"
+              onClick={() => useDetailStore.getState().openDetail('concept', concept)}
+              className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[12px] font-medium text-cyan">
@@ -70,7 +72,7 @@ export default function ConceptPanel({ visible, onClose }: Props) {
               <div className="flex items-center gap-1 mt-1">
                 <span className="text-[9px] text-text-3">T:{concept.tick_created}</span>
               </div>
-            </div>
+            </button>
           ))
         )}
       </div>

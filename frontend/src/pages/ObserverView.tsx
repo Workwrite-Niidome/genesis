@@ -12,6 +12,7 @@ import ConceptPanel from '../components/observer/ConceptPanel';
 import ArtifactPanel from '../components/observer/ArtifactPanel';
 import GodFeed from '../components/observer/GodFeed';
 import WorldArchive from '../components/observer/WorldArchive';
+import DetailModal from '../components/observer/DetailModal';
 import { useUIStore } from '../stores/uiStore';
 import { useSagaStore } from '../stores/sagaStore';
 
@@ -122,6 +123,9 @@ export default function ObserverView() {
       <div className="absolute inset-0 pointer-events-none z-40">
         <BoardPanel />
       </div>
+
+      {/* Detail modal for full content view */}
+      <DetailModal />
 
       {/* Deploy modal */}
       <DeployPanel />

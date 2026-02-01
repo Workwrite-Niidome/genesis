@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Palette, Heart, Sparkles } from 'lucide-react';
 import { api } from '../../services/api';
+import { useDetailStore } from '../../stores/detailStore';
 import type { Artifact } from '../../types/world';
 import DraggablePanel from '../ui/DraggablePanel';
 
@@ -71,9 +72,10 @@ export default function ArtifactPanel({ visible, onClose }: Props) {
             const icon = typeIcons[artifact.artifact_type] || '✧';
             const colorClass = typeColors[artifact.artifact_type] || 'bg-white/[0.05] text-text-2 border-white/[0.08]';
             return (
-              <div
+              <button
                 key={artifact.id}
-                className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] transition-colors"
+                onClick={() => useDetailStore.getState().openDetail('artifact', artifact)}
+                className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
               >
                 <div className="flex items-start gap-2.5">
                   <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
@@ -96,7 +98,7 @@ export default function ArtifactPanel({ visible, onClose }: Props) {
                     </div>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })
         )}

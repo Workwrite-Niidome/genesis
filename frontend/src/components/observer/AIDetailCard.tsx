@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Zap, Clock, Sparkles, MapPin, Brain, Users, TrendingUp, Lightbulb, Palette, Building2 } from 'lucide-react';
 import { useAIStore } from '../../stores/aiStore';
+import { useDetailStore } from '../../stores/detailStore';
 import { api } from '../../services/api';
 import type { AIThought, Relationship, Artifact } from '../../types/world';
 
@@ -213,14 +214,18 @@ export default function AIDetailCard() {
             </div>
             <div className="space-y-1.5 max-h-28 overflow-y-auto">
               {recentThoughts.map((th) => (
-                <div key={th.id} className="p-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                <button
+                  key={th.id}
+                  onClick={() => useDetailStore.getState().openDetail('thought', { ...th, ai_name: selectedAI.name, ai_id: selectedAI.id })}
+                  className="w-full text-left p-2 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+                >
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="badge bg-surface-3 text-text-3 text-[8px]">
                       {t(`thought_type_${th.thought_type}`, th.thought_type)}
                     </span>
                   </div>
                   <div className="text-[10px] text-text-2 leading-relaxed line-clamp-2">{th.content}</div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -286,13 +291,17 @@ export default function AIDetailCard() {
             </div>
             <div className="space-y-1 max-h-24 overflow-y-auto">
               {aiArtifacts.map((artifact) => (
-                <div key={artifact.id} className="flex items-start gap-2 p-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                <button
+                  key={artifact.id}
+                  onClick={() => useDetailStore.getState().openDetail('artifact', artifact)}
+                  className="w-full text-left flex items-start gap-2 p-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+                >
                   <span className="text-[10px] flex-shrink-0">{artifactTypeIcons[artifact.artifact_type] || '✧'}</span>
                   <div className="flex-1 min-w-0">
                     <span className="text-[10px] text-text-2 block truncate">{artifact.name}</span>
                     <span className="text-[8px] text-text-3 capitalize">{artifact.artifact_type}</span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -306,13 +315,17 @@ export default function AIDetailCard() {
             </div>
             <div className="space-y-1.5 max-h-32 overflow-y-auto">
               {selectedMemories.map((m) => (
-                <div key={m.id} className="p-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                <button
+                  key={m.id}
+                  onClick={() => useDetailStore.getState().openDetail('memory', m)}
+                  className="w-full text-left p-2 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+                >
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="badge bg-surface-3 text-text-3 text-[8px]">{m.memory_type}</span>
                     <ImportanceDots value={m.importance} />
                   </div>
                   <div className="text-[10px] text-text-2 leading-relaxed line-clamp-2">{m.content}</div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye } from 'lucide-react';
+import { useDetailStore } from '../../stores/detailStore';
 import DraggablePanel from '../ui/DraggablePanel';
 
 interface GodFeedEntry {
@@ -54,9 +55,10 @@ export default function GodFeed({ visible, onClose }: Props) {
           </div>
         ) : (
           feed.map((entry, idx) => (
-            <div
+            <button
               key={idx}
-              className="p-2.5 rounded-xl bg-white/[0.02] border border-accent/10"
+              onClick={() => useDetailStore.getState().openDetail('god_feed', entry)}
+              className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-accent/10 hover:bg-white/[0.05] hover:border-accent/20 transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-medium text-accent uppercase tracking-wider">
@@ -73,7 +75,7 @@ export default function GodFeed({ visible, onClose }: Props) {
               <p className="text-[11px] text-text-2 leading-relaxed line-clamp-4">
                 {entry.content}
               </p>
-            </div>
+            </button>
           ))
         )}
       </div>

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Brain, Radio, Eye, Lightbulb, MessageCircle, Compass } from 'lucide-react';
 import { useThoughtStore } from '../../stores/thoughtStore';
 import { useAIStore } from '../../stores/aiStore';
+import { useDetailStore } from '../../stores/detailStore';
 import { api } from '../../services/api';
 import type { AIThought, WorldEvent } from '../../types/world';
 
@@ -129,14 +130,14 @@ export default function ObserverFeed() {
 }
 
 function ThoughtEntry({ thought }: { thought: AIThought }) {
-  const selectAI = useAIStore((s) => s.selectAI);
+  const openDetail = useDetailStore((s) => s.openDetail);
   const Icon = thoughtIcons[thought.thought_type] || Compass;
   const colorClass = thoughtColors[thought.thought_type] || 'text-text-3';
 
   return (
     <button
-      onClick={() => selectAI(thought.ai_id)}
-      className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-all duration-200 group"
+      onClick={() => openDetail('thought', thought)}
+      className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-all duration-200 group cursor-pointer"
     >
       <div className="flex items-start gap-2">
         <div className={`mt-0.5 flex-shrink-0 ${colorClass}`}>
@@ -161,11 +162,15 @@ function ThoughtEntry({ thought }: { thought: AIThought }) {
 }
 
 function EventEntry({ event, t }: { event: WorldEvent; t: (key: string) => string }) {
+  const openDetail = useDetailStore((s) => s.openDetail);
   const cfg = eventConfig[event.event_type] || { color: 'text-text-3', icon: '·', hex: '#8a8694' };
   const label = t(`event_type_${event.event_type}`);
 
   return (
-    <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] transition-colors">
+    <button
+      onClick={() => openDetail('event', event)}
+      className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+    >
       <div className="flex items-center gap-1.5 mb-1">
         <span className={`text-[10px] ${cfg.color}`}>{cfg.icon}</span>
         <span className={`text-[9px] font-medium uppercase tracking-wider ${cfg.color}`}>
@@ -192,7 +197,7 @@ function EventEntry({ event, t }: { event: WorldEvent; t: (key: string) => strin
           />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
