@@ -91,10 +91,10 @@ export default function BoardPanel() {
     }
   }, [observerChatExpanded, view, categoryFilter, fetchThreads]);
 
-  // Scroll to bottom when viewing detail
+  // Scroll to bottom when viewing detail (use block: 'nearest' to avoid shifting parent)
   useEffect(() => {
-    if (view === 'detail' && currentThread) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (view === 'detail' && currentThread && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [currentThread?.replies?.length, view]);
 

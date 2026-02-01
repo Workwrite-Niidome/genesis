@@ -58,8 +58,8 @@ export default function AIDetailCard() {
     .map(([key, val]) => ({ key: formatKey(key), value: String(val) }));
 
   return (
-    <div className="absolute top-20 left-4 z-40 w-80 pointer-events-auto">
-      <div className="glass rounded-2xl border border-border shadow-[0_8px_40px_rgba(0,0,0,0.5)] fade-in overflow-hidden">
+    <div className="absolute top-20 left-4 z-40 w-80 pointer-events-auto max-h-[calc(100vh-6rem)]">
+      <div className="glass rounded-2xl border border-border shadow-[0_8px_40px_rgba(0,0,0,0.5)] fade-in overflow-y-auto max-h-[calc(100vh-6rem)]">
         {/* Hero banner with entity color */}
         <div className="relative h-16 overflow-hidden">
           <div
