@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export type DetailItemType =
   | 'thought'
   | 'event'
+  | 'interaction'
   | 'artifact'
   | 'concept'
   | 'memory'
