@@ -1,13 +1,68 @@
-import { Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, useRef, useEffect, useState } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import * as THREE from 'three';
 import { useWorldStore } from '../../stores/worldStore';
 import { useAIStore } from '../../stores/aiStore';
 import { useUIStore } from '../../stores/uiStore';
 import AIEntity from './AIEntity';
 import GridBackground from './GridBackground';
 import VoidOverlay from './VoidOverlay';
+import WorldStructure from './WorldStructure';
+import { api } from '../../services/api';
+
+/** Smoothly pans camera to center on the selected AI. */
+function CameraController({
+  controlsRef,
+}: {
+  controlsRef: React.RefObject<any>;
+}) {
+  const selectedAI = useAIStore((s) => s.selectedAI);
+  const targetPos = useRef(new THREE.Vector3());
+  const animating = useRef(false);
+  const lastId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selectedAI && selectedAI.id !== lastId.current) {
+      lastId.current = selectedAI.id;
+      // Use position from live ais array for accuracy with rendered position
+      const ai = useAIStore.getState().ais.find((a) => a.id === selectedAI.id);
+      const px = ai?.position_x ?? selectedAI.position_x;
+      const py = ai?.position_y ?? selectedAI.position_y;
+      targetPos.current.set(px, py, 0);
+      animating.current = true;
+    } else if (!selectedAI) {
+      lastId.current = null;
+    }
+  }, [selectedAI?.id]);
+
+  useFrame(() => {
+    if (!animating.current || !controlsRef.current) return;
+    const ctrl = controlsRef.current;
+    const cam = ctrl.object;
+    const lerp = 0.08;
+
+    const dx = (targetPos.current.x - ctrl.target.x) * lerp;
+    const dy = (targetPos.current.y - ctrl.target.y) * lerp;
+
+    // Move both target and camera by the same delta to preserve zoom distance
+    ctrl.target.x += dx;
+    ctrl.target.y += dy;
+    cam.position.x += dx;
+    cam.position.y += dy;
+    ctrl.update();
+
+    const remaining =
+      Math.abs(targetPos.current.x - ctrl.target.x) +
+      Math.abs(targetPos.current.y - ctrl.target.y);
+    if (remaining < 0.5) {
+      animating.current = false;
+    }
+  });
+
+  return null;
+}
 
 interface WorldCanvasProps {
   showGenesis?: boolean;
@@ -17,24 +72,42 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
   const { godAiPhase } = useWorldStore();
   const { ais } = useAIStore();
   const showGrid = useUIStore((s) => s.showGrid);
+  const controlsRef = useRef<any>(null);
+  const [structures, setStructures] = useState<any[]>([]);
+
+  // Detect mobile for performance adjustments
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+
+  // Fetch architecture artifacts periodically
+  useEffect(() => {
+    const load = () => {
+      api.artifacts.list('architecture').then((arts) => {
+        setStructures((arts || []).slice(0, 20));
+      }).catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="w-full h-full relative bg-bg">
       <Canvas
         camera={{ position: [0, 0, 200], fov: 60, near: 0.1, far: 10000 }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ antialias: !isMobile, alpha: true }}
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
         style={{ background: '#06060c' }}
       >
         <Suspense fallback={null}>
           <ambientLight intensity={0.06} />
           <pointLight position={[0, 0, 150]} intensity={0.25} color="#7c5bf5" />
-          <pointLight position={[100, -100, 80]} intensity={0.12} color="#58d5f0" />
-          <pointLight position={[-120, 60, 60]} intensity={0.08} color="#34d399" />
+          {!isMobile && <pointLight position={[100, -100, 80]} intensity={0.12} color="#58d5f0" />}
+          {!isMobile && <pointLight position={[-120, 60, 60]} intensity={0.08} color="#34d399" />}
 
           <Stars
             radius={600}
             depth={200}
-            count={5000}
+            count={isMobile ? 2000 : 5000}
             factor={2.5}
             saturation={0.05}
             fade
@@ -47,18 +120,34 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
             <AIEntity key={ai.id} ai={ai} />
           ))}
 
-          {/* Post-processing for mystical glow */}
+          {/* Architecture structures (voxel buildings) */}
+          {!isMobile && structures.map((artifact, i) => {
+            // Position near the creator AI if found, otherwise spread out
+            const creatorAI = ais.find((a) => a.id === artifact.creator_id);
+            const baseX = creatorAI ? creatorAI.position_x + 15 : (i % 5) * 30 - 60;
+            const baseY = creatorAI ? creatorAI.position_y - 10 : Math.floor(i / 5) * 30 - 40;
+            return (
+              <WorldStructure
+                key={artifact.id}
+                artifact={artifact}
+                position={[baseX, baseY, -5]}
+              />
+            );
+          })}
+
+          {/* Post-processing for mystical glow (lighter on mobile) */}
           <EffectComposer>
             <Bloom
-              intensity={0.8}
-              luminanceThreshold={0.2}
+              intensity={isMobile ? 0.5 : 0.8}
+              luminanceThreshold={isMobile ? 0.3 : 0.2}
               luminanceSmoothing={0.9}
               mipmapBlur
             />
-            <Vignette eskil={false} offset={0.1} darkness={0.8} />
+            {!isMobile && <Vignette eskil={false} offset={0.1} darkness={0.8} />}
           </EffectComposer>
 
           <OrbitControls
+            ref={controlsRef}
             enableRotate={false}
             enablePan={true}
             enableZoom={true}
@@ -68,7 +157,10 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
             panSpeed={1}
             dampingFactor={0.08}
             enableDamping
+            touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN }}
           />
+
+          <CameraController controlsRef={controlsRef} />
         </Suspense>
       </Canvas>
 

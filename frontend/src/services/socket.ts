@@ -11,7 +11,11 @@ let socket: Socket | null = null;
 export function connectSocket(): Socket {
   if (socket?.connected) return socket;
 
-  const wsUrl = window.location.origin.replace(/:\d+$/, ':8000');
+  // In production (served by nginx), use same origin; in dev, swap port to 8000
+  const isDev = import.meta.env.DEV;
+  const wsUrl = isDev
+    ? window.location.origin.replace(/:\d+$/, ':8000')
+    : window.location.origin;
 
   socket = io(wsUrl, {
     path: '/ws/socket.io',

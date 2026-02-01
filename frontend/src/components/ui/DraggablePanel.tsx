@@ -50,7 +50,7 @@ export default function DraggablePanel({
     setZBoost(globalZ);
   }, []);
 
-  // ---- Drag ----
+  // ---- Drag (mouse) ----
   const onDragStart = useCallback(
     (e: React.MouseEvent) => {
       if ((e.target as HTMLElement).closest('button')) return;
@@ -62,6 +62,18 @@ export default function DraggablePanel({
     [pos, bringToFront],
   );
 
+  // ---- Drag (touch) ----
+  const onTouchDragStart = useCallback(
+    (e: React.TouchEvent) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      bringToFront();
+      setDragging(true);
+      const touch = e.touches[0];
+      dragOffset.current = { x: touch.clientX - pos.x, y: touch.clientY - pos.y };
+    },
+    [pos, bringToFront],
+  );
+
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e: MouseEvent) => {
@@ -69,12 +81,22 @@ export default function DraggablePanel({
       const ny = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - dragOffset.current.y));
       setPos({ x: nx, y: ny });
     };
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const nx = Math.max(0, Math.min(window.innerWidth - 60, touch.clientX - dragOffset.current.x));
+      const ny = Math.max(0, Math.min(window.innerHeight - 40, touch.clientY - dragOffset.current.y));
+      setPos({ x: nx, y: ny });
+    };
     const onUp = () => setDragging(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('touchend', onUp);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onUp);
     };
   }, [dragging]);
 
@@ -138,6 +160,7 @@ export default function DraggablePanel({
         <div
           className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.04] flex-shrink-0 cursor-move select-none"
           onMouseDown={onDragStart}
+          onTouchStart={onTouchDragStart}
         >
           <div className="flex items-center gap-2">
             <GripHorizontal size={12} className="text-text-3 opacity-40" />

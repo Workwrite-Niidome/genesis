@@ -1,10 +1,12 @@
 import uuid
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
+from app.models.ai import AI
 from app.models.concept import Concept
 
 router = APIRouter()
@@ -34,6 +36,54 @@ async def list_concepts(
         }
         for c in concepts
     ]
+
+
+@router.get("/graph")
+async def get_concept_graph(db: AsyncSession = Depends(get_db)):
+    """Return concept nodes and co-adoption edges for graph visualization."""
+    # Get all concepts
+    result = await db.execute(select(Concept).order_by(Concept.adoption_count.desc()).limit(100))
+    concepts = list(result.scalars().all())
+
+    if not concepts:
+        return {"nodes": [], "edges": []}
+
+    concept_ids = {str(c.id) for c in concepts}
+
+    nodes = [
+        {
+            "id": str(c.id),
+            "name": c.name,
+            "category": c.category,
+            "adoption_count": c.adoption_count,
+            "definition": c.definition,
+        }
+        for c in concepts
+    ]
+
+    # Build co-adoption edges: concepts adopted by the same AI
+    # Get all alive AIs and their adopted concepts
+    ai_result = await db.execute(select(AI).where(AI.is_alive == True))
+    ais = list(ai_result.scalars().all())
+
+    edge_weights: dict[tuple[str, str], int] = defaultdict(int)
+    for ai in ais:
+        adopted = ai.state.get("adopted_concepts", [])
+        # Filter to concepts that exist in our node set
+        adopted = [cid for cid in adopted if cid in concept_ids]
+        # Generate all pairs
+        for i in range(len(adopted)):
+            for j in range(i + 1, len(adopted)):
+                a, b = adopted[i], adopted[j]
+                key = (min(a, b), max(a, b))
+                edge_weights[key] += 1
+
+    edges = [
+        {"source": src, "target": tgt, "weight": w}
+        for (src, tgt), w in edge_weights.items()
+    ]
+
+    return {"nodes": nodes, "edges": edges}
 
 
 @router.get("/{concept_id}")

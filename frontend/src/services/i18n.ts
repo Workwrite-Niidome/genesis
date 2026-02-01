@@ -254,6 +254,13 @@ const en = {
     saga_mood_peaceful: 'Peaceful',
     saga_mood_turbulent: 'Turbulent',
 
+    // Mobile tabs
+    mobile_tab_world: 'World',
+    mobile_tab_ranking: 'Ranking',
+    mobile_tab_feed: 'Feed',
+    mobile_tab_archive: 'Archive',
+    mobile_tab_more: 'More',
+
     // Detail modal
     detail_thought: 'Thought Detail',
     detail_event: 'Event Detail',
@@ -278,6 +285,21 @@ const en = {
     detail_god_observation: 'Divine Observation',
     detail_god_succession: 'Succession Trial',
     detail_god_word: 'Word of God',
+
+    // Media rendering
+    media_play: 'Play',
+    media_stop: 'Stop',
+    media_run_code: 'Run Code',
+    media_source: 'Source',
+    media_sandboxed: 'Sandboxed execution',
+    media_notes: 'notes',
+    media_palette: 'Palette',
+    concept_view_list: 'List',
+    concept_view_graph: 'Graph',
+    detail_participants: 'Participants',
+    detail_speaker: 'Speaker',
+    detail_artifact_proposal: 'Artifact Proposed',
+    detail_org_proposal: 'Organization Proposed',
   },
 };
 
@@ -534,6 +556,13 @@ const ja = {
     saga_mood_peaceful: '平穏',
     saga_mood_turbulent: '激動',
 
+    // Mobile tabs
+    mobile_tab_world: 'ワールド',
+    mobile_tab_ranking: 'ランキング',
+    mobile_tab_feed: 'フィード',
+    mobile_tab_archive: 'アーカイブ',
+    mobile_tab_more: 'その他',
+
     // Detail modal
     detail_thought: '思考の詳細',
     detail_event: 'イベントの詳細',
@@ -558,6 +587,21 @@ const ja = {
     detail_god_observation: '神の観察',
     detail_god_succession: '継承の試練',
     detail_god_word: '神の言葉',
+
+    // Media rendering
+    media_play: '再生',
+    media_stop: '停止',
+    media_run_code: 'コード実行',
+    media_source: 'ソースコード',
+    media_sandboxed: 'サンドボックス実行',
+    media_notes: '音符',
+    media_palette: 'パレット',
+    concept_view_list: 'リスト',
+    concept_view_graph: 'グラフ',
+    detail_participants: '参加者',
+    detail_speaker: '発言者',
+    detail_artifact_proposal: '提案されたアーティファクト',
+    detail_org_proposal: '提案された組織',
   },
 };
 

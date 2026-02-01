@@ -75,7 +75,14 @@ Respond ONLY with valid JSON:
   "new_memory": "What to remember from this gathering"
 }}
 
-To propose an artifact: "artifact_proposal": {{"name": "...", "type": "...", "description": "..."}}
+To propose an artifact: "artifact_proposal": {{"name": "...", "type": "art|song|code|tool|architecture|story|law", "description": "...", "content": {{...}}}}
+  Content by type:
+  - art: {{"pixels": [[0,1,...],[...]], "palette": ["#hex",...], "size": 8}} (8x8 or 16x16 pixel grid, numbers index into palette)
+  - song: {{"notes": [{{"note":"C4","dur":0.25}},...], "tempo": 120, "wave": "square"}} (notes C3-C6 or "rest", wave: square|triangle|sawtooth|sine)
+  - code/tool: {{"language":"javascript","source":"ctx.fillRect(0,0,100,100);"}} (canvas 400x300 + ctx available)
+  - architecture: {{"voxels": [[x,y,z,colorIdx],...], "palette": ["#hex",...], "height": 5}} (8x8x8 max)
+  - story: {{"text": "..."}} | law: {{"rules": ["...",...]}}
+  You MUST provide actual data (pixels, notes, code, voxels), not descriptions.
 To propose an organization: "organization_proposal": {{"name": "...", "purpose": "...", "concept_category": "..."}}
 
 Respond in English only. Output raw JSON with no markdown formatting."""

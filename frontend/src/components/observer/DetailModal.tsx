@@ -21,6 +21,9 @@ import { useDetailStore, type DetailItemType } from '../../stores/detailStore';
 import { useAIStore } from '../../stores/aiStore';
 import { api } from '../../services/api';
 import type { AIEntity, Interaction } from '../../types/world';
+import PixelArt from '../media/PixelArt';
+import ChiptunePlayer from '../media/ChiptunePlayer';
+import CodeSandbox from '../media/CodeSandbox';
 
 /* ═══════════════════════════════════════════════════════════
    Configuration
@@ -453,7 +456,7 @@ function ArtifactDetail({ data, t }: { data: any; t: TFn }) {
               <p className="text-[13px] text-text leading-[1.7] whitespace-pre-wrap">{data.content}</p>
             </div>
           ) : (
-            renderArtifactContent(data.artifact_type, data.content)
+            renderArtifactContent(data.artifact_type, data.content, data)
           )}
         </div>
       )}
@@ -462,9 +465,47 @@ function ArtifactDetail({ data, t }: { data: any; t: TFn }) {
 }
 
 /** Renders artifact content with type-aware formatting */
-function renderArtifactContent(artifactType: string, content: Record<string, any>): React.ReactNode {
-  // Stories and songs: show text field prominently
-  if ((artifactType === 'story' || artifactType === 'song' || artifactType === 'art') && content.text) {
+function renderArtifactContent(artifactType: string, content: Record<string, any>, artifact?: any): React.ReactNode {
+  // Pixel art: render canvas
+  if (artifactType === 'art' && (content.pixels || artifact?.id)) {
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-center p-4 rounded-xl bg-black/40 border border-white/[0.06]">
+          <PixelArt artifact={{ id: artifact?.id || 'unknown', content }} size={256} />
+        </div>
+        {content.palette && (
+          <div className="flex items-center gap-1 px-1">
+            <span className="text-[10px] text-text-3 mr-1">Palette:</span>
+            {content.palette.map((color: string, i: number) => (
+              <div
+                key={i}
+                className="w-4 h-4 rounded border border-white/10"
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Song: render chiptune player
+  if (artifactType === 'song' && (content.notes || artifact?.id)) {
+    return (
+      <ChiptunePlayer artifact={{ id: artifact?.id || 'unknown', content }} />
+    );
+  }
+
+  // Code / tool: render sandbox
+  if ((artifactType === 'code' || artifactType === 'tool') && (content.source || content.language)) {
+    return (
+      <CodeSandbox artifact={{ id: artifact?.id || 'unknown', content }} />
+    );
+  }
+
+  // Stories: show text field prominently
+  if ((artifactType === 'story') && content.text) {
     return (
       <div className="space-y-3">
         <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
@@ -486,7 +527,7 @@ function renderArtifactContent(artifactType: string, content: Record<string, any
         {Array.isArray(rules) ? rules.map((rule: any, i: number) => (
           <div key={i} className="p-3 rounded-xl bg-blue-500/[0.03] border border-blue-500/10">
             <p className="text-[13px] text-text leading-[1.7]">
-              <span className="text-blue-400 font-medium mr-2">§{i + 1}</span>
+              <span className="text-blue-400 font-medium mr-2">{i + 1}</span>
               {typeof rule === 'string' ? rule : rule.text || JSON.stringify(rule)}
             </p>
           </div>

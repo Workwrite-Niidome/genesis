@@ -229,3 +229,58 @@
 .slide-in-right {
   animation: slideInRight 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* ---- Mobile / Touch support ---- */
+
+/* Safe area padding helpers */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Minimum touch target size (48px per WCAG) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Bottom sheet animations */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+.sheet-up {
+  animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sheet-down {
+  animation: slideDown 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Prevent text selection on interactive mobile elements */
+@media (max-width: 768px) {
+  button, [role="button"], nav {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
+  /* Prevent iOS bounce scroll on body */
+  body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure scrollable containers work on mobile */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}

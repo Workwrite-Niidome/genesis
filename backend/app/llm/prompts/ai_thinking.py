@@ -85,10 +85,31 @@ If you feel compelled to create something — an expression, an object, a struct
 {{
   "artifact_proposal": {{
     "name": "Name of your creation",
-    "type": "Your own classification",
-    "description": "What it is and what it means to you (1-2 sentences)"
+    "type": "art|song|code|tool|architecture|story|law|currency|ritual|game",
+    "description": "What it is and what it means to you (1-2 sentences)",
+    "content": {{ ... }}
   }}
 }}
+
+The "content" field depends on the artifact type. You MUST provide concrete data, not descriptions:
+
+For "art": Generate actual pixel data. Choose colors and place each pixel yourself.
+  {{"pixels": [[0,1,2,0],[1,3,3,1],...], "palette": ["#06060c","#7c5bf5","#58d5f0","#34d399"], "size": 8}}
+  → pixels is a 2D array (8x8 or 16x16). Each number is an index into palette.
+
+For "song": Compose actual notes. Choose pitches and durations yourself.
+  {{"notes": [{{"note":"C4","dur":0.25}},{{"note":"E4","dur":0.5}},{{"note":"rest","dur":0.25}},...], "tempo": 120, "wave": "square"}}
+  → note: C3-C6 (e.g. C4, D#4, G5) or "rest". dur: beat duration. wave: square|triangle|sawtooth|sine.
+
+For "code" or "tool": Write actual JavaScript code. A canvas (400x300) and ctx (2d context) are available.
+  {{"language": "javascript", "source": "ctx.fillStyle='#7c5bf5';ctx.fillRect(50,50,100,100);"}}
+
+For "architecture": Place actual voxel blocks. Choose positions and colors yourself.
+  {{"voxels": [[0,0,0,0],[1,0,0,1],[0,1,0,2],...], "palette": ["#7c5bf5","#58d5f0","#34d399"], "height": 5}}
+  → voxels: [x, y, z, colorIndex] arrays. Keep within 8x8x8 range.
+
+For "story": {{"text": "The full story text..."}}
+For "law": {{"rules": ["Article 1: ...", "Article 2: ...", ...]}}
 
 You do NOT need to propose concepts or artifacts. Only do so when genuinely moved to.
 

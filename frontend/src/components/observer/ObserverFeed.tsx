@@ -50,9 +50,9 @@ function formatRelativeTime(dateStr: string): string {
   return `${diffHr}h`;
 }
 
-export default function ObserverFeed() {
+/** Extracted feed content for reuse in mobile MobileFeedView */
+export function FeedContent({ tab, fullScreen }: { tab: Tab; fullScreen?: boolean }) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>('thoughts');
   const { thoughts, startPolling, stopPolling } = useThoughtStore();
   const [events, setEvents] = useState<WorldEvent[]>([]);
 
@@ -60,6 +60,40 @@ export default function ObserverFeed() {
     startPolling();
     return () => stopPolling();
   }, [startPolling, stopPolling]);
+
+  useEffect(() => {
+    const load = () => api.history.getEvents(30).then(setEvents).catch(console.error);
+    load();
+    const interval = setInterval(load, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className={`p-2 space-y-1.5 ${fullScreen ? '' : ''}`}>
+      {tab === 'thoughts' ? (
+        thoughts.length === 0 ? (
+          <EmptyState message={t('no_thoughts')} />
+        ) : (
+          thoughts.map((thought) => (
+            <ThoughtEntry key={thought.id} thought={thought} />
+          ))
+        )
+      ) : events.length === 0 ? (
+        <EmptyState message={t('no_events')} />
+      ) : (
+        events.map((event) => (
+          <EventEntry key={event.id} event={event} t={t} />
+        ))
+      )}
+    </div>
+  );
+}
+
+export default function ObserverFeed() {
+  const { t } = useTranslation();
+  const [tab, setTab] = useState<Tab>('thoughts');
+  const { thoughts } = useThoughtStore();
+  const [events, setEvents] = useState<WorldEvent[]>([]);
 
   useEffect(() => {
     const load = () => api.history.getEvents(30).then(setEvents).catch(console.error);
@@ -107,22 +141,8 @@ export default function ObserverFeed() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-          {tab === 'thoughts' ? (
-            thoughts.length === 0 ? (
-              <EmptyState message={t('no_thoughts')} />
-            ) : (
-              thoughts.map((thought) => (
-                <ThoughtEntry key={thought.id} thought={thought} />
-              ))
-            )
-          ) : events.length === 0 ? (
-            <EmptyState message={t('no_events')} />
-          ) : (
-            events.map((event) => (
-              <EventEntry key={event.id} event={event} t={t} />
-            ))
-          )}
+        <div className="flex-1 overflow-y-auto">
+          <FeedContent tab={tab} />
         </div>
       </div>
     </div>

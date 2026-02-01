@@ -14,9 +14,10 @@ interface GodFeedEntry {
 interface Props {
   visible: boolean;
   onClose: () => void;
+  fullScreen?: boolean;
 }
 
-export default function GodFeed({ visible, onClose }: Props) {
+export default function GodFeed({ visible, onClose, fullScreen }: Props) {
   const { t } = useTranslation();
   const [feed, setFeed] = useState<GodFeedEntry[]>([]);
 
@@ -35,6 +36,42 @@ export default function GodFeed({ visible, onClose }: Props) {
     return () => clearInterval(interval);
   }, [visible]);
 
+  const content = (
+    <div className="p-2 space-y-1.5">
+      {feed.length === 0 ? (
+        <div className="text-center py-4">
+          <p className="text-text-3 text-[11px]">God has not yet spoken...</p>
+        </div>
+      ) : (
+        feed.map((entry, idx) => (
+          <button
+            key={idx}
+            onClick={() => useDetailStore.getState().openDetail('god_feed', entry)}
+            className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-accent/10 hover:bg-white/[0.05] hover:border-accent/20 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-medium text-accent uppercase tracking-wider">
+                {entry.role === 'god_observation'
+                  ? 'Observation'
+                  : entry.role === 'god_succession_trial'
+                  ? 'Succession Trial'
+                  : 'God'}
+              </span>
+              {entry.tick_number && (
+                <span className="text-[9px] mono text-text-3">T:{entry.tick_number}</span>
+              )}
+            </div>
+            <p className="text-[11px] text-text-2 leading-relaxed line-clamp-4">
+              {entry.content}
+            </p>
+          </button>
+        ))
+      )}
+    </div>
+  );
+
+  if (fullScreen) return content;
+
   return (
     <DraggablePanel
       title={t('god_observation')}
@@ -48,37 +85,7 @@ export default function GodFeed({ visible, onClose }: Props) {
       minWidth={260}
       minHeight={200}
     >
-      <div className="p-2 space-y-1.5">
-        {feed.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-text-3 text-[11px]">God has not yet spoken...</p>
-          </div>
-        ) : (
-          feed.map((entry, idx) => (
-            <button
-              key={idx}
-              onClick={() => useDetailStore.getState().openDetail('god_feed', entry)}
-              className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-accent/10 hover:bg-white/[0.05] hover:border-accent/20 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-medium text-accent uppercase tracking-wider">
-                  {entry.role === 'god_observation'
-                    ? 'Observation'
-                    : entry.role === 'god_succession_trial'
-                    ? 'Succession Trial'
-                    : 'God'}
-                </span>
-                {entry.tick_number && (
-                  <span className="text-[9px] mono text-text-3">T:{entry.tick_number}</span>
-                )}
-              </div>
-              <p className="text-[11px] text-text-2 leading-relaxed line-clamp-4">
-                {entry.content}
-              </p>
-            </button>
-          ))
-        )}
-      </div>
+      {content}
     </DraggablePanel>
   );
 }

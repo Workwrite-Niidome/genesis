@@ -21,8 +21,9 @@ class Settings(BaseSettings):
 
     # Server
     SECRET_KEY: str = "change-this-to-a-random-secret-key"
-    DEBUG: bool = True
+    DEBUG: bool = False
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    GUNICORN_WORKERS: int = 2
 
     # World Settings
     INITIAL_AI_COUNT: int = 0

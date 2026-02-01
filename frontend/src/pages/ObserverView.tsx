@@ -13,10 +13,17 @@ import ArtifactPanel from '../components/observer/ArtifactPanel';
 import GodFeed from '../components/observer/GodFeed';
 import WorldArchive from '../components/observer/WorldArchive';
 import DetailModal from '../components/observer/DetailModal';
+import MobileLayout from '../components/mobile/MobileLayout';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useUIStore } from '../stores/uiStore';
 import { useSagaStore } from '../stores/sagaStore';
 
 export default function ObserverView() {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return <MobileLayout />;
+  }
   const { t } = useTranslation();
   const [showRanking, setShowRanking] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);

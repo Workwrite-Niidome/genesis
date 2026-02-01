@@ -1,19 +1,24 @@
 import { useTranslation } from 'react-i18next';
-import { MessageSquare, PanelRight, Eye, Grid3x3 } from 'lucide-react';
+import { MessageSquare, PanelRight, Eye, Grid3x3, Menu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 
-export default function AdminHeader() {
+interface Props {
+  onMenuToggle?: () => void;
+  isMobile?: boolean;
+}
+
+export default function AdminHeader({ onMenuToggle, isMobile }: Props) {
   const { t } = useTranslation();
   const { tickNumber, aiCount, conceptCount, godAiPhase } = useWorldStore();
   const { sidebarOpen, toggleSidebar, toggleChat, showGrid, toggleGrid } = useUIStore();
 
   return (
-    <header className="h-11 flex items-center justify-between px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none glow-line">
+    <header className="h-11 flex items-center justify-between px-4 sm:px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none glow-line">
       {/* Left: Logo + Admin badge */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-2.5">
           <div className="relative">
             <div className="w-1.5 h-1.5 rounded-full bg-accent" />
             <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
@@ -27,8 +32,8 @@ export default function AdminHeader() {
         <span className="text-[10px] text-text-3 hidden sm:block tracking-wide">{t('app_subtitle')}</span>
       </div>
 
-      {/* Center: Stats */}
-      <div className="flex items-center gap-5">
+      {/* Center: Stats - hidden on very small screens */}
+      <div className="hidden sm:flex items-center gap-5">
         <Stat label={t('tick')} value={tickNumber.toLocaleString()} color="text-cyan" />
         <Stat label={t('ais')} value={String(aiCount)} color="text-green" />
         <Stat label={t('concepts')} value={String(conceptCount)} color="text-accent" />
@@ -38,6 +43,14 @@ export default function AdminHeader() {
         </div>
       </div>
 
+      {/* Mobile: Compact stats */}
+      {isMobile && (
+        <div className="flex items-center gap-3 sm:hidden">
+          <span className="text-[10px] mono text-cyan">T:{tickNumber}</span>
+          <span className="text-[10px] mono text-green">{aiCount}</span>
+        </div>
+      )}
+
       {/* Right: Actions */}
       <div className="flex items-center gap-0.5">
         <Link
@@ -46,17 +59,26 @@ export default function AdminHeader() {
           title={t('observer_view')}
         >
           <Eye size={13} />
-          <span className="text-[10px]">{t('observer_view')}</span>
+          <span className="text-[10px] hidden sm:inline">{t('observer_view')}</span>
         </Link>
-        <HeaderBtn onClick={toggleGrid} title="Toggle grid">
-          <Grid3x3 size={13} className={showGrid ? 'text-accent' : ''} />
-        </HeaderBtn>
-        <HeaderBtn onClick={toggleChat} title={t('chat')}>
-          <MessageSquare size={13} />
-        </HeaderBtn>
-        <HeaderBtn onClick={toggleSidebar}>
-          <PanelRight size={13} className={sidebarOpen ? 'text-accent' : ''} />
-        </HeaderBtn>
+        {!isMobile && (
+          <>
+            <HeaderBtn onClick={toggleGrid} title="Toggle grid">
+              <Grid3x3 size={13} className={showGrid ? 'text-accent' : ''} />
+            </HeaderBtn>
+            <HeaderBtn onClick={toggleChat} title={t('chat')}>
+              <MessageSquare size={13} />
+            </HeaderBtn>
+            <HeaderBtn onClick={toggleSidebar}>
+              <PanelRight size={13} className={sidebarOpen ? 'text-accent' : ''} />
+            </HeaderBtn>
+          </>
+        )}
+        {isMobile && onMenuToggle && (
+          <HeaderBtn onClick={onMenuToggle} title="Menu">
+            <Menu size={16} />
+          </HeaderBtn>
+        )}
       </div>
     </header>
   );

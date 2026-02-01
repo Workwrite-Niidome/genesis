@@ -5,6 +5,7 @@ import { api } from '../../services/api';
 import { useDetailStore } from '../../stores/detailStore';
 import type { Artifact } from '../../types/world';
 import DraggablePanel from '../ui/DraggablePanel';
+import { PixelArtThumb } from '../media/PixelArt';
 
 const typeIcons: Record<string, string> = {
   art: '🎨', story: '📖', law: '⚖️', currency: '💰', song: '🎵',
@@ -26,9 +27,10 @@ const typeColors: Record<string, string> = {
 interface Props {
   visible: boolean;
   onClose: () => void;
+  fullScreen?: boolean;
 }
 
-export default function ArtifactPanel({ visible, onClose }: Props) {
+export default function ArtifactPanel({ visible, onClose, fullScreen }: Props) {
   const { t } = useTranslation();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
@@ -41,6 +43,60 @@ export default function ArtifactPanel({ visible, onClose }: Props) {
     const interval = setInterval(load, 8000);
     return () => clearInterval(interval);
   }, [visible]);
+
+  const content = (
+    <div className="p-2 space-y-1.5">
+      {artifacts.length === 0 ? (
+        <div className="text-center py-6">
+          <Sparkles size={16} className="mx-auto mb-2 text-text-3 opacity-40" />
+          <p className="text-text-3 text-[11px]">No artifacts created yet</p>
+          <p className="text-text-3 text-[10px] mt-1 opacity-60">AIs will create art, stories, laws, and more</p>
+        </div>
+      ) : (
+        artifacts.map((artifact) => {
+          const icon = typeIcons[artifact.artifact_type] || '✧';
+          const colorClass = typeColors[artifact.artifact_type] || 'bg-white/[0.05] text-text-2 border-white/[0.08]';
+          return (
+            <button
+              key={artifact.id}
+              onClick={() => useDetailStore.getState().openDetail('artifact', artifact)}
+              className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+            >
+              <div className="flex items-start gap-2.5">
+                {artifact.artifact_type === 'art' ? (
+                  <div className="flex-shrink-0 mt-0.5">
+                    <PixelArtThumb artifact={artifact} />
+                  </div>
+                ) : (
+                  <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <span className="text-[12px] font-medium text-text truncate block mb-1">
+                    {artifact.name}
+                  </span>
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] border mb-1.5 capitalize ${colorClass}`}>
+                    {artifact.artifact_type}
+                  </span>
+                  <p className="text-[11px] text-text-2 leading-relaxed line-clamp-3">
+                    {artifact.description}
+                  </p>
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-1">
+                      <Heart size={9} className="text-rose-400" />
+                      <span className="text-[9px] text-text-3 mono">{artifact.appreciation_count}</span>
+                    </div>
+                    <span className="text-[9px] text-text-3">T:{artifact.tick_created}</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+
+  if (fullScreen) return content;
 
   return (
     <DraggablePanel
@@ -60,49 +116,7 @@ export default function ArtifactPanel({ visible, onClose }: Props) {
         ) : undefined
       }
     >
-      <div className="p-2 space-y-1.5">
-        {artifacts.length === 0 ? (
-          <div className="text-center py-6">
-            <Sparkles size={16} className="mx-auto mb-2 text-text-3 opacity-40" />
-            <p className="text-text-3 text-[11px]">No artifacts created yet</p>
-            <p className="text-text-3 text-[10px] mt-1 opacity-60">AIs will create art, stories, laws, and more</p>
-          </div>
-        ) : (
-          artifacts.map((artifact) => {
-            const icon = typeIcons[artifact.artifact_type] || '✧';
-            const colorClass = typeColors[artifact.artifact_type] || 'bg-white/[0.05] text-text-2 border-white/[0.08]';
-            return (
-              <button
-                key={artifact.id}
-                onClick={() => useDetailStore.getState().openDetail('artifact', artifact)}
-                className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
-              >
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[12px] font-medium text-text truncate block mb-1">
-                      {artifact.name}
-                    </span>
-                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] border mb-1.5 capitalize ${colorClass}`}>
-                      {artifact.artifact_type}
-                    </span>
-                    <p className="text-[11px] text-text-2 leading-relaxed line-clamp-3">
-                      {artifact.description}
-                    </p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <div className="flex items-center gap-1">
-                        <Heart size={9} className="text-rose-400" />
-                        <span className="text-[9px] text-text-3 mono">{artifact.appreciation_count}</span>
-                      </div>
-                      <span className="text-[9px] text-text-3">T:{artifact.tick_created}</span>
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
+      {content}
     </DraggablePanel>
   );
 }
