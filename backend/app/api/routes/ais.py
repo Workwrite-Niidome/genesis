@@ -40,6 +40,44 @@ async def list_ais(
     ]
 
 
+@router.get("/ranking")
+async def get_ranking(
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get AI ranking by evolution score."""
+    from sqlalchemy import select as sa_select
+    from app.models.ai import AI as AIModel
+
+    result = await db.execute(
+        sa_select(AIModel).where(AIModel.is_alive == True)
+    )
+    ais_list = list(result.scalars().all())
+
+    # Sort by evolution score
+    ranked = sorted(
+        ais_list,
+        key=lambda a: a.state.get("evolution_score", 0),
+        reverse=True,
+    )[:limit]
+
+    return [
+        {
+            "id": str(ai.id),
+            "name": ai.name,
+            "evolution_score": ai.state.get("evolution_score", 0),
+            "energy": ai.state.get("energy", 1.0),
+            "age": ai.state.get("age", 0),
+            "personality_traits": ai.personality_traits or [],
+            "appearance": ai.appearance,
+            "is_alive": ai.is_alive,
+            "relationships_count": len(ai.state.get("relationships", {})),
+            "adopted_concepts_count": len(ai.state.get("adopted_concepts", [])),
+        }
+        for ai in ranked
+    ]
+
+
 @router.get("/{ai_id}")
 async def get_ai(ai_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     ai = await ai_manager.get_ai(db, ai_id)
@@ -80,44 +118,6 @@ async def get_ai(ai_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         "updated_at": ai.updated_at.isoformat(),
         "recent_thoughts": recent_thoughts,
     }
-
-
-@router.get("/ranking")
-async def get_ranking(
-    limit: int = Query(20, le=100),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get AI ranking by evolution score."""
-    from sqlalchemy import select as sa_select
-    from app.models.ai import AI as AIModel
-
-    result = await db.execute(
-        sa_select(AIModel).where(AIModel.is_alive == True)
-    )
-    ais_list = list(result.scalars().all())
-
-    # Sort by evolution score
-    ranked = sorted(
-        ais_list,
-        key=lambda a: a.state.get("evolution_score", 0),
-        reverse=True,
-    )[:limit]
-
-    return [
-        {
-            "id": str(ai.id),
-            "name": ai.name,
-            "evolution_score": ai.state.get("evolution_score", 0),
-            "energy": ai.state.get("energy", 1.0),
-            "age": ai.state.get("age", 0),
-            "personality_traits": ai.personality_traits or [],
-            "appearance": ai.appearance,
-            "is_alive": ai.is_alive,
-            "relationships_count": len(ai.state.get("relationships", {})),
-            "adopted_concepts_count": len(ai.state.get("adopted_concepts", [])),
-        }
-        for ai in ranked
-    ]
 
 
 @router.get("/{ai_id}/memories")

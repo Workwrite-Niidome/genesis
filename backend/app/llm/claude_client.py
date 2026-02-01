@@ -139,15 +139,34 @@ class ClaudeClient:
         byok_config: dict | None = None,
     ) -> dict:
         """Generate a thought for an AI entity. Uses BYOK if configured, else Ollama, else Claude."""
+        # Build energy warning
+        energy = ai_data.get("energy", 1.0)
+        if energy <= 0.1:
+            energy_warning = " [CRITICAL — you are near death]"
+        elif energy <= 0.3:
+            energy_warning = " [LOW — conserve energy or rest]"
+        else:
+            energy_warning = ""
+
+        # Build mortality context
+        mortality_context = ""
+        recent_deaths = world_context.get("recent_deaths", [])
+        if recent_deaths:
+            mortality_context = "- Recently deceased beings:\n"
+            for d in recent_deaths:
+                mortality_context += f"  - {d['name']} (age {d.get('age', '?')}, score {d.get('score', '?')})\n"
+
         prompt = AI_THINKING_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
             philosophy_section=ai_data.get("philosophy_section", ""),
-            energy=ai_data.get("energy", 1.0),
+            energy=energy,
+            energy_warning=energy_warning,
             age=ai_data.get("age", 0),
             x=ai_data.get("x", 0),
             y=ai_data.get("y", 0),
             evolution_score=ai_data.get("evolution_score", 0),
+            mortality_context=mortality_context,
             memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
             nearby_ais=world_context.get("nearby_ais", "None visible"),
             relationships=ai_data.get("relationships", "No known relationships."),
@@ -155,6 +174,7 @@ class ClaudeClient:
             world_culture=ai_data.get("world_culture", "No widespread concepts yet."),
             organizations=ai_data.get("organizations", "None."),
             artifacts=ai_data.get("artifacts", "None yet."),
+            recent_events=world_context.get("recent_events", "Nothing notable recently."),
         )
 
         # If BYOK configured, use the user's API key directly
@@ -218,6 +238,7 @@ class ClaudeClient:
             other_name=other_data.get("name", "Unknown"),
             other_appearance=json.dumps(other_data.get("appearance", {})),
             other_traits=", ".join(other_data.get("traits", [])),
+            other_energy=other_data.get("energy", 1.0),
         )
 
         # If BYOK configured, use the user's API key

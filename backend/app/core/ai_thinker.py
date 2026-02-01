@@ -76,6 +76,7 @@ class AIThinker:
         from app.core.relationship_manager import relationship_manager
         from app.core.concept_engine import concept_engine
         from app.core.culture_engine import culture_engine
+        from app.models.event import Event
 
         memories = await ai_manager.get_ai_memories(db, ai.id, limit=10)
         memory_texts = [m.content for m in memories]
@@ -117,6 +118,35 @@ class AIThinker:
 
         evolution_score = ai.state.get("evolution_score", 0)
 
+        # Fetch recent death events for mortality awareness
+        recent_death_result = await db.execute(
+            select(Event)
+            .where(Event.event_type == "ai_death")
+            .order_by(Event.created_at.desc())
+            .limit(5)
+        )
+        recent_death_events = list(recent_death_result.scalars().all())
+        recent_deaths = [
+            {
+                "name": e.metadata_.get("ai_name", "Unknown") if e.metadata_ else "Unknown",
+                "age": e.metadata_.get("age", "?") if e.metadata_ else "?",
+                "score": e.metadata_.get("evolution_score", "?") if e.metadata_ else "?",
+            }
+            for e in recent_death_events
+        ]
+
+        # Fetch recent notable events for world awareness
+        recent_event_result = await db.execute(
+            select(Event)
+            .where(Event.importance >= 0.6)
+            .order_by(Event.created_at.desc())
+            .limit(5)
+        )
+        recent_notable_events = list(recent_event_result.scalars().all())
+        recent_events_desc = "\n".join(
+            f"- {e.title}: {e.description[:120]}" for e in recent_notable_events
+        ) if recent_notable_events else "Nothing notable recently."
+
         ai_data = {
             "name": ai.name,
             "personality_traits": ai.personality_traits or [],
@@ -135,6 +165,8 @@ class AIThinker:
 
         world_context = {
             "nearby_ais": nearby_desc,
+            "recent_deaths": recent_deaths,
+            "recent_events": recent_events_desc,
         }
 
         byok_config = ai.state.get("byok_config")

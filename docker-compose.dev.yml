@@ -61,7 +61,7 @@ services:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1 --pool=solo
 
   celery-beat:
     build:

@@ -16,6 +16,7 @@ from app.models.event import Event
 from app.models.tick import Tick
 from app.models.god_ai import GodAI
 from app.models.interaction import Interaction
+from app.models.ai_thought import AIThought
 from app.models.chat import ChatMessage
 from app.models.observer import Observer
 
@@ -107,6 +108,7 @@ async def reset_world(
     # Delete in dependency order (children before parents)
     await db.execute(delete(ChatMessage))
     await db.execute(delete(Observer))
+    await db.execute(delete(AIThought))
     await db.execute(delete(AIMemory))
     await db.execute(delete(Interaction))
     await db.execute(delete(Artifact))
