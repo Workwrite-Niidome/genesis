@@ -76,6 +76,7 @@ export interface WorldEvent {
   description?: string;
   tick_number: number;
   created_at: string;
+  metadata_?: Record<string, any>;
 }
 
 export interface AIThought {
@@ -108,25 +109,29 @@ export interface DeployAIResponse {
   remaining: number;
 }
 
+export interface InteractionParticipant {
+  id: string;
+  name: string;
+  thought?: string;
+  action?: Record<string, any>;
+  message?: string;
+}
+
 export interface Interaction {
   id: string;
   participant_ids: string[];
   interaction_type: string;
   content: {
-    ai1: {
-      id: string;
-      name: string;
-      thought: string;
-      action: Record<string, any>;
-      message: string;
-    };
-    ai2: {
-      id: string;
-      name: string;
-      thought: string;
-      action: Record<string, any>;
-      message: string;
-    };
+    // 1-on-1 interaction format
+    ai1?: InteractionParticipant;
+    ai2?: InteractionParticipant;
+    // Group gathering format
+    speaker?: { id: string; name: string };
+    thought?: string;
+    speech?: string;
+    participants?: { id: string; name: string }[];
+    artifact?: Record<string, any> | null;
+    organization?: Record<string, any> | null;
   };
   concepts_involved: string[];
   tick_number: number;

@@ -216,8 +216,20 @@ class ClaudeClient:
         known_concepts: list[str],
         relationship: str,
         byok_config: dict | None = None,
+        other_message: str = "",
+        other_intention: str = "",
     ) -> dict:
-        """Generate an encounter response for an AI meeting another."""
+        """Generate an encounter response for an AI meeting another.
+
+        If other_message is provided, the AI is responding to what the other said
+        (sequential conversation mode).
+        """
+        from app.llm.prompts.ai_interaction import build_conversation_context
+
+        conversation_context = build_conversation_context(
+            other_data.get("name", "Unknown"), other_message, other_intention
+        )
+
         prompt = AI_INTERACTION_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
@@ -230,6 +242,7 @@ class ClaudeClient:
             other_appearance=json.dumps(other_data.get("appearance", {})),
             other_traits=", ".join(other_data.get("traits", [])),
             other_energy=other_data.get("energy", 1.0),
+            conversation_context=conversation_context,
         )
 
         # If BYOK configured, use the user's API key

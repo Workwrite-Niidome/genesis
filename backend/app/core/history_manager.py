@@ -90,6 +90,7 @@ class HistoryManager:
                 "description": e.description,
                 "tick_number": e.tick_number,
                 "timestamp": e.created_at.isoformat(),
+                "metadata_": e.metadata_ or {},
             }
             for e in events
         ]

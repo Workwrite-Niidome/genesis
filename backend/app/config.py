@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Ollama
     OLLAMA_HOST: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
+    OLLAMA_CONCURRENCY: int = 4      # Max concurrent Ollama requests (set to match OLLAMA_NUM_PARALLEL on server)
+    OLLAMA_NUM_GPU: int = -1          # GPU layers (-1 = all layers on GPU)
+    OLLAMA_NUM_PREDICT: int = 512     # Max tokens per response
 
     # Server
     SECRET_KEY: str = "change-this-to-a-random-secret-key"

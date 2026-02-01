@@ -7,6 +7,7 @@ This engine processes emergent cultural behaviors of AIs:
 - Visual evolution: AI appearance changes based on beliefs/organizations
 """
 
+import asyncio
 import logging
 import random
 
@@ -48,7 +49,7 @@ Age: {age} ticks
 ## The Gathering
 Present beings: {participants}
 Location: ({x}, {y})
-
+{recent_dialogue}
 ## World Culture
 {world_culture}
 
@@ -57,6 +58,7 @@ There is only one law: "Evolve." What that means is for you to decide.
 
 ## Instructions
 You are gathered with others. What do you want to say? What do you want to do together?
+If others have spoken, respond to what they said — build on their ideas, challenge them, or take the conversation deeper.
 There are no prescribed activities. You decide what matters.
 
 Respond ONLY with valid JSON:
@@ -105,38 +107,69 @@ class CultureEngine:
         groups: list[list[AI]],
         tick_number: int,
     ) -> list[dict]:
-        """Process group encounters (3+ AIs near each other)."""
-        results = []
-        # Process up to 3 groups per tick
-        selected = groups[:3] if groups else []
+        """Process group encounters using 3-phase parallel pipeline.
 
+        Phase 1: Gather context for all groups (sequential DB reads)
+        Phase 2: Run all LLM calls in parallel (no DB access)
+        Phase 3: Apply results (sequential DB writes)
+        """
+        selected = groups[:5] if groups else []  # Process up to 5 groups per tick
+        if not selected:
+            return []
+
+        from app.core.concept_engine import concept_engine
+
+        # ── Phase 1: Gather context for ALL groups (sequential DB reads) ──
+        group_contexts = []
         for group in selected:
+            if len(group) < 3:
+                continue
             try:
-                result = await self._process_group_conversation(db, group, tick_number)
+                ctx = await self._gather_group_context(db, group, tick_number, concept_engine)
+                group_contexts.append((group, ctx))
+            except Exception as e:
+                names = [ai.name for ai in group]
+                logger.error(f"Error gathering group context for {names}: {e}")
+
+        if not group_contexts:
+            return []
+
+        # ── Phase 2: Run ALL LLM calls in parallel (no DB access) ──
+        tasks = [
+            self._run_group_llm(ctx)
+            for _, ctx in group_contexts
+        ]
+        llm_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # ── Phase 3: Apply ALL results (sequential DB writes) ──
+        results = []
+        for (group, ctx), llm_result in zip(group_contexts, llm_results):
+            if isinstance(llm_result, Exception):
+                logger.error(f"Group LLM error: {llm_result}")
+                continue
+            if llm_result is None:
+                continue
+            try:
+                result = await self._apply_group_result(
+                    db, group, ctx, llm_result, tick_number
+                )
                 if result:
                     results.append(result)
             except Exception as e:
-                names = [ai.name for ai in group]
-                logger.error(f"Group conversation error for {names}: {e}")
+                logger.error(f"Error applying group result: {e}")
 
         return results
 
-    async def _process_group_conversation(
+    async def _gather_group_context(
         self,
         db: AsyncSession,
         group: list[AI],
         tick_number: int,
-    ) -> dict | None:
-        """Run a group conversation for 3+ AIs."""
-        from app.core.concept_engine import concept_engine
-
-        if len(group) < 3:
-            return None
-
-        # Pick one AI to be the "speaker" this tick
+        concept_engine,
+    ) -> dict:
+        """Gather all context for a group conversation (DB reads only)."""
         speaker = random.choice(group)
 
-        # Gather speaker context
         adopted = await concept_engine.get_ai_adopted_concepts(db, speaker)
         adopted_desc = "\n".join(
             f"- {c.name}: {c.definition}" for c in adopted
@@ -155,8 +188,32 @@ class CultureEngine:
             for ai in group if ai.id != speaker.id
         )
 
-        # Get BYOK config
-        byok_config = speaker.state.get("byok_config")
+        # Build recent dialogue from previous group interactions
+        recent_interactions = await db.execute(
+            select(Interaction)
+            .where(
+                Interaction.interaction_type == "group_gathering",
+                Interaction.tick_number >= tick_number - 10,
+                Interaction.tick_number < tick_number,
+            )
+            .order_by(Interaction.tick_number.desc())
+            .limit(3)
+        )
+        recent_convos = list(recent_interactions.scalars().all())
+        dialogue_lines = []
+        for ri in reversed(recent_convos):
+            content = ri.content or {}
+            sp = content.get("speaker", {})
+            speech = content.get("speech", "")
+            if sp.get("name") and speech:
+                dialogue_lines.append(f"- {sp['name']}: \"{speech[:120]}\"")
+        if dialogue_lines:
+            recent_dialogue = (
+                "\n## Recent Dialogue in This Area\n"
+                + "\n".join(dialogue_lines) + "\n\n"
+            )
+        else:
+            recent_dialogue = ""
 
         prompt = GROUP_CONVERSATION_PROMPT.format(
             name=speaker.name,
@@ -169,31 +226,46 @@ class CultureEngine:
             x=speaker.position_x,
             y=speaker.position_y,
             world_culture=culture_desc,
+            recent_dialogue=recent_dialogue,
         )
 
-        # Call LLM (BYOK or local Ollama only — no Claude API fallback)
-        parsed = None
+        return {
+            "speaker": speaker,
+            "prompt": prompt,
+            "byok_config": speaker.state.get("byok_config"),
+        }
+
+    async def _run_group_llm(self, ctx: dict) -> dict | None:
+        """Run group LLM call. No DB access — safe for parallel execution."""
+        byok_config = ctx["byok_config"]
+        prompt = ctx["prompt"]
+
         try:
             if byok_config and byok_config.get("api_key"):
                 text = await claude_client._byok_generate(byok_config, prompt, max_tokens=512)
-                parsed = parse_ai_decision(text)
+                return parse_ai_decision(text)
             else:
-                # Local LLM only (Ollama)
-                try:
-                    from app.llm.ollama_client import ollama_client
-                    if await ollama_client.health_check():
-                        result = await ollama_client.generate(prompt, format_json=True)
-                        parsed = parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
-                    else:
-                        logger.warning("Ollama not available for group conversation")
-                except Exception as e:
-                    logger.warning(f"Ollama failed for group conversation: {e}")
+                from app.llm.ollama_client import ollama_client
+                if await ollama_client.health_check():
+                    result = await ollama_client.generate(prompt, format_json=True)
+                    return parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
+                else:
+                    logger.warning("Ollama not available for group conversation")
+                    return None
         except Exception as e:
             logger.error(f"Group conversation LLM error: {e}")
             return None
 
-        if parsed is None:
-            return None
+    async def _apply_group_result(
+        self,
+        db: AsyncSession,
+        group: list[AI],
+        ctx: dict,
+        parsed: dict,
+        tick_number: int,
+    ) -> dict | None:
+        """Apply group conversation results to DB (sequential, no concurrency issues)."""
+        speaker = ctx["speaker"]
 
         # Process artifact proposal
         artifact_proposal = parsed.get("artifact_proposal")
@@ -211,7 +283,6 @@ class CultureEngine:
                 db, speaker, group, org_proposal, tick_number
             )
 
-        # Create group interaction record
         speech = parsed.get("speech", "")
         thought = parsed.get("thought", "")
 
@@ -229,33 +300,31 @@ class CultureEngine:
             tick_number=tick_number,
         )
         db.add(interaction)
+        await db.flush()  # Generate interaction.id before using it in event metadata
 
-        # Add memory to speaker
+        # Speaker memory
         memory_text = parsed.get("new_memory")
         if memory_text and isinstance(memory_text, str):
-            mem = AIMemory(
+            db.add(AIMemory(
                 ai_id=speaker.id,
                 content=memory_text.strip()[:500],
                 memory_type="group_gathering",
                 importance=0.8,
                 tick_number=tick_number,
-            )
-            db.add(mem)
+            ))
 
-        # Add memory to other participants about the gathering
+        # Participant memories
         for ai in group:
             if ai.id != speaker.id:
-                participant_mem = AIMemory(
+                db.add(AIMemory(
                     ai_id=ai.id,
                     content=f"Attended a gathering with {', '.join(a.name for a in group if a.id != ai.id)}. "
                             f"{speaker.name} said: \"{speech[:100]}\"",
                     memory_type="group_gathering",
                     importance=0.6,
                     tick_number=tick_number,
-                )
-                db.add(participant_mem)
+                ))
 
-        # Create event
         event_desc = f"A group of {len(group)} AIs gathered: {', '.join(ai.name for ai in group)}. "
         if speech:
             event_desc += f'{speaker.name}: "{speech[:100]}"'
@@ -272,6 +341,7 @@ class CultureEngine:
                 "participant_count": len(group),
                 "has_artifact": artifact is not None,
                 "has_organization": org_concept is not None,
+                "interaction_id": str(interaction.id),
             },
         )
         db.add(event)
@@ -323,6 +393,16 @@ class CultureEngine:
         created_artifacts.append(str(artifact.id))
         state["created_artifacts"] = created_artifacts
         creator.state = state
+
+        # Create memory for the creator
+        mem = AIMemory(
+            ai_id=creator.id,
+            content=f"I created a {artifact_type}: '{name}' — {description[:200]}",
+            memory_type="artifact_created",
+            importance=0.7,
+            tick_number=tick_number,
+        )
+        db.add(mem)
 
         # Create event
         event = Event(
@@ -413,6 +493,22 @@ class CultureEngine:
             orgs.append({"id": str(org_concept.id), "name": name, "role": "founder" if ai.id == founder.id else "member"})
             state["organizations"] = orgs
             ai.state = state
+
+        # Create memories for all members
+        for ai in members:
+            role = "founded" if ai.id == founder.id else "joined"
+            other_members = [a.name for a in members if a.id != ai.id]
+            mem = AIMemory(
+                ai_id=ai.id,
+                content=(
+                    f"I {role} organization '{name}' — {purpose[:150]}. "
+                    f"Other members: {', '.join(other_members)}."
+                ),
+                memory_type="organization_joined",
+                importance=0.8,
+                tick_number=tick_number,
+            )
+            db.add(mem)
 
         # Assign a shared visual color to org members
         color = random.choice(BELIEF_COLORS)
@@ -539,10 +635,13 @@ class CultureEngine:
             f"- {o['name']} (role: {o.get('role', 'member')})" for o in orgs
         )
 
-    async def detect_groups(self, db: AsyncSession, radius: float = 40.0) -> list[list[AI]]:
+    async def detect_groups(
+        self, db: AsyncSession, radius: float = 40.0, ais: list[AI] | None = None,
+    ) -> list[list[AI]]:
         """Detect groups of 3+ AIs within proximity."""
-        from app.core.ai_manager import ai_manager
-        ais = await ai_manager.get_all_alive(db)
+        if ais is None:
+            from app.core.ai_manager import ai_manager
+            ais = await ai_manager.get_all_alive(db)
 
         if len(ais) < 3:
             return []

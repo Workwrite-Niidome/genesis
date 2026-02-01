@@ -38,6 +38,29 @@ async def list_interactions(
     ]
 
 
+@router.get("/{interaction_id}")
+async def get_interaction(
+    interaction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Interaction).where(Interaction.id == interaction_id)
+    )
+    i = result.scalar_one_or_none()
+    if not i:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Interaction not found")
+    return {
+        "id": str(i.id),
+        "participant_ids": [str(pid) for pid in (i.participant_ids or [])],
+        "interaction_type": i.interaction_type,
+        "content": i.content,
+        "concepts_involved": [str(cid) for cid in (i.concepts_involved or [])],
+        "tick_number": i.tick_number,
+        "created_at": i.created_at.isoformat(),
+    }
+
+
 @router.get("/ai/{ai_id}")
 async def get_ai_interactions(
     ai_id: uuid.UUID,

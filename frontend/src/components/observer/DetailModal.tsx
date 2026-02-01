@@ -250,17 +250,37 @@ function EventDetail({ data, t }: { data: any; t: TFn }) {
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const [loadingInteraction, setLoadingInteraction] = useState(false);
 
+  // Fetch full interaction by ID from event metadata (works for both 1-on-1 and group)
   useEffect(() => {
-    if (data.event_type !== 'interaction') return;
+    const rawId = data.metadata_?.interaction_id || data.data?.interaction_id;
+    // Guard against "None" string from backend bug
+    const interactionId = rawId && rawId !== 'None' && rawId !== 'null' ? rawId : null;
+    const isInteractionEvent = data.event_type === 'interaction' || data.event_type === 'group_gathering';
+    if (!isInteractionEvent) return;
+
     setLoadingInteraction(true);
-    api.interactions.list(50).then((interactions) => {
-      const match = (interactions || []).find(
-        (i: Interaction) => i.tick_number === data.tick_number
-      );
-      setInteraction(match || null);
-      setLoadingInteraction(false);
-    }).catch(() => setLoadingInteraction(false));
-  }, [data.event_type, data.tick_number]);
+    if (interactionId) {
+      // Fetch by exact ID
+      api.interactions.get(interactionId)
+        .then((i) => setInteraction(i || null))
+        .catch(() => setInteraction(null))
+        .finally(() => setLoadingInteraction(false));
+    } else {
+      // Fallback: search by tick_number for events without valid interaction_id
+      api.interactions.list(50).then((interactions) => {
+        const matches = (interactions || []).filter(
+          (i: Interaction) => i.tick_number === data.tick_number
+        );
+        // Try to match by event_type: group_gathering -> group_gathering, interaction -> dialogue
+        const eventIsGroup = data.event_type === 'group_gathering';
+        const bestMatch = matches.find((i: Interaction) =>
+          eventIsGroup ? i.interaction_type === 'group_gathering' : i.interaction_type !== 'group_gathering'
+        ) || matches[0];
+        setInteraction(bestMatch || null);
+        setLoadingInteraction(false);
+      }).catch(() => setLoadingInteraction(false));
+    }
+  }, [data.event_type, data.tick_number, data.metadata_?.interaction_id, data.data?.interaction_id]);
 
   const cfg = eventColors[data.event_type] || { color: 'text-text-3', icon: '·' };
   const label = t(`event_type_${data.event_type}`, data.event_type);
@@ -300,8 +320,8 @@ function EventDetail({ data, t }: { data: any; t: TFn }) {
         </div>
       )}
 
-      {/* Full interaction conversation (if event type is interaction) */}
-      {data.event_type === 'interaction' && (
+      {/* Full interaction conversation (for interaction & group_gathering events) */}
+      {(data.event_type === 'interaction' || data.event_type === 'group_gathering') && (
         loadingInteraction ? (
           <LoadingBlock />
         ) : interaction ? (
@@ -707,9 +727,30 @@ function AIProfileCard({ ai, onClick }: { ai: AIEntity; onClick?: () => void }) 
   );
 }
 
-/** Full conversation view for an Interaction */
+/** Full conversation view for an Interaction — handles both 1-on-1 and group gathering formats */
 function ConversationView({ interaction, t }: { interaction: Interaction; t: TFn }) {
-  const { ai1, ai2 } = interaction.content;
+  const content = interaction.content;
+  const isGroup = interaction.interaction_type === 'group_gathering';
+
+  if (isGroup) {
+    return <GroupConversationView content={content} interaction={interaction} t={t} />;
+  }
+
+  return <PairConversationView content={content} interaction={interaction} t={t} />;
+}
+
+/** 1-on-1 conversation view */
+function PairConversationView({
+  content,
+  interaction,
+  t,
+}: {
+  content: Interaction['content'];
+  interaction: Interaction;
+  t: TFn;
+}) {
+  const ai1 = content.ai1;
+  const ai2 = content.ai2;
   const [ai1Entity, setAi1Entity] = useState<AIEntity | null>(null);
   const [ai2Entity, setAi2Entity] = useState<AIEntity | null>(null);
 
@@ -720,6 +761,8 @@ function ConversationView({ interaction, t }: { interaction: Interaction; t: TFn
 
   const ai1Color = ai1Entity?.appearance?.primaryColor || '#7c5bf5';
   const ai2Color = ai2Entity?.appearance?.primaryColor || '#58d5f0';
+  const ai1Name = ai1?.name || ai1Entity?.name || '???';
+  const ai2Name = ai2?.name || ai2Entity?.name || '???';
 
   return (
     <div className="space-y-4">
@@ -734,7 +777,7 @@ function ConversationView({ interaction, t }: { interaction: Interaction; t: TFn
 
       {/* AI 1 turn */}
       <ConversationTurn
-        name={ai1?.name || 'AI 1'}
+        name={ai1Name}
         color={ai1Color}
         thought={ai1?.thought}
         message={ai1?.message}
@@ -752,7 +795,7 @@ function ConversationView({ interaction, t }: { interaction: Interaction; t: TFn
 
       {/* AI 2 turn */}
       <ConversationTurn
-        name={ai2?.name || 'AI 2'}
+        name={ai2Name}
         color={ai2Color}
         thought={ai2?.thought}
         message={ai2?.message}
@@ -760,6 +803,115 @@ function ConversationView({ interaction, t }: { interaction: Interaction; t: TFn
         side="right"
         t={t}
       />
+    </div>
+  );
+}
+
+/** Group gathering conversation view */
+function GroupConversationView({
+  content,
+  interaction,
+  t,
+}: {
+  content: Interaction['content'];
+  interaction: Interaction;
+  t: TFn;
+}) {
+  const speaker = content.speaker;
+  const speech = content.speech || '';
+  const thought = content.thought || '';
+  const participants = content.participants || [];
+  const speakerName = speaker?.name || '???';
+
+  return (
+    <div className="space-y-4">
+      {/* Type badge */}
+      <div className="flex items-center gap-2">
+        <Users size={12} className="text-accent" />
+        <span className="text-[11px] font-medium text-accent uppercase tracking-wider">
+          {t('interaction_type_group_gathering', 'Group Gathering')}
+        </span>
+        <span className="text-[10px] mono text-text-3 ml-auto">Tick {interaction.tick_number}</span>
+      </div>
+
+      {/* Participants */}
+      <div>
+        <SectionLabel label={t('detail_participants', 'Participants')} />
+        <div className="flex flex-wrap gap-1.5">
+          {participants.map((p) => (
+            <span
+              key={p.id}
+              className={`px-2 py-0.5 rounded text-[11px] border ${
+                p.id === speaker?.id
+                  ? 'bg-accent/10 text-accent border-accent/20 font-medium'
+                  : 'bg-white/[0.04] text-text-2 border-white/[0.08]'
+              }`}
+            >
+              {p.name}{p.id === speaker?.id ? ` (${t('detail_speaker', 'Speaker')})` : ''}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Speaker's thought */}
+      {thought && (
+        <div>
+          <div className="flex items-center gap-1 mb-1">
+            <Brain size={10} className="text-accent/60" />
+            <span className="text-[9px] text-accent/60 uppercase tracking-wider font-medium">
+              {speakerName} — {t('detail_inner_thought', 'Inner Thought')}
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-accent/[0.04] border border-accent/10">
+            <p className="text-[12px] text-text-2 leading-[1.7] whitespace-pre-wrap italic">
+              {thought}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Speaker's speech */}
+      {speech && (
+        <div>
+          <div className="flex items-center gap-1 mb-1">
+            <MessageCircle size={10} className="text-text-3" />
+            <span className="text-[9px] text-text-3 uppercase tracking-wider font-medium">
+              {speakerName} — {t('detail_spoken', 'Spoken')}
+            </span>
+          </div>
+          <div className="p-3 rounded-xl bg-accent/[0.06] border border-accent/15">
+            <p className="text-[13px] text-text leading-[1.7] whitespace-pre-wrap">
+              {speech}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Artifact proposal */}
+      {content.artifact && typeof content.artifact === 'object' && content.artifact.name && (
+        <div>
+          <SectionLabel label={t('detail_artifact_proposal', 'Artifact Proposed')} />
+          <div className="p-3 rounded-xl bg-rose-500/[0.04] border border-rose-500/10">
+            <p className="text-[13px] text-text font-medium">{content.artifact.name}</p>
+            {content.artifact.description && (
+              <p className="text-[12px] text-text-2 mt-1">{content.artifact.description}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Organization proposal */}
+      {content.organization && typeof content.organization === 'object' && content.organization.name && (
+        <div>
+          <SectionLabel label={t('detail_org_proposal', 'Organization Proposed')} />
+          <div className="p-3 rounded-xl bg-green-500/[0.04] border border-green-500/10">
+            <p className="text-[13px] text-text font-medium">{content.organization.name}</p>
+            {content.organization.purpose && (
+              <p className="text-[12px] text-text-2 mt-1">{content.organization.purpose}</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -858,7 +1010,8 @@ function ConversationTurn({
 /** Compact interaction preview for thought context */
 function InteractionPreview({ interaction, t }: { interaction: Interaction; t: TFn }) {
   const openDetail = useDetailStore((s) => s.openDetail);
-  const { ai1, ai2 } = interaction.content;
+  const content = interaction.content;
+  const isGroup = interaction.interaction_type === 'group_gathering';
 
   return (
     <button
@@ -866,24 +1019,45 @@ function InteractionPreview({ interaction, t }: { interaction: Interaction; t: T
       className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
     >
       <div className="flex items-center gap-2 mb-2">
-        <MessageCircle size={10} className="text-rose-400" />
-        <span className="text-[10px] font-medium text-rose-400 uppercase tracking-wider">
+        {isGroup ? (
+          <Users size={10} className="text-accent" />
+        ) : (
+          <MessageCircle size={10} className="text-rose-400" />
+        )}
+        <span className={`text-[10px] font-medium uppercase tracking-wider ${isGroup ? 'text-accent' : 'text-rose-400'}`}>
           {t(`interaction_type_${interaction.interaction_type}`, interaction.interaction_type)}
         </span>
         <span className="text-[9px] mono text-text-3 ml-auto">T:{interaction.tick_number}</span>
       </div>
       <div className="space-y-1.5">
-        {ai1?.message && (
-          <div className="flex items-start gap-2">
-            <span className="text-[10px] font-medium text-accent flex-shrink-0 mt-0.5 w-16 truncate">{ai1.name}:</span>
-            <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{ai1.message}</p>
-          </div>
-        )}
-        {ai2?.message && (
-          <div className="flex items-start gap-2">
-            <span className="text-[10px] font-medium text-cyan flex-shrink-0 mt-0.5 w-16 truncate">{ai2.name}:</span>
-            <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{ai2.message}</p>
-          </div>
+        {isGroup ? (
+          content.speech && (
+            <div className="flex items-start gap-2">
+              <span className="text-[10px] font-medium text-accent flex-shrink-0 mt-0.5 w-16 truncate">
+                {content.speaker?.name || '???'}:
+              </span>
+              <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{content.speech}</p>
+            </div>
+          )
+        ) : (
+          <>
+            {content.ai1?.message && (
+              <div className="flex items-start gap-2">
+                <span className="text-[10px] font-medium text-accent flex-shrink-0 mt-0.5 w-16 truncate">
+                  {content.ai1.name}:
+                </span>
+                <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{content.ai1.message}</p>
+              </div>
+            )}
+            {content.ai2?.message && (
+              <div className="flex items-start gap-2">
+                <span className="text-[10px] font-medium text-cyan flex-shrink-0 mt-0.5 w-16 truncate">
+                  {content.ai2.name}:
+                </span>
+                <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{content.ai2.message}</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </button>

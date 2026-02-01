@@ -69,6 +69,7 @@ async def list_events(
             "description": e.description,
             "tick_number": e.tick_number,
             "created_at": e.created_at.isoformat(),
+            "metadata_": e.metadata_ or {},
         }
         for e in events
     ]

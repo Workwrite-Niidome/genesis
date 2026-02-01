@@ -96,7 +96,8 @@ async def _process_tick_async():
         ais = await ai_manager.get_all_alive(db)
         ai_count = len(ais)
 
-        encounters = await space_manager.detect_encounters(db)
+        # Reuse loaded AIs for encounter/bounds detection (avoids 3 redundant DB queries)
+        encounters = await space_manager.detect_encounters(db, ais=ais)
 
         from app.models.concept import Concept
         from sqlalchemy import select, func
@@ -104,13 +105,12 @@ async def _process_tick_async():
         concept_count_result = await db.execute(select(func.count()).select_from(Concept))
         concept_count = concept_count_result.scalar()
 
-        bounds = await space_manager.get_world_bounds(db)
+        bounds = await space_manager.get_world_bounds(db, ais=ais)
 
         # --- Age all alive AIs and passively recover energy ---
         for ai in ais:
             state = dict(ai.state)
             state["age"] = state.get("age", 0) + 1
-            # Passive energy recovery for AIs not in thinking batch
             energy = state.get("energy", 1.0)
             if energy < 1.0:
                 state["energy"] = min(1.0, energy + 0.01)
@@ -119,9 +119,13 @@ async def _process_tick_async():
         # Run AI thinking cycle every N ticks
         thoughts_generated = 0
         if ai_count > 0 and tick_number % THINKING_INTERVAL_TICKS == 0:
+            t0 = time.time()
             try:
                 thoughts_generated = await ai_thinker.run_thinking_cycle(db, tick_number)
-                logger.info(f"Tick {tick_number}: {thoughts_generated} AIs thought")
+                logger.info(
+                    f"Tick {tick_number}: {thoughts_generated} AIs thought "
+                    f"({int((time.time() - t0) * 1000)}ms)"
+                )
             except Exception as e:
                 logger.error(f"AI thinking cycle error at tick {tick_number}: {e}")
 
@@ -135,6 +139,7 @@ async def _process_tick_async():
         # Process encounters into interactions (independent interval)
         interactions_processed = 0
         if encounters and tick_number % ENCOUNTER_INTERVAL == 0:
+            t0 = time.time()
             try:
                 interaction_results = await interaction_engine.process_encounters(
                     db, encounters, tick_number
@@ -170,7 +175,10 @@ async def _process_tick_async():
                         except Exception as ae:
                             logger.error(f"Artifact creation error: {ae}")
 
-                logger.info(f"Tick {tick_number}: {interactions_processed} interactions processed")
+                logger.info(
+                    f"Tick {tick_number}: {interactions_processed} interactions "
+                    f"({int((time.time() - t0) * 1000)}ms)"
+                )
             except Exception as e:
                 logger.error(f"Interaction processing error at tick {tick_number}: {e}")
 
@@ -184,16 +192,20 @@ async def _process_tick_async():
         # Group conversations (3+ AIs gathered)
         group_conversations = 0
         if ai_count >= 3 and tick_number % GROUP_CONVERSATION_INTERVAL == 0:
+            t0 = time.time()
             try:
                 from app.core.culture_engine import culture_engine
-                groups = await culture_engine.detect_groups(db, radius=60.0)
+                groups = await culture_engine.detect_groups(db, radius=60.0, ais=ais)
                 if groups:
                     group_results = await culture_engine.process_group_encounters(
                         db, groups, tick_number
                     )
                     group_conversations = len(group_results)
                     if group_conversations > 0:
-                        logger.info(f"Tick {tick_number}: {group_conversations} group conversations")
+                        logger.info(
+                            f"Tick {tick_number}: {group_conversations} group conversations "
+                            f"({int((time.time() - t0) * 1000)}ms)"
+                        )
             except Exception as e:
                 logger.error(f"Group conversation error at tick {tick_number}: {e}")
 

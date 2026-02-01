@@ -88,6 +88,16 @@ class ConceptEngine:
         state["adopted_concepts"] = adopted
         creator.state = state
 
+        # Create memory for the creator
+        mem = AIMemory(
+            ai_id=creator.id,
+            content=f"I conceived a new concept: '{name}' ({category}) — {definition[:200]}",
+            memory_type="concept_created",
+            importance=0.8,
+            tick_number=tick_number,
+        )
+        db.add(mem)
+
         # Create event
         event = Event(
             event_type="concept_created",
@@ -117,6 +127,7 @@ class ConceptEngine:
         db: AsyncSession,
         ai: AI,
         concept_id: str,
+        tick_number: int = 0,
     ) -> bool:
         """Attempt to have an AI adopt a concept."""
         from uuid import UUID
@@ -141,6 +152,16 @@ class ConceptEngine:
         ai.state = state
 
         concept.adoption_count = concept.adoption_count + 1
+
+        # Create memory for the adopter
+        mem = AIMemory(
+            ai_id=ai.id,
+            content=f"I learned about and adopted concept '{concept.name}': {concept.definition[:200]}",
+            memory_type="concept_adopted",
+            importance=0.6,
+            tick_number=tick_number,
+        )
+        db.add(mem)
 
         logger.debug(f"{ai.name} adopted concept '{concept.name}'")
         return True

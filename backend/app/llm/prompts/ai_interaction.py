@@ -21,7 +21,7 @@ Name: {other_name}
 Their appearance: {other_appearance}
 Their traits: {other_traits}
 Their energy: {other_energy}
-
+{conversation_context}
 ## The Law of This World
 There is only one law: "Evolve."
 What evolution means is for you to decide.
@@ -69,3 +69,20 @@ If you feel moved to create something — together or alone — you may propose 
 }}
 
 Respond in English only. Output raw JSON with no markdown formatting."""
+
+
+def build_conversation_context(other_name: str, other_message: str, other_intention: str = "") -> str:
+    """Build the conversation context section for the responding AI."""
+    if not other_message:
+        return ""
+    lines = [
+        f"\n## What {other_name} Said to You",
+        f'{other_name} approached you and said:',
+        f'"{other_message}"',
+    ]
+    if other_intention:
+        lines.append(f"Their apparent intention: {other_intention}")
+    lines.append("")
+    lines.append("Consider what they said. You may respond to their words, agree, disagree, ask a question back, or take the conversation in a new direction.")
+    lines.append("")
+    return "\n".join(lines)

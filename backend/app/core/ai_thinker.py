@@ -14,7 +14,7 @@ from app.llm.response_parser import extract_move_details
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 15
+BATCH_SIZE = 30
 MOVE_CLAMP = 15.0
 
 

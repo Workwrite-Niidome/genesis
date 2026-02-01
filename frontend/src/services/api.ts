@@ -70,6 +70,7 @@ export const api = {
   },
   interactions: {
     list: (limit = 20) => fetchJSON<any[]>(`/interactions?limit=${limit}`),
+    get: (id: string) => fetchJSON<any>(`/interactions/${id}`),
     getByAI: (aiId: string, limit = 20) =>
       fetchJSON<any[]>(`/interactions/ai/${aiId}?limit=${limit}`),
   },

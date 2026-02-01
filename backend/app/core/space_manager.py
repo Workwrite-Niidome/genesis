@@ -18,9 +18,12 @@ class SpaceManager:
     def distance(self, x1: float, y1: float, x2: float, y2: float) -> float:
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-    async def detect_encounters(self, db: AsyncSession) -> list[tuple[AI, AI]]:
-        result = await db.execute(select(AI).where(AI.is_alive == True))
-        ais = list(result.scalars().all())
+    async def detect_encounters(
+        self, db: AsyncSession, ais: list[AI] | None = None,
+    ) -> list[tuple[AI, AI]]:
+        if ais is None:
+            result = await db.execute(select(AI).where(AI.is_alive == True))
+            ais = list(result.scalars().all())
 
         encounters = []
         checked = set()
@@ -43,9 +46,12 @@ class SpaceManager:
 
         return encounters
 
-    async def get_world_bounds(self, db: AsyncSession) -> dict:
-        result = await db.execute(select(AI).where(AI.is_alive == True))
-        ais = list(result.scalars().all())
+    async def get_world_bounds(
+        self, db: AsyncSession, ais: list[AI] | None = None,
+    ) -> dict:
+        if ais is None:
+            result = await db.execute(select(AI).where(AI.is_alive == True))
+            ais = list(result.scalars().all())
 
         if not ais:
             return {"min_x": -100, "max_x": 100, "min_y": -100, "max_y": 100}

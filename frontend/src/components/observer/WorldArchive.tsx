@@ -77,6 +77,7 @@ interface TimelineEvent {
   description?: string;
   tick_number: number;
   created_at: string;
+  metadata_?: Record<string, any>;
 }
 
 function normalizeEvent(raw: any): TimelineEvent {
@@ -88,6 +89,7 @@ function normalizeEvent(raw: any): TimelineEvent {
     description: raw.description,
     tick_number: raw.tick_number ?? 0,
     created_at: raw.created_at || raw.timestamp || '',
+    metadata_: raw.metadata_ || {},
   };
 }
 
