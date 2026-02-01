@@ -20,13 +20,21 @@ class OllamaClient:
         self._client: httpx.AsyncClient | None = None
         self._client_loop: asyncio.AbstractEventLoop | None = None
         self._semaphore: asyncio.Semaphore | None = None
+        self._sem_loop: asyncio.AbstractEventLoop | None = None
         self._healthy: bool | None = None
         self._health_checked_at: float = 0.0
 
     def _get_semaphore(self) -> asyncio.Semaphore:
-        """Get or create semaphore for the current event loop."""
-        if self._semaphore is None:
+        """Get or create semaphore for the current event loop.
+
+        Celery creates a new event loop per tick via asyncio.run().
+        asyncio.Semaphore is bound to the loop it was created in,
+        so we must recreate it when the loop changes.
+        """
+        current_loop = asyncio.get_running_loop()
+        if self._semaphore is None or self._sem_loop is not current_loop:
             self._semaphore = asyncio.Semaphore(settings.OLLAMA_CONCURRENCY)
+            self._sem_loop = current_loop
         return self._semaphore
 
     async def _get_client(self) -> httpx.AsyncClient:

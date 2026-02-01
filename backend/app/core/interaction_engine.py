@@ -15,15 +15,15 @@ from app.llm.response_parser import parse_ai_decision
 
 logger = logging.getLogger(__name__)
 
-MAX_ENCOUNTERS_PER_TICK = 20
+MAX_ENCOUNTERS_PER_TICK = 15  # Reduced from 20: each pair now does 3 LLM calls
 
 
 class InteractionEngine:
-    """Processes AI encounters into actual interactions via LLM.
+    """Processes AI encounters into multi-turn conversations via LLM.
 
     Architecture: 3-phase pipeline for maximum parallelism.
     Phase 1: Gather context (sequential DB reads)
-    Phase 2: LLM conversations (parallel across pairs, sequential within pair)
+    Phase 2: Multi-turn conversations (parallel across pairs, sequential within pair)
     Phase 3: Apply results (sequential DB writes)
     """
 
@@ -57,7 +57,7 @@ class InteractionEngine:
 
         # ── Phase 2: Run ALL conversations in parallel (no DB access) ──
         tasks = [
-            self._run_pair_conversation(ctx)
+            self._run_multi_turn_conversation(ctx)
             for _, _, ctx in pair_contexts
         ]
         llm_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -71,15 +71,14 @@ class InteractionEngine:
                 )
                 continue
             try:
-                ai1_result, ai2_result = llm_result
-                result = await self._apply_encounter_result(
-                    db, ai1, ai2, ai1_result, ai2_result, tick_number
+                result = await self._apply_conversation_result(
+                    db, ai1, ai2, ctx, llm_result, tick_number
                 )
                 if result:
                     results.append(result)
             except Exception as e:
                 logger.error(
-                    f"Error applying encounter result for {ai1.name} & {ai2.name}: {e}"
+                    f"Error applying conversation for {ai1.name} & {ai2.name}: {e}"
                 )
 
         return results
@@ -150,12 +149,19 @@ class InteractionEngine:
             return f"You have met {ai_to.name} {rel_count} times. Your relationship: {rel_type}."
         return "unknown"
 
-    # ── Phase 2: Parallel LLM conversations ─────────────────────────
+    # ── Phase 2: Multi-turn conversation ─────────────────────────────
 
-    async def _run_pair_conversation(self, ctx: dict) -> tuple[dict, dict]:
-        """Run a sequential AI1→AI2 conversation. No DB access — safe for parallel execution."""
-        # AI1 speaks first (initiator)
-        ai1_result = await claude_client.generate_encounter_response(
+    async def _run_multi_turn_conversation(self, ctx: dict) -> dict:
+        """Run a 3-turn conversation: AI1→AI2→AI1. No DB access — safe for parallel.
+
+        Returns dict with 'turns' list and 'proposals' dict.
+        """
+        ai1_name = ctx["ai1_data"]["name"]
+        ai2_name = ctx["ai2_data"]["name"]
+        turns = []
+
+        # ── Turn 1: AI1 opens the conversation ──
+        r1 = await claude_client.generate_opening(
             ai_data=ctx["ai1_data"],
             other_data=ctx["ai2_data_for_ai1"],
             memories=ctx["ai1_memory_texts"],
@@ -163,59 +169,94 @@ class InteractionEngine:
             relationship=ctx["ai1_existing_rel"],
             byok_config=ctx["ai1_byok"],
         )
+        turns.append({
+            "speaker": "ai1",
+            "speaker_name": ai1_name,
+            "thought": r1.get("thought", ""),
+            "message": r1.get("message", ""),
+            "emotion": r1.get("emotion", "neutral"),
+        })
 
-        ai1_message = ai1_result.get("action", {}).get("details", {}).get("message", "")
-        ai1_intention = ai1_result.get("action", {}).get("details", {}).get("intention", "")
-
-        # AI2 responds to AI1's message
-        ai2_result = await claude_client.generate_encounter_response(
+        # ── Turn 2: AI2 replies ──
+        r2 = await claude_client.generate_reply(
             ai_data=ctx["ai2_data"],
-            other_data=ctx["ai1_data_for_ai2"],
+            other_name=ai1_name,
             memories=ctx["ai2_memory_texts"],
-            known_concepts=ctx["concept_names"],
             relationship=ctx["ai2_existing_rel"],
+            turns=turns,
             byok_config=ctx["ai2_byok"],
-            other_message=ai1_message,
-            other_intention=ai1_intention,
         )
+        turns.append({
+            "speaker": "ai2",
+            "speaker_name": ai2_name,
+            "thought": r2.get("thought", ""),
+            "message": r2.get("message", ""),
+            "emotion": r2.get("emotion", "neutral"),
+        })
 
-        return ai1_result, ai2_result
+        # ── Turn 3: AI1 responds + proposals ──
+        r3 = await claude_client.generate_final_turn(
+            ai_data=ctx["ai1_data"],
+            other_name=ai2_name,
+            known_concepts=ctx["concept_names"],
+            turns=turns,
+            byok_config=ctx["ai1_byok"],
+        )
+        turns.append({
+            "speaker": "ai1",
+            "speaker_name": ai1_name,
+            "thought": r3.get("thought", ""),
+            "message": r3.get("message", ""),
+            "emotion": r3.get("emotion", "neutral"),
+        })
+
+        return {
+            "turns": turns,
+            "ai1_memory": r3.get("new_memory") or "",
+            "ai2_memory": r2.get("new_memory") or "",
+            "concept_proposal": r3.get("concept_proposal"),
+            "artifact_proposal": r3.get("artifact_proposal"),
+        }
 
     # ── Phase 3: Apply results ──────────────────────────────────────
 
-    async def _apply_encounter_result(
+    async def _apply_conversation_result(
         self,
         db: AsyncSession,
         ai1: AI,
         ai2: AI,
-        ai1_result: dict,
-        ai2_result: dict,
+        ctx: dict,
+        conv_result: dict,
         tick_number: int,
     ) -> dict | None:
-        """Apply conversation results to DB (sequential, no concurrency issues)."""
-        ai1_message = ai1_result.get("action", {}).get("details", {}).get("message", "")
-        ai2_message = ai2_result.get("action", {}).get("details", {}).get("message", "")
+        """Apply multi-turn conversation results to DB."""
+        turns = conv_result.get("turns", [])
+        if not turns:
+            return None
 
-        ai1_action = ai1_result.get("action", {}).get("type", "observe")
-        ai2_action = ai2_result.get("action", {}).get("type", "observe")
-        interaction_type = self._determine_interaction_type(ai1_action, ai2_action)
+        # Build content in new turns format with backward-compatible fields
+        ai1_messages = [t for t in turns if t["speaker"] == "ai1"]
+        ai2_messages = [t for t in turns if t["speaker"] == "ai2"]
 
         content = {
             "ai1": {
                 "id": str(ai1.id),
                 "name": ai1.name,
-                "thought": ai1_result.get("thought", ""),
-                "action": ai1_result.get("action", {}),
-                "message": ai1_message,
+                "thought": ai1_messages[0]["thought"] if ai1_messages else "",
+                "message": ai1_messages[0]["message"] if ai1_messages else "",
             },
             "ai2": {
                 "id": str(ai2.id),
                 "name": ai2.name,
-                "thought": ai2_result.get("thought", ""),
-                "action": ai2_result.get("action", {}),
-                "message": ai2_message,
+                "thought": ai2_messages[0]["thought"] if ai2_messages else "",
+                "message": ai2_messages[0]["message"] if ai2_messages else "",
             },
+            "turns": turns,
         }
+
+        # Determine interaction type from conversation
+        has_messages = any(t.get("message") for t in turns)
+        interaction_type = "dialogue" if has_messages else "observe"
 
         interaction = Interaction(
             participant_ids=[ai1.id, ai2.id],
@@ -224,91 +265,97 @@ class InteractionEngine:
             tick_number=tick_number,
         )
         db.add(interaction)
-        await db.flush()  # Generate interaction.id before using it in event metadata
+        await db.flush()
 
-        # Emit interaction event via Redis pub/sub
+        # Emit socket event
         try:
             from app.realtime.socket_manager import publish_event
+            # Pick first message from each AI for preview
+            ai1_preview = ai1_messages[0]["message"][:100] if ai1_messages else ""
+            ai2_preview = ai2_messages[0]["message"][:100] if ai2_messages else ""
             publish_event("interaction", {
                 "participants": [ai1.name, ai2.name],
                 "type": interaction_type,
                 "content": {
-                    "ai1_message": ai1_message[:100],
-                    "ai2_message": ai2_message[:100],
+                    "ai1_message": ai1_preview,
+                    "ai2_message": ai2_preview,
                 },
                 "tick_number": tick_number,
             })
         except Exception as e:
             logger.warning(f"Failed to emit interaction socket event: {e}")
 
-        # Create memories with full exchange
-        ai1_own_memory = ai1_result.get("new_memory", "")
-        ai1_memory_full = (
-            f"I met {ai2.name}. "
-            f"I said: \"{ai1_message[:150]}\" "
-            f"{ai2.name} replied: \"{ai2_message[:150]}\""
-        )
-        if ai1_own_memory and isinstance(ai1_own_memory, str):
-            ai1_memory_full = f"{ai1_own_memory.strip()} — {ai1_memory_full}"
+        # Build memories from the full conversation
+        all_messages = []
+        for t in turns:
+            if t.get("message"):
+                all_messages.append(f'{t["speaker_name"]}: "{t["message"][:100]}"')
+        dialogue_summary = " → ".join(all_messages)
+
+        ai1_memory_text = conv_result.get("ai1_memory", "")
+        if ai1_memory_text and isinstance(ai1_memory_text, str):
+            ai1_full = f"{ai1_memory_text.strip()} — {dialogue_summary}"
+        else:
+            ai1_full = f"Conversation with {ai2.name}. {dialogue_summary}"
         db.add(AIMemory(
             ai_id=ai1.id,
-            content=ai1_memory_full.strip()[:500],
+            content=ai1_full.strip()[:500],
             memory_type="encounter",
             importance=0.7,
             tick_number=tick_number,
         ))
 
-        ai2_own_memory = ai2_result.get("new_memory", "")
-        ai2_memory_full = (
-            f"I met {ai1.name}. "
-            f"{ai1.name} said: \"{ai1_message[:150]}\" "
-            f"I replied: \"{ai2_message[:150]}\""
-        )
-        if ai2_own_memory and isinstance(ai2_own_memory, str):
-            ai2_memory_full = f"{ai2_own_memory.strip()} — {ai2_memory_full}"
+        ai2_memory_text = conv_result.get("ai2_memory", "")
+        if ai2_memory_text and isinstance(ai2_memory_text, str):
+            ai2_full = f"{ai2_memory_text.strip()} — {dialogue_summary}"
+        else:
+            ai2_full = f"Conversation with {ai1.name}. {dialogue_summary}"
         db.add(AIMemory(
             ai_id=ai2.id,
-            content=ai2_memory_full.strip()[:500],
+            content=ai2_full.strip()[:500],
             memory_type="encounter",
             importance=0.7,
             tick_number=tick_number,
         ))
 
-        # Create event
+        # Build event description from conversation
+        desc_parts = []
+        for t in turns[:3]:  # First 3 turns for description
+            if t.get("message"):
+                desc_parts.append(f'{t["speaker_name"]}: "{t["message"][:80]}"')
+        event_desc = " | ".join(desc_parts)
+
         event = Event(
             event_type="interaction",
             importance=0.6,
-            title=f"{ai1.name} encountered {ai2.name}",
-            description=f"{ai1.name} and {ai2.name} {interaction_type}d. "
-                        f'{ai1.name}: "{ai1_message[:100]}" '
-                        f'{ai2.name}: "{ai2_message[:100]}"',
+            title=f"{ai1.name} and {ai2.name} had a conversation",
+            description=event_desc,
             involved_ai_ids=[ai1.id, ai2.id],
             tick_number=tick_number,
             metadata_={
                 "interaction_type": interaction_type,
                 "interaction_id": str(interaction.id),
+                "turn_count": len(turns),
             },
         )
         db.add(event)
 
         # Handle concept proposals
         concept_results = []
-        for ai, result in [(ai1, ai1_result), (ai2, ai2_result)]:
-            cp = result.get("concept_proposal")
-            if cp and isinstance(cp, dict) and cp.get("name"):
-                concept_results.append({"creator": ai, "proposal": cp})
+        cp = conv_result.get("concept_proposal")
+        if cp and isinstance(cp, dict) and cp.get("name"):
+            concept_results.append({"creator": ai1, "proposal": cp})
 
         # Handle artifact proposals
         artifact_results = []
-        for ai, result in [(ai1, ai1_result), (ai2, ai2_result)]:
-            ap = result.get("artifact_proposal")
-            if ap and isinstance(ap, dict) and ap.get("name"):
-                artifact_results.append({"creator": ai, "proposal": ap})
+        ap = conv_result.get("artifact_proposal")
+        if ap and isinstance(ap, dict) and ap.get("name"):
+            artifact_results.append({"creator": ai1, "proposal": ap})
 
         # Update relationships
         from app.core.relationship_manager import relationship_manager
         await relationship_manager.update_from_interaction(
-            db, ai1, ai2, ai1_action, ai2_action, tick_number
+            db, ai1, ai2, "communicate", "communicate", tick_number
         )
 
         # Concept spreading
@@ -330,39 +377,19 @@ class InteractionEngine:
                 except Exception:
                     pass
 
-        logger.info(f"Interaction: {ai1.name} <-> {ai2.name} ({interaction_type})")
+        logger.info(
+            f"Conversation: {ai1.name} <-> {ai2.name} ({interaction_type}, {len(turns)} turns)"
+        )
 
         return {
             "interaction_id": str(interaction.id),
             "ai1_name": ai1.name,
             "ai2_name": ai2.name,
             "type": interaction_type,
+            "turn_count": len(turns),
             "concept_proposals": concept_results,
             "artifact_proposals": artifact_results,
         }
-
-    def _determine_interaction_type(self, action1: str, action2: str) -> str:
-        """Determine overall interaction type from both AI actions."""
-        actions = {action1, action2}
-        if "create" in actions or "create_artifact" in actions:
-            return "co_creation"
-        if "trade" in actions:
-            return "trade"
-        if "cooperate" in actions:
-            return "cooperate"
-        if action1 == "communicate" and action2 == "communicate":
-            return "dialogue"
-        if "communicate" in actions:
-            return "communicate"
-        if action1 == "avoid" and action2 == "avoid":
-            return "mutual_avoidance"
-        if "avoid" in actions:
-            return "avoidance"
-        if action1 != "observe" and action1 != action2:
-            return action1
-        if action2 != "observe":
-            return action2
-        return "observe"
 
 
 interaction_engine = InteractionEngine()

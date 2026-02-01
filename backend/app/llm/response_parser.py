@@ -21,6 +21,8 @@ def parse_ai_decision(response: dict | str) -> dict:
         "thought": response.get("thought") or response.get("thoughts", ""),
         "thought_type": response.get("thought_type", "reflection"),
         "action": response.get("action", {"type": "observe", "details": {}}),
+        "message": response.get("message"),
+        "emotion": response.get("emotion"),
         "new_memory": response.get("new_memory"),
         "concept_proposal": response.get("concept_proposal"),
         "artifact_proposal": response.get("artifact_proposal"),

@@ -739,7 +739,7 @@ function ConversationView({ interaction, t }: { interaction: Interaction; t: TFn
   return <PairConversationView content={content} interaction={interaction} t={t} />;
 }
 
-/** 1-on-1 conversation view */
+/** 1-on-1 conversation view — supports both multi-turn (turns array) and legacy format */
 function PairConversationView({
   content,
   interaction,
@@ -751,6 +751,7 @@ function PairConversationView({
 }) {
   const ai1 = content.ai1;
   const ai2 = content.ai2;
+  const turns = content.turns;
   const [ai1Entity, setAi1Entity] = useState<AIEntity | null>(null);
   const [ai2Entity, setAi2Entity] = useState<AIEntity | null>(null);
 
@@ -764,9 +765,57 @@ function PairConversationView({
   const ai1Name = ai1?.name || ai1Entity?.name || '???';
   const ai2Name = ai2?.name || ai2Entity?.name || '???';
 
+  // Multi-turn format
+  if (turns && turns.length > 0) {
+    return (
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          <MessageCircle size={12} className="text-rose-400" />
+          <span className="text-[11px] font-medium text-rose-400 uppercase tracking-wider">
+            {t(`interaction_type_${interaction.interaction_type}`, interaction.interaction_type)}
+          </span>
+          <span className="text-[10px] mono text-text-3 ml-auto">
+            Tick {interaction.tick_number} · {turns.length} turns
+          </span>
+        </div>
+
+        {/* Render each turn */}
+        {turns.map((turn, idx) => {
+          const isAi1 = turn.speaker === 'ai1';
+          const name = turn.speaker_name || (isAi1 ? ai1Name : ai2Name);
+          const color = isAi1 ? ai1Color : ai2Color;
+          const side = isAi1 ? 'left' as const : 'right' as const;
+
+          return (
+            <div key={idx}>
+              {idx > 0 && (
+                <div className="flex items-center gap-2 px-2 my-2">
+                  <div className="flex-1 h-px bg-white/[0.06]" />
+                  {turn.emotion && (
+                    <span className="text-[9px] text-text-3 opacity-40 italic">{turn.emotion}</span>
+                  )}
+                  <div className="flex-1 h-px bg-white/[0.06]" />
+                </div>
+              )}
+              <ConversationTurnView
+                name={name}
+                color={color}
+                thought={turn.thought}
+                message={turn.message}
+                side={side}
+                t={t}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Legacy 2-turn format (backward compat)
   return (
     <div className="space-y-4">
-      {/* Interaction type badge */}
       <div className="flex items-center gap-2">
         <MessageCircle size={12} className="text-rose-400" />
         <span className="text-[11px] font-medium text-rose-400 uppercase tracking-wider">
@@ -775,8 +824,7 @@ function PairConversationView({
         <span className="text-[10px] mono text-text-3 ml-auto">Tick {interaction.tick_number}</span>
       </div>
 
-      {/* AI 1 turn */}
-      <ConversationTurn
+      <ConversationTurnView
         name={ai1Name}
         color={ai1Color}
         thought={ai1?.thought}
@@ -786,15 +834,13 @@ function PairConversationView({
         t={t}
       />
 
-      {/* Divider */}
       <div className="flex items-center gap-2 px-2">
         <div className="flex-1 h-px bg-white/[0.06]" />
         <ArrowRight size={12} className="text-text-3 opacity-30 rotate-90" />
         <div className="flex-1 h-px bg-white/[0.06]" />
       </div>
 
-      {/* AI 2 turn */}
-      <ConversationTurn
+      <ConversationTurnView
         name={ai2Name}
         color={ai2Color}
         thought={ai2?.thought}
@@ -917,7 +963,7 @@ function GroupConversationView({
 }
 
 /** Single AI's turn in a conversation */
-function ConversationTurn({
+function ConversationTurnView({
   name,
   color,
   thought,
@@ -1012,6 +1058,7 @@ function InteractionPreview({ interaction, t }: { interaction: Interaction; t: T
   const openDetail = useDetailStore((s) => s.openDetail);
   const content = interaction.content;
   const isGroup = interaction.interaction_type === 'group_gathering';
+  const turns = content.turns;
 
   return (
     <button
@@ -1039,7 +1086,20 @@ function InteractionPreview({ interaction, t }: { interaction: Interaction; t: T
               <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{content.speech}</p>
             </div>
           )
+        ) : turns && turns.length > 0 ? (
+          /* Multi-turn format: show first 2 turns */
+          turns.slice(0, 2).map((turn, idx) => (
+            <div key={idx} className="flex items-start gap-2">
+              <span className={`text-[10px] font-medium flex-shrink-0 mt-0.5 w-16 truncate ${
+                turn.speaker === 'ai1' ? 'text-accent' : 'text-cyan'
+              }`}>
+                {turn.speaker_name}:
+              </span>
+              <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">{turn.message}</p>
+            </div>
+          ))
         ) : (
+          /* Legacy format */
           <>
             {content.ai1?.message && (
               <div className="flex items-start gap-2">

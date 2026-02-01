@@ -117,14 +117,24 @@ export interface InteractionParticipant {
   message?: string;
 }
 
+export interface ConversationTurn {
+  speaker: 'ai1' | 'ai2';
+  speaker_name: string;
+  thought: string;
+  message: string;
+  emotion?: string;
+}
+
 export interface Interaction {
   id: string;
   participant_ids: string[];
   interaction_type: string;
   content: {
-    // 1-on-1 interaction format
+    // 1-on-1 interaction format (backward compat)
     ai1?: InteractionParticipant;
     ai2?: InteractionParticipant;
+    // Multi-turn conversation format (new)
+    turns?: ConversationTurn[];
     // Group gathering format
     speaker?: { id: string; name: string };
     thought?: string;

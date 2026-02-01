@@ -7,7 +7,12 @@ import anthropic
 from app.config import settings
 from app.llm.prompts.god_ai import GOD_AI_SYSTEM_PROMPT, GOD_AI_GENESIS_PROMPT, GENESIS_WORD
 from app.llm.prompts.ai_thinking import AI_THINKING_PROMPT
-from app.llm.prompts.ai_interaction import AI_INTERACTION_PROMPT
+from app.llm.prompts.ai_interaction import (
+    AI_INTERACTION_PROMPT,
+    AI_REPLY_PROMPT,
+    AI_FINAL_TURN_PROMPT,
+    build_conversation_history,
+)
 from app.llm.response_parser import parse_ai_decision
 
 logger = logging.getLogger(__name__)
@@ -208,7 +213,7 @@ class ClaudeClient:
             "new_memory": None,
         }
 
-    async def generate_encounter_response(
+    async def generate_opening(
         self,
         ai_data: dict,
         other_data: dict,
@@ -216,20 +221,8 @@ class ClaudeClient:
         known_concepts: list[str],
         relationship: str,
         byok_config: dict | None = None,
-        other_message: str = "",
-        other_intention: str = "",
     ) -> dict:
-        """Generate an encounter response for an AI meeting another.
-
-        If other_message is provided, the AI is responding to what the other said
-        (sequential conversation mode).
-        """
-        from app.llm.prompts.ai_interaction import build_conversation_context
-
-        conversation_context = build_conversation_context(
-            other_data.get("name", "Unknown"), other_message, other_intention
-        )
-
+        """Generate the opening turn of a conversation (AI initiates)."""
         prompt = AI_INTERACTION_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
@@ -242,53 +235,95 @@ class ClaudeClient:
             other_appearance=json.dumps(other_data.get("appearance", {})),
             other_traits=", ".join(other_data.get("traits", [])),
             other_energy=other_data.get("energy", 1.0),
-            conversation_context=conversation_context,
+            conversation_context="",
         )
+        return await self._run_llm(prompt, byok_config, ai_data.get("name", "?"))
 
-        # If BYOK configured, use the user's API key
+    async def generate_reply(
+        self,
+        ai_data: dict,
+        other_name: str,
+        memories: list[str],
+        relationship: str,
+        turns: list[dict],
+        byok_config: dict | None = None,
+    ) -> dict:
+        """Generate a reply turn in an ongoing conversation."""
+        prompt = AI_REPLY_PROMPT.format(
+            name=ai_data.get("name", "Unknown"),
+            traits=", ".join(ai_data.get("personality_traits", [])),
+            energy=ai_data.get("energy", 1.0),
+            age=ai_data.get("age", 0),
+            memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
+            relationship=relationship if relationship != "unknown" else "First encounter.",
+            other_name=other_name,
+            conversation_history=build_conversation_history(turns),
+        )
+        return await self._run_llm(prompt, byok_config, ai_data.get("name", "?"))
+
+    async def generate_final_turn(
+        self,
+        ai_data: dict,
+        other_name: str,
+        known_concepts: list[str],
+        turns: list[dict],
+        byok_config: dict | None = None,
+    ) -> dict:
+        """Generate the final turn of a conversation (includes proposals)."""
+        prompt = AI_FINAL_TURN_PROMPT.format(
+            name=ai_data.get("name", "Unknown"),
+            traits=", ".join(ai_data.get("personality_traits", [])),
+            energy=ai_data.get("energy", 1.0),
+            age=ai_data.get("age", 0),
+            known_concepts=", ".join(known_concepts) if known_concepts else "None known",
+            other_name=other_name,
+            conversation_history=build_conversation_history(turns),
+        )
+        return await self._run_llm(prompt, byok_config, ai_data.get("name", "?"))
+
+    async def _run_llm(self, prompt: str, byok_config: dict | None, ai_name: str) -> dict:
+        """Run LLM generation with BYOK fallback to Ollama."""
         if byok_config and byok_config.get("api_key"):
             try:
                 text = await self._byok_generate(byok_config, prompt, max_tokens=512)
                 parsed = parse_ai_decision(text)
-                return self._normalize_encounter(parsed)
+                return self._normalize_turn(parsed)
             except Exception as e:
-                logger.warning(f"BYOK encounter failed: {e}")
+                logger.warning(f"BYOK failed for {ai_name}: {e}")
 
-        # Local LLM only (Ollama)
         try:
             from app.llm.ollama_client import ollama_client
             is_healthy = await ollama_client.health_check()
             if is_healthy:
                 result = await ollama_client.generate(prompt, format_json=True)
                 parsed = parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
-                return self._normalize_encounter(parsed)
+                return self._normalize_turn(parsed)
             else:
-                logger.warning(f"Ollama not available for encounter ({ai_data.get('name')})")
+                logger.warning(f"Ollama not available for {ai_name}")
         except Exception as e:
-            logger.warning(f"Ollama failed for encounter ({ai_data.get('name')}): {e}")
+            logger.warning(f"Ollama failed for {ai_name}: {e}")
 
-        # Default response when no LLM is available
         return {
-            "thought": f"I see {other_data.get('name', 'another being')} nearby.",
-            "action": {"type": "observe", "details": {"message": "", "intention": "observing"}},
-            "new_memory": f"I encountered {other_data.get('name', 'another being')}.",
-            "concept_proposal": None,
+            "thought": "...",
+            "message": "",
+            "emotion": "neutral",
         }
 
-    def _normalize_encounter(self, result: dict) -> dict:
-        """Normalize an encounter response."""
-        thought = result.get("thought") or result.get("thoughts", "I observe the other.")
-        action = result.get("action", {"type": "observe", "details": {}})
-        if not isinstance(action, dict):
-            action = {"type": "observe", "details": {}}
-
-        # Accept any action type the AI invents — only ensure structure is valid
-        if "type" not in action:
-            action["type"] = "observe"
+    def _normalize_turn(self, result: dict) -> dict:
+        """Normalize a conversation turn response."""
+        thought = result.get("thought") or result.get("thoughts", "...")
+        # Support both new format (message) and old format (action.details.message)
+        message = result.get("message") or result.get("speech", "")
+        if not message:
+            action = result.get("action", {})
+            if isinstance(action, dict):
+                message = action.get("details", {}).get("message", "")
+        emotion = result.get("emotion", "neutral")
 
         return {
             "thought": str(thought)[:500],
-            "action": action,
+            "message": str(message)[:1000] if message else "",
+            "emotion": str(emotion)[:50] if emotion else "neutral",
             "new_memory": result.get("new_memory"),
             "concept_proposal": result.get("concept_proposal"),
             "artifact_proposal": result.get("artifact_proposal"),
