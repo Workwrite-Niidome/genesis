@@ -51,7 +51,8 @@ async def _process_tick_with_speed_control():
         # Read speed multiplier
         speed_raw = r.get("genesis:time_speed")
         speed = float(speed_raw.decode()) if speed_raw else 1.0
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Redis speed control unavailable, using default: {e}")
         speed = 1.0
 
     if speed < 1.0:
@@ -98,6 +99,16 @@ async def _process_tick_async():
 
         bounds = await space_manager.get_world_bounds(db)
 
+        # --- Age all alive AIs and passively recover energy ---
+        for ai in ais:
+            state = dict(ai.state)
+            state["age"] = state.get("age", 0) + 1
+            # Passive energy recovery for AIs not in thinking batch
+            energy = state.get("energy", 1.0)
+            if energy < 1.0:
+                state["energy"] = min(1.0, energy + 0.01)
+            ai.state = state
+
         # Run AI thinking cycle every N ticks
         thoughts_generated = 0
         if ai_count > 0 and tick_number % THINKING_INTERVAL_TICKS == 0:
@@ -106,6 +117,13 @@ async def _process_tick_async():
                 logger.info(f"Tick {tick_number}: {thoughts_generated} AIs thought")
             except Exception as e:
                 logger.error(f"AI thinking cycle error at tick {tick_number}: {e}")
+
+        # Commit thinking results
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Tick {tick_number}: thinking commit failed: {e}")
+            await db.rollback()
 
         # Process encounters into interactions (independent interval)
         interactions_processed = 0
@@ -149,6 +167,13 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"Interaction processing error at tick {tick_number}: {e}")
 
+            # Commit interaction results
+            try:
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Tick {tick_number}: interaction commit failed: {e}")
+                await db.rollback()
+
         # Group conversations (3+ AIs gathered)
         group_conversations = 0
         if ai_count >= 3 and tick_number % GROUP_CONVERSATION_INTERVAL == 0:
@@ -165,7 +190,14 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"Group conversation error at tick {tick_number}: {e}")
 
-        # Check for AI deaths
+            # Commit group conversation results
+            try:
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Tick {tick_number}: group conversation commit failed: {e}")
+                await db.rollback()
+
+        # Check for AI deaths (no longer does its own commit)
         deaths = 0
         try:
             deaths = await ai_manager.check_deaths(db, tick_number)
@@ -182,13 +214,20 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"Visual evolution error at tick {tick_number}: {e}")
 
-        # Recalculate evolution scores periodically
+        # Recalculate evolution scores periodically (no longer does its own commit)
         if ai_count > 0 and tick_number % EVOLUTION_SCORE_INTERVAL == 0:
             try:
                 await evolution_engine.recalculate_all_scores(db, tick_number)
                 logger.info(f"Tick {tick_number}: Evolution scores recalculated")
             except Exception as e:
                 logger.error(f"Evolution score error at tick {tick_number}: {e}")
+
+        # Commit deaths + visual evolution + evolution scores
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Tick {tick_number}: late-phase commit failed: {e}")
+            await db.rollback()
 
         # God AI autonomous observation
         if tick_number % GOD_OBSERVATION_INTERVAL == 0 and tick_number > 0:

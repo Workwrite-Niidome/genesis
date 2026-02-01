@@ -70,15 +70,25 @@ class InteractionEngine:
         concepts = list(concept_result.scalars().all())
         concept_names = [c.name for c in concepts]
 
-        # Get existing relationship between the two AIs
+        # Get existing relationship from AI1's perspective toward AI2
         ai1_relationships = ai1.state.get("relationships", {})
-        rel_data = ai1_relationships.get(str(ai2.id), "unknown")
-        if isinstance(rel_data, dict):
-            rel_type = rel_data.get("type", "neutral")
-            rel_count = rel_data.get("interaction_count", 0)
-            existing_rel = f"You have met {ai2.name} {rel_count} times. Your relationship: {rel_type}."
+        ai1_rel_data = ai1_relationships.get(str(ai2.id), "unknown")
+        if isinstance(ai1_rel_data, dict):
+            ai1_rel_type = ai1_rel_data.get("type", "neutral")
+            ai1_rel_count = ai1_rel_data.get("interaction_count", 0)
+            ai1_existing_rel = f"You have met {ai2.name} {ai1_rel_count} times. Your relationship: {ai1_rel_type}."
         else:
-            existing_rel = "unknown"
+            ai1_existing_rel = "unknown"
+
+        # Get existing relationship from AI2's perspective toward AI1
+        ai2_relationships = ai2.state.get("relationships", {})
+        ai2_rel_data = ai2_relationships.get(str(ai1.id), "unknown")
+        if isinstance(ai2_rel_data, dict):
+            ai2_rel_type = ai2_rel_data.get("type", "neutral")
+            ai2_rel_count = ai2_rel_data.get("interaction_count", 0)
+            ai2_existing_rel = f"You have met {ai1.name} {ai2_rel_count} times. Your relationship: {ai2_rel_type}."
+        else:
+            ai2_existing_rel = "unknown"
 
         # Get BYOK configs
         ai1_byok = ai1.state.get("byok_config")
@@ -100,7 +110,7 @@ class InteractionEngine:
                 },
                 memories=ai1_memory_texts,
                 known_concepts=concept_names,
-                relationship=existing_rel,
+                relationship=ai1_existing_rel,
                 byok_config=ai1_byok,
             ),
             claude_client.generate_encounter_response(
@@ -117,7 +127,7 @@ class InteractionEngine:
                 },
                 memories=ai2_memory_texts,
                 known_concepts=concept_names,
-                relationship=existing_rel,
+                relationship=ai2_existing_rel,
                 byok_config=ai2_byok,
             ),
         )

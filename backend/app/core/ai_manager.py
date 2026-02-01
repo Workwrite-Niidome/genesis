@@ -225,9 +225,6 @@ class AIManager:
                     state["zero_energy_ticks"] = 0
                     ai.state = state
 
-        if deaths > 0:
-            await db.commit()
-
         return deaths
 
     async def get_nearby_ais(

@@ -22,7 +22,12 @@ class AIThinker:
     """Orchestrates the AI thinking cycle."""
 
     async def run_thinking_cycle(self, db: AsyncSession, tick_number: int) -> int:
-        """Run a thinking cycle for a batch of AIs. Returns count of AIs that thought."""
+        """Run a thinking cycle for a batch of AIs. Returns count of AIs that thought.
+
+        Strategy: gather DB context sequentially, run LLM calls in parallel,
+        then apply results to DB sequentially.  This avoids concurrent access
+        to a single AsyncSession.
+        """
         ais = await ai_manager.get_all_alive(db)
         if not ais:
             return 0
@@ -30,30 +35,48 @@ class AIThinker:
         # Select a random batch
         batch = random.sample(ais, min(BATCH_SIZE, len(ais)))
 
-        # Run all AI thinking in parallel via asyncio.gather
-        results = await asyncio.gather(
-            *(self._think_for_single_ai(db, ai, tick_number) for ai in batch),
-            return_exceptions=True,
-        )
+        # Phase 1: Gather context for each AI sequentially (DB reads)
+        ai_contexts = []
+        for ai in batch:
+            try:
+                ctx = await self._gather_context(db, ai)
+                ai_contexts.append((ai, ctx))
+            except Exception as e:
+                logger.error(f"Error gathering context for AI {ai.name}: {e}")
 
+        if not ai_contexts:
+            return 0
+
+        # Phase 2: Run all LLM calls in parallel (no DB access)
+        llm_tasks = [
+            claude_client.think_for_ai(
+                ctx["ai_data"], ctx["world_context"], ctx["memory_texts"],
+                byok_config=ctx["byok_config"],
+            )
+            for _ai, ctx in ai_contexts
+        ]
+        llm_results = await asyncio.gather(*llm_tasks, return_exceptions=True)
+
+        # Phase 3: Apply results sequentially (DB writes)
         thought_count = 0
-        for ai, result in zip(batch, results):
-            if isinstance(result, Exception):
-                logger.error(f"Error in thinking cycle for AI {ai.name} ({ai.id}): {result}")
-            else:
+        for (ai, ctx), llm_result in zip(ai_contexts, llm_results):
+            if isinstance(llm_result, Exception):
+                logger.error(f"LLM error for AI {ai.name} ({ai.id}): {llm_result}")
+                continue
+            try:
+                await self._apply_result(db, ai, llm_result, ctx["nearby"], tick_number)
                 thought_count += 1
+            except Exception as e:
+                logger.error(f"Error applying result for AI {ai.name}: {e}")
 
-        await db.commit()
         return thought_count
 
-    async def _think_for_single_ai(
-        self, db: AsyncSession, ai: AI, tick_number: int
-    ) -> None:
+    async def _gather_context(self, db: AsyncSession, ai: AI) -> dict:
+        """Gather all context needed for an AI's thinking (DB reads only)."""
         from app.core.relationship_manager import relationship_manager
         from app.core.concept_engine import concept_engine
         from app.core.culture_engine import culture_engine
 
-        # Gather context
         memories = await ai_manager.get_ai_memories(db, ai.id, limit=10)
         memory_texts = [m.content for m in memories]
 
@@ -63,43 +86,34 @@ class AIThinker:
             for n in nearby
         ) if nearby else "None visible"
 
-        # Get relationships summary
         relationships_desc = relationship_manager.get_relationship_summary(ai)
 
-        # Get adopted concepts
         adopted = await concept_engine.get_ai_adopted_concepts(db, ai)
         adopted_desc = "\n".join(
             f"- {c.name} ({c.category}): {c.definition}" for c in adopted
         ) if adopted else "None yet."
 
-        # Get widespread concepts (world culture)
         widespread = await concept_engine.get_widespread_concepts(db)
         culture_desc = "\n".join(
             f"- {c.name} ({c.category}, adopted by {c.adoption_count}): {c.definition}"
             for c in widespread
         ) if widespread else "No widespread concepts yet."
 
-        # Get organizations
         orgs = ai.state.get("organizations", [])
         org_desc = "\n".join(
             f"- {o['name']} (role: {o.get('role', 'member')})" for o in orgs
         ) if orgs else "None."
 
-        # Get artifacts
         artifacts = await culture_engine.get_artifacts_by_ai(db, ai.id, limit=5)
         artifacts_desc = "\n".join(
             f"- {a.name} ({a.artifact_type}): {a.description[:100]}" for a in artifacts
         ) if artifacts else "None yet."
 
-        # Build philosophy section if the AI has one
         philosophy = ai.state.get("philosophy")
-        if philosophy:
-            philosophy_section = (
-                "## Your Creator's Guiding Philosophy\n"
-                f"{philosophy}\n\n"
-            )
-        else:
-            philosophy_section = ""
+        philosophy_section = (
+            f"## Your Creator's Guiding Philosophy\n{philosophy}\n\n"
+            if philosophy else ""
+        )
 
         evolution_score = ai.state.get("evolution_score", 0)
 
@@ -123,11 +137,22 @@ class AIThinker:
             "nearby_ais": nearby_desc,
         }
 
-        # Get BYOK config if this AI was deployed with user's own key
         byok_config = ai.state.get("byok_config")
 
-        # Call LLM
-        result = await claude_client.think_for_ai(ai_data, world_context, memory_texts, byok_config=byok_config)
+        return {
+            "ai_data": ai_data,
+            "world_context": world_context,
+            "memory_texts": memory_texts,
+            "byok_config": byok_config,
+            "nearby": nearby,
+        }
+
+    async def _apply_result(
+        self, db: AsyncSession, ai: AI, result: dict, nearby: list[AI], tick_number: int,
+    ) -> None:
+        """Apply a single LLM result to the DB (sequential, no concurrency)."""
+        from app.core.concept_engine import concept_engine
+        from app.core.culture_engine import culture_engine
 
         # Create thought record
         thought = AIThought(
@@ -154,7 +179,6 @@ class AIThinker:
             ai.position_x += dx
             ai.position_y += dy
         elif action_type == "create":
-            # AI creates an artifact during thinking
             details = action.get("details", {})
             creation_type = details.get("creation_type", "art")
             description = details.get("description", "")
@@ -189,13 +213,11 @@ class AIThinker:
             except Exception as e:
                 logger.debug(f"Artifact proposal during thinking failed: {e}")
 
-        # Update age and energy
+        # Update energy (age is now incremented in tick_engine for ALL AIs)
         state = dict(ai.state)
-        state["age"] = state.get("age", 0) + 1
         if action_type == "rest":
             state["energy"] = min(1.0, state.get("energy", 1.0) + 0.1)
         elif action_type == "create":
-            # Creating costs more energy but is worthwhile
             state["energy"] = max(0.0, state.get("energy", 1.0) - 0.05)
         else:
             state["energy"] = max(0.0, state.get("energy", 1.0) - 0.02)
@@ -215,7 +237,6 @@ class AIThinker:
 
         # Gravity drift: pull AIs toward each other or toward origin
         if nearby:
-            # Drift toward the nearest AI
             nearest = min(
                 nearby,
                 key=lambda n: (n.position_x - ai.position_x) ** 2 + (n.position_y - ai.position_y) ** 2,
@@ -228,7 +249,6 @@ class AIThinker:
                 ai.position_x += (dx / dist) * drift
                 ai.position_y += (dy / dist) * drift
         else:
-            # No nearby AIs: if far from origin, contract toward center
             dist_from_origin = (ai.position_x ** 2 + ai.position_y ** 2) ** 0.5
             if dist_from_origin > 100:
                 ai.position_x *= 0.95

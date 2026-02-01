@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import select, cast, literal
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -45,7 +46,7 @@ async def get_ai_interactions(
 ):
     result = await db.execute(
         select(Interaction)
-        .where(Interaction.participant_ids.any(ai_id))
+        .where(Interaction.participant_ids.op("@>")(cast(literal([ai_id]), PG_ARRAY(PG_UUID(as_uuid=True)))))
         .order_by(Interaction.created_at.desc())
         .limit(limit)
     )

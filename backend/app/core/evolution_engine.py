@@ -32,8 +32,6 @@ class EvolutionEngine:
             elif score >= 100 and old_score < 100:
                 await self._create_milestone_event(db, ai, 100, tick_number)
 
-        await db.commit()
-
     async def _calculate_score(self, db: AsyncSession, ai: AI) -> float:
         """Calculate evolution score for a single AI.
 
@@ -61,10 +59,12 @@ class EvolutionEngine:
         concepts_adopted_by_others = max(0, adoption_result.scalar() or 0)
 
         # Interaction count
+        from sqlalchemy import cast, literal
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, UUID as PG_UUID
         interaction_result = await db.execute(
             select(func.count())
             .select_from(Interaction)
-            .where(Interaction.participant_ids.any(ai.id))
+            .where(Interaction.participant_ids.op("@>")(cast(literal([ai.id]), PG_ARRAY(PG_UUID(as_uuid=True)))))
         )
         interaction_count = interaction_result.scalar() or 0
 

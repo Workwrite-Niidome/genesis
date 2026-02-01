@@ -239,8 +239,6 @@ class GodAIManager:
         state["observations"] = observations[-20:]
         god.state = state
 
-        await db.commit()
-
         logger.info(f"God AI observed the world at tick {tick_number}")
         return observation
 
@@ -369,8 +367,6 @@ class GodAIManager:
         if judgment.get("worthy", False):
             # God succession occurs
             await self._perform_succession(db, god, candidate, tick_number)
-
-        await db.commit()
 
         return {
             "candidate": candidate.name,
