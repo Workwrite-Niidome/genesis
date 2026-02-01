@@ -17,9 +17,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import type { WorldEvent } from '../../types/world';
 import { useSagaStore } from '../../stores/sagaStore';
 import SagaView from './SagaView';
+import DraggablePanel from '../ui/DraggablePanel';
 
 // ---- Event type configuration ----
 
@@ -33,8 +33,6 @@ const EVENT_TYPES = [
   'artifact_created',
   'organization_formed',
 ] as const;
-
-type EventTypeKey = (typeof EVENT_TYPES)[number];
 
 const eventTypeIcons: Record<string, typeof Sparkles> = {
   ai_birth: Sparkles,
@@ -68,6 +66,30 @@ function getColor(eventType: string) {
   return eventTypeColors[eventType] || defaultColor;
 }
 
+// ---- Normalize timeline API response ----
+// API returns { type, timestamp } but our code expects { event_type, created_at }
+interface TimelineEvent {
+  id: string;
+  event_type: string;
+  importance: number;
+  title: string;
+  description?: string;
+  tick_number: number;
+  created_at: string;
+}
+
+function normalizeEvent(raw: any): TimelineEvent {
+  return {
+    id: raw.id,
+    event_type: raw.event_type || raw.type || 'unknown',
+    importance: raw.importance ?? 0.5,
+    title: raw.title || '',
+    description: raw.description,
+    tick_number: raw.tick_number ?? 0,
+    created_at: raw.created_at || raw.timestamp || '',
+  };
+}
+
 // ---- Era grouping helpers ----
 
 const ERA_SIZE = 50;
@@ -76,11 +98,11 @@ interface Era {
   label: string;
   startTick: number;
   endTick: number;
-  events: WorldEvent[];
+  events: TimelineEvent[];
 }
 
-function groupByEra(events: WorldEvent[]): Era[] {
-  const eraMap = new Map<number, WorldEvent[]>();
+function groupByEra(events: TimelineEvent[]): Era[] {
+  const eraMap = new Map<number, TimelineEvent[]>();
 
   for (const event of events) {
     const eraIndex = Math.floor(event.tick_number / ERA_SIZE);
@@ -137,7 +159,7 @@ interface Props {
 export default function WorldArchive({ visible, onClose }: Props) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ArchiveTab>('timeline');
-  const [events, setEvents] = useState<WorldEvent[]>([]);
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -148,12 +170,12 @@ export default function WorldArchive({ visible, onClose }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { hasNewChapter, clearNewFlag } = useSagaStore();
 
-  // Load timeline events
   const loadEvents = useCallback(async (currentLimit: number) => {
     try {
       const data = await api.history.getTimeline(currentLimit);
-      setEvents(data || []);
-      setHasMore((data || []).length >= currentLimit);
+      const normalized = (data || []).map(normalizeEvent);
+      setEvents(normalized);
+      setHasMore(normalized.length >= currentLimit);
     } catch {
       setEvents([]);
       setHasMore(false);
@@ -168,7 +190,6 @@ export default function WorldArchive({ visible, onClose }: Props) {
     return () => clearInterval(interval);
   }, [visible, limit, loadEvents]);
 
-  // Load more events
   const handleLoadMore = async () => {
     setLoadingMore(true);
     const newLimit = limit + 100;
@@ -177,7 +198,6 @@ export default function WorldArchive({ visible, onClose }: Props) {
     setLoadingMore(false);
   };
 
-  // Infinite scroll detection
   const handleScroll = () => {
     if (!scrollRef.current || loadingMore || !hasMore) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -186,41 +206,29 @@ export default function WorldArchive({ visible, onClose }: Props) {
     }
   };
 
-  // Filter toggle
   const toggleFilter = (eventType: string) => {
     setActiveFilters((prev) => {
       const next = new Set(prev);
-      if (next.has(eventType)) {
-        next.delete(eventType);
-      } else {
-        next.add(eventType);
-      }
+      if (next.has(eventType)) next.delete(eventType);
+      else next.add(eventType);
       return next;
     });
   };
 
-  // Era collapse toggle
   const toggleEra = (eraLabel: string) => {
     setCollapsedEras((prev) => {
       const next = new Set(prev);
-      if (next.has(eraLabel)) {
-        next.delete(eraLabel);
-      } else {
-        next.add(eraLabel);
-      }
+      if (next.has(eraLabel)) next.delete(eraLabel);
+      else next.add(eraLabel);
       return next;
     });
   };
 
-  // Switch to saga tab and clear new chapter flag
   const handleSagaTab = () => {
     setActiveTab('saga');
     clearNewFlag();
   };
 
-  if (!visible) return null;
-
-  // Apply filters
   const filteredEvents =
     activeFilters.size === 0
       ? events
@@ -228,162 +236,141 @@ export default function WorldArchive({ visible, onClose }: Props) {
 
   const eras = groupByEra(filteredEvents);
 
+  // Tab bar as header extra
+  const tabBar = (
+    <div className="flex items-center gap-0.5 mr-1">
+      <button
+        onClick={() => setActiveTab('timeline')}
+        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+          activeTab === 'timeline'
+            ? 'bg-accent/15 text-accent'
+            : 'text-text-3 hover:text-text-2'
+        }`}
+      >
+        {t('timeline_tab')}
+      </button>
+      <button
+        onClick={handleSagaTab}
+        className={`relative px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+          activeTab === 'saga'
+            ? 'bg-gold/15'
+            : 'text-text-3 hover:text-text-2'
+        }`}
+        style={activeTab === 'saga' ? { color: '#d4a574' } : undefined}
+      >
+        {t('saga_tab')}
+        {hasNewChapter && activeTab !== 'saga' && (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full animate-pulse"
+            style={{ backgroundColor: '#d4a574' }}
+          />
+        )}
+      </button>
+    </div>
+  );
+
   return (
-    <div
-      className="absolute top-0 right-0 z-50 h-full w-[380px] pointer-events-auto fade-in"
+    <DraggablePanel
+      title={t('world_archive')}
+      icon={<ScrollText size={13} className="text-accent" />}
+      visible={visible}
+      onClose={onClose}
+      defaultX={Math.round(window.innerWidth - 420)}
+      defaultY={60}
+      defaultWidth={400}
+      defaultHeight={600}
+      minWidth={320}
+      minHeight={300}
+      maxWidth={700}
+      maxHeight={900}
+      headerExtra={tabBar}
     >
-      <div className="h-full flex flex-col glass border-l border-border shadow-[−8px_0_40px_rgba(0,0,0,0.5)]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.04] flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <ScrollText size={14} className="text-accent" />
-            <span className="text-[13px] font-semibold text-text uppercase tracking-wider">
-              {t('world_archive')}
-            </span>
+      {activeTab === 'timeline' ? (
+        <>
+          {/* Filter row */}
+          <div className="flex items-center justify-end px-3 py-1.5 flex-shrink-0">
+            <button
+              onClick={() => setFilterOpen(!filterOpen)}
+              className={`relative p-1.5 rounded-lg transition-colors ${
+                filterOpen || activeFilters.size > 0
+                  ? 'bg-accent/10 text-accent'
+                  : 'hover:bg-white/[0.08] text-text-3 hover:text-text'
+              }`}
+              title={t('filter_events')}
+            >
+              <Filter size={13} />
+              {activeFilters.size > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent" />
+              )}
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/[0.08] text-text-3 hover:text-text transition-colors"
-          >
-            <X size={14} />
-          </button>
-        </div>
 
-        {/* Tab bar */}
-        <div className="flex items-center border-b border-white/[0.04] flex-shrink-0">
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-medium transition-all duration-200 border-b-2 ${
-              activeTab === 'timeline'
-                ? 'text-accent border-accent'
-                : 'text-text-3 border-transparent hover:text-text-2'
-            }`}
-          >
-            <ScrollText size={13} />
-            {t('timeline_tab')}
-            {activeTab === 'timeline' && (
-              <span className="text-[10px] mono text-text-3 ml-1">{filteredEvents.length}</span>
-            )}
-          </button>
-          <button
-            onClick={handleSagaTab}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-medium transition-all duration-200 border-b-2 relative ${
-              activeTab === 'saga'
-                ? 'border-gold'
-                : 'text-text-3 border-transparent hover:text-text-2'
-            }`}
-            style={activeTab === 'saga' ? { color: '#d4a574', borderColor: '#d4a574' } : undefined}
-          >
-            <BookOpen size={13} />
-            {t('saga_tab')}
-            {hasNewChapter && activeTab !== 'saga' && (
-              <span
-                className="absolute top-2 right-[calc(50%-32px)] w-2 h-2 rounded-full animate-pulse"
-                style={{ backgroundColor: '#d4a574' }}
-              />
-            )}
-          </button>
-        </div>
-
-        {/* Tab content */}
-        {activeTab === 'timeline' ? (
-          <>
-            {/* Filter button row for timeline */}
-            <div className="flex items-center justify-end px-3 py-1.5 flex-shrink-0">
-              <button
-                onClick={() => setFilterOpen(!filterOpen)}
-                className={`relative p-1.5 rounded-lg transition-colors ${
-                  filterOpen || activeFilters.size > 0
-                    ? 'bg-accent/10 text-accent'
-                    : 'hover:bg-white/[0.08] text-text-3 hover:text-text'
-                }`}
-                title={t('filter_events')}
-              >
-                <Filter size={13} />
-                {activeFilters.size > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent" />
-                )}
-              </button>
+          {filterOpen && (
+            <div className="px-3 py-2.5 border-b border-white/[0.04] fade-in">
+              <div className="flex flex-wrap gap-1.5">
+                {EVENT_TYPES.map((type) => {
+                  const color = getColor(type);
+                  const active = activeFilters.has(type);
+                  const Icon = getIcon(type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => toggleFilter(type)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all duration-200 border ${
+                        active
+                          ? `${color.bg} ${color.text} ${color.border}`
+                          : 'bg-white/[0.02] text-text-3 border-white/[0.06] hover:bg-white/[0.05] hover:text-text-2'
+                      }`}
+                    >
+                      <Icon size={10} />
+                      {type.replace(/_/g, ' ')}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+          )}
 
-            {/* Filter chips */}
-            {filterOpen && (
-              <div className="px-3 py-2.5 border-b border-white/[0.04] flex-shrink-0 fade-in">
-                <div className="flex flex-wrap gap-1.5">
-                  {EVENT_TYPES.map((type) => {
-                    const color = getColor(type);
-                    const active = activeFilters.has(type);
-                    const Icon = getIcon(type);
-                    return (
-                      <button
-                        key={type}
-                        onClick={() => toggleFilter(type)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all duration-200 border ${
-                          active
-                            ? `${color.bg} ${color.text} ${color.border}`
-                            : 'bg-white/[0.02] text-text-3 border-white/[0.06] hover:bg-white/[0.05] hover:text-text-2'
-                        }`}
-                      >
-                        <Icon size={10} />
-                        {type.replace(/_/g, ' ')}
-                      </button>
-                    );
-                  })}
-                </div>
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto"
+          >
+            {loading && events.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 size={18} className="text-text-3 animate-spin" />
+              </div>
+            ) : eras.length === 0 ? (
+              <EmptyState message={t('no_events')} />
+            ) : (
+              <div className="p-3 space-y-2">
+                {eras.map((era) => (
+                  <EraSection
+                    key={era.label}
+                    era={era}
+                    collapsed={collapsedEras.has(era.label)}
+                    onToggle={() => toggleEra(era.label)}
+                    t={t}
+                  />
+                ))}
+                {hasMore && (
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="w-full py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-text-3 text-[11px] font-medium hover:bg-white/[0.05] hover:text-text-2 transition-all duration-200 flex items-center justify-center gap-2"
+                  >
+                    {loadingMore ? <Loader2 size={12} className="animate-spin" /> : <ChevronDown size={12} />}
+                    {t('load_more')}
+                  </button>
+                )}
               </div>
             )}
-
-            {/* Timeline content */}
-            <div
-              ref={scrollRef}
-              onScroll={handleScroll}
-              className="flex-1 overflow-y-auto"
-            >
-              {loading && events.length === 0 ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 size={18} className="text-text-3 animate-spin" />
-                </div>
-              ) : eras.length === 0 ? (
-                <EmptyState message={t('no_events')} />
-              ) : (
-                <div className="p-3 space-y-2">
-                  {eras.map((era) => (
-                    <EraSection
-                      key={era.label}
-                      era={era}
-                      collapsed={collapsedEras.has(era.label)}
-                      onToggle={() => toggleEra(era.label)}
-                      t={t}
-                    />
-                  ))}
-
-                  {/* Load more */}
-                  {hasMore && (
-                    <button
-                      onClick={handleLoadMore}
-                      disabled={loadingMore}
-                      className="w-full py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-text-3 text-[11px] font-medium hover:bg-white/[0.05] hover:text-text-2 transition-all duration-200 flex items-center justify-center gap-2"
-                    >
-                      {loadingMore ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <ChevronDown size={12} />
-                      )}
-                      {t('load_more')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          /* Saga content */
-          <div className="flex-1 overflow-y-auto">
-            <SagaView />
           </div>
-        )}
-      </div>
-    </div>
+        </>
+      ) : (
+        <SagaView />
+      )}
+    </DraggablePanel>
   );
 }
 
@@ -402,7 +389,6 @@ function EraSection({
 }) {
   return (
     <div className="fade-in">
-      {/* Era header */}
       <button
         onClick={onToggle}
         className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors group"
@@ -423,11 +409,10 @@ function EraSection({
         </span>
       </button>
 
-      {/* Events in this era */}
       {!collapsed && (
         <div className="ml-3 pl-3 border-l border-white/[0.06] space-y-1.5 mt-1 mb-2">
           {era.events.map((event, idx) => (
-            <TimelineEvent
+            <TimelineEventCard
               key={event.id}
               event={event}
               style={{ animationDelay: `${idx * 30}ms` }}
@@ -441,11 +426,11 @@ function EraSection({
 
 // ---- Single timeline event ----
 
-function TimelineEvent({
+function TimelineEventCard({
   event,
   style,
 }: {
-  event: WorldEvent;
+  event: TimelineEvent;
   style?: React.CSSProperties;
 }) {
   const Icon = getIcon(event.event_type);
@@ -456,7 +441,6 @@ function TimelineEvent({
       className="relative p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-all duration-200 fade-in"
       style={style}
     >
-      {/* Timeline dot */}
       <div
         className="absolute -left-[19px] top-3.5 w-2.5 h-2.5 rounded-full border-2"
         style={{
@@ -465,8 +449,6 @@ function TimelineEvent({
           boxShadow: `0 0 6px ${color.hex}30`,
         }}
       />
-
-      {/* Event header */}
       <div className="flex items-center gap-1.5 mb-1">
         <div className={`flex-shrink-0 ${color.text}`}>
           <Icon size={12} />
@@ -478,22 +460,16 @@ function TimelineEvent({
           T:{event.tick_number}
         </span>
       </div>
-
-      {/* Title */}
       {event.title && (
         <p className="text-[12px] font-medium text-text leading-relaxed mb-0.5">
           {event.title}
         </p>
       )}
-
-      {/* Description */}
       {event.description && (
         <p className="text-[11px] text-text-2 leading-relaxed line-clamp-3">
           {event.description}
         </p>
       )}
-
-      {/* Importance bar */}
       <div className="flex items-center gap-2 mt-2">
         <ImportanceBar importance={event.importance} hex={color.hex} />
         <span className="text-[9px] mono text-text-3 opacity-50 flex-shrink-0">

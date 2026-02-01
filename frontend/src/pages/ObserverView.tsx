@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TrendingUp, Lightbulb, Eye, Palette, ScrollText, BookOpen } from 'lucide-react';
+import { TrendingUp, Lightbulb, Eye, Palette, BookOpen } from 'lucide-react';
 import WorldCanvas from '../components/world/WorldCanvas';
 import ObserverHeader from '../components/observer/ObserverHeader';
 import AIDetailCard from '../components/observer/AIDetailCard';
@@ -34,19 +34,21 @@ export default function ObserverView() {
         <WorldCanvas showGenesis={false} />
       </div>
 
-      {/* Floating overlays — pointer-events-none container so clicks pass to canvas */}
+      {/* Non-draggable overlays (header, feed, AI card) */}
       <div className="absolute inset-0 pointer-events-none z-30">
         <ObserverHeader />
         <AIDetailCard />
         <ObserverFeed />
-        <RankingPanel visible={showRanking} onClose={() => setShowRanking(false)} />
-        <ConceptPanel visible={showConcepts} onClose={() => setShowConcepts(false)} />
-        <ArtifactPanel visible={showArtifacts} onClose={() => setShowArtifacts(false)} />
-        <GodFeed visible={showGodFeed} onClose={() => setShowGodFeed(false)} />
-        <WorldArchive visible={showArchive} onClose={toggleArchive} />
       </div>
 
-      {/* Panel toggle buttons — above board, z-50 */}
+      {/* Draggable panels — each uses fixed positioning via DraggablePanel */}
+      <RankingPanel visible={showRanking} onClose={() => setShowRanking(false)} />
+      <ConceptPanel visible={showConcepts} onClose={() => setShowConcepts(false)} />
+      <ArtifactPanel visible={showArtifacts} onClose={() => setShowArtifacts(false)} />
+      <GodFeed visible={showGodFeed} onClose={() => setShowGodFeed(false)} />
+      <WorldArchive visible={showArchive} onClose={toggleArchive} />
+
+      {/* Panel toggle buttons — above board */}
       <div
         className={`absolute left-1/2 -translate-x-1/2 flex gap-2 z-50 transition-all duration-200 ${
           observerChatExpanded ? 'bottom-[340px]' : 'bottom-[56px]'
@@ -116,12 +118,12 @@ export default function ObserverView() {
         </button>
       </div>
 
-      {/* Board panel at bottom — z-40 */}
+      {/* Board panel at bottom */}
       <div className="absolute inset-0 pointer-events-none z-40">
         <BoardPanel />
       </div>
 
-      {/* Deploy modal (manages its own visibility) */}
+      {/* Deploy modal */}
       <DeployPanel />
     </div>
   );
