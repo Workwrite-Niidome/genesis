@@ -300,6 +300,14 @@ const en = {
     detail_speaker: 'Speaker',
     detail_artifact_proposal: 'Artifact Proposed',
     detail_org_proposal: 'Organization Proposed',
+
+    // Organization detail
+    org_purpose: 'Purpose',
+    org_members: 'Members',
+    org_founder: 'Founder',
+    org_member: 'Member',
+    org_focus_area: 'Focus Area',
+    org_no_members: 'No members',
   },
 };
 
@@ -602,6 +610,14 @@ const ja = {
     detail_speaker: '発言者',
     detail_artifact_proposal: '提案されたアーティファクト',
     detail_org_proposal: '提案された組織',
+
+    // Organization detail
+    org_purpose: '組織の目的',
+    org_members: 'メンバー',
+    org_founder: '創設者',
+    org_member: 'メンバー',
+    org_focus_area: '活動分野',
+    org_no_members: 'メンバーなし',
   },
 };
 

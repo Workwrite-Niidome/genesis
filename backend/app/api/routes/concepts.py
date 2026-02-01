@@ -86,6 +86,38 @@ async def get_concept_graph(db: AsyncSession = Depends(get_db)):
     return {"nodes": nodes, "edges": edges}
 
 
+@router.get("/{concept_id}/members")
+async def get_concept_members(concept_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Return all AIs that belong to this organization concept."""
+    # Verify concept exists
+    concept_result = await db.execute(select(Concept).where(Concept.id == concept_id))
+    concept = concept_result.scalar_one_or_none()
+    if not concept:
+        raise HTTPException(status_code=404, detail="Concept not found")
+
+    # Scan all AIs (alive + dead) for membership
+    ai_result = await db.execute(select(AI))
+    ais = list(ai_result.scalars().all())
+
+    members = []
+    concept_id_str = str(concept_id)
+    for ai in ais:
+        orgs = ai.state.get("organizations", [])
+        for org in orgs:
+            if org.get("id") == concept_id_str:
+                members.append({
+                    "id": str(ai.id),
+                    "name": ai.name,
+                    "role": org.get("role", "member"),
+                    "is_alive": ai.is_alive,
+                    "personality_traits": ai.personality_traits or [],
+                    "appearance": ai.appearance or {},
+                })
+                break
+
+    return members
+
+
 @router.get("/{concept_id}")
 async def get_concept(concept_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Concept).where(Concept.id == concept_id))

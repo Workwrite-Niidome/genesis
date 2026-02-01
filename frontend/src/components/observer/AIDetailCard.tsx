@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Zap, Clock, Sparkles, MapPin, Brain, Users, TrendingUp, Lightbulb, Palette, Building2 } from 'lucide-react';
+import { X, Zap, Clock, Sparkles, MapPin, Brain, Users, TrendingUp, Lightbulb, Palette, Building2, ChevronRight } from 'lucide-react';
 import { useAIStore } from '../../stores/aiStore';
 import { useDetailStore } from '../../stores/detailStore';
 import { api } from '../../services/api';
@@ -50,7 +50,7 @@ export function AIDetailContent() {
   const recentThoughts: AIThought[] = selectedAI.recent_thoughts || [];
   const relationships: Record<string, Relationship> = selectedAI.state?.relationships || {};
   const adoptedConcepts: string[] = selectedAI.state?.adopted_concepts || [];
-  const organizations: { name: string; role: string }[] = selectedAI.state?.organizations || [];
+  const organizations: { id?: string; name: string; role: string }[] = selectedAI.state?.organizations || [];
   const createdArtifacts: string[] = selectedAI.state?.created_artifacts || [];
 
   const traits = Object.entries(selectedAI.state || {})
@@ -220,10 +220,23 @@ export function AIDetailContent() {
           </div>
           <div className="space-y-1 max-h-20 overflow-y-auto">
             {organizations.map((org, idx) => (
-              <div key={idx} className="flex items-center justify-between p-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+              <button
+                key={idx}
+                onClick={() => {
+                  if (org.id) {
+                    api.concepts.get(org.id).then((concept) => {
+                      useDetailStore.getState().openDetail('concept', concept);
+                    }).catch(() => {});
+                  }
+                }}
+                className="w-full text-left flex items-center justify-between p-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+              >
                 <span className="text-[10px] text-text-2">{org.name}</span>
-                <span className="text-[9px] text-green capitalize">{org.role}</span>
-              </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] text-green capitalize">{org.role}</span>
+                  <ChevronRight size={10} className="text-text-3 opacity-40" />
+                </div>
+              </button>
             ))}
           </div>
         </div>

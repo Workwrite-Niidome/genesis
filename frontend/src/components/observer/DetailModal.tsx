@@ -15,6 +15,8 @@ import {
   Loader2,
   ArrowRight,
   Sparkles,
+  Building2,
+  ChevronRight,
 } from 'lucide-react';
 import DraggablePanel from '../ui/DraggablePanel';
 import { useDetailStore, type DetailItemType } from '../../stores/detailStore';
@@ -549,6 +551,13 @@ function renderArtifactContent(artifactType: string, content: Record<string, any
    ═══════════════════════════════════════════════════════════ */
 
 function ConceptDetail({ data, t }: { data: any; t: TFn }) {
+  if (data.category === 'organization') {
+    return <OrganizationConceptDetail data={data} t={t} />;
+  }
+  return <GenericConceptDetail data={data} t={t} />;
+}
+
+function GenericConceptDetail({ data, t }: { data: any; t: TFn }) {
   const [creator, setCreator] = useState<AIEntity | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -606,6 +615,165 @@ function ConceptDetail({ data, t }: { data: any; t: TFn }) {
         <div>
           <SectionLabel label={t('detail_effects', 'Effects')} />
           <JsonBlock data={data.effects} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Organization-specific concept detail with member roster */
+function OrganizationConceptDetail({ data, t }: { data: any; t: TFn }) {
+  const [creator, setCreator] = useState<AIEntity | null>(null);
+  const [members, setMembers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
+
+  useEffect(() => {
+    if (!data.creator_id) return;
+    setLoading(true);
+    api.ais.get(data.creator_id).then(setCreator).catch(() => null).finally(() => setLoading(false));
+  }, [data.creator_id]);
+
+  useEffect(() => {
+    if (!data.id) return;
+    setMembersLoading(true);
+    api.concepts.getMembers(data.id).then(setMembers).catch(() => setMembers([])).finally(() => setMembersLoading(false));
+  }, [data.id]);
+
+  // Strip "Organization: " prefix from definition to show as purpose
+  const purpose = (data.definition || '').replace(/^Organization:\s*/i, '');
+  const focusArea = data.effects?.purpose_category;
+  const aliveCount = members.filter((m) => m.is_alive).length;
+  const deadCount = members.filter((m) => !m.is_alive).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-2.5">
+        <Building2 size={18} className="text-green-400 flex-shrink-0" />
+        <h3 className="text-[16px] font-semibold text-green-400 leading-snug">{data.name}</h3>
+      </div>
+
+      {/* Category badge + focus area */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="inline-block px-2.5 py-0.5 rounded text-[11px] bg-green-500/10 text-green-400 border border-green-500/20 capitalize font-medium">
+          {t('category_organization', 'Organization')}
+        </span>
+        {focusArea && (
+          <span className="inline-block px-2.5 py-0.5 rounded text-[11px] bg-cyan/10 text-cyan border border-cyan/20 capitalize font-medium">
+            {t('org_focus_area', 'Focus Area')}: {t(`category_${focusArea}`, focusArea)}
+          </span>
+        )}
+        <MetaInfo tick={data.tick_created} timestamp={data.created_at} />
+      </div>
+
+      {/* Purpose */}
+      {purpose && (
+        <div>
+          <SectionLabel label={t('org_purpose', 'Purpose')} />
+          <div className="p-3.5 rounded-xl bg-green-500/[0.04] border border-green-500/10">
+            <p className="text-[13px] text-text leading-[1.7] whitespace-pre-wrap">
+              {purpose}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Creator AI */}
+      {loading ? (
+        <LoadingBlock />
+      ) : creator ? (
+        <div>
+          <SectionLabel label={t('detail_creator', 'Creator')} />
+          <AIProfileCard ai={creator} onClick={() => {
+            useAIStore.getState().selectAI(creator.id);
+            useDetailStore.getState().closeDetail();
+          }} />
+        </div>
+      ) : null}
+
+      {/* Member roster */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-text-3 uppercase tracking-wider">
+              {t('org_members', 'Members')}
+            </span>
+            <div className="flex-1 h-px bg-white/[0.06]" />
+          </div>
+          {members.length > 0 && (
+            <div className="flex items-center gap-2 text-[10px] text-text-3 ml-2 flex-shrink-0">
+              <span className="text-green-400 mono">{aliveCount} alive</span>
+              {deadCount > 0 && <span className="text-orange mono">{deadCount} dead</span>}
+            </div>
+          )}
+        </div>
+        {membersLoading ? (
+          <LoadingBlock />
+        ) : members.length === 0 ? (
+          <p className="text-[11px] text-text-3 italic py-2">{t('org_no_members', 'No members')}</p>
+        ) : (
+          <div className="space-y-1.5">
+            {/* Sort: founders first, then alive before dead */}
+            {[...members]
+              .sort((a, b) => {
+                if (a.role === 'founder' && b.role !== 'founder') return -1;
+                if (a.role !== 'founder' && b.role === 'founder') return 1;
+                if (a.is_alive && !b.is_alive) return -1;
+                if (!a.is_alive && b.is_alive) return 1;
+                return 0;
+              })
+              .map((member) => {
+                const memberColor = member.appearance?.primaryColor || '#7c5bf5';
+                const isFounder = member.role === 'founder';
+                return (
+                  <button
+                    key={member.id}
+                    onClick={() => {
+                      useAIStore.getState().selectAI(member.id);
+                      useDetailStore.getState().closeDetail();
+                    }}
+                    className="w-full text-left flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+                  >
+                    <div
+                      className="w-7 h-7 rounded-full flex-shrink-0"
+                      style={{
+                        backgroundColor: memberColor,
+                        boxShadow: `0 0 10px ${memberColor}30`,
+                        opacity: member.is_alive ? 1 : 0.5,
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] font-medium text-text truncate">{member.name}</span>
+                        <span className={`text-[8px] px-1.5 py-0.5 rounded ${member.is_alive ? 'bg-green-dim text-green' : 'bg-orange-dim text-orange'}`}>
+                          {member.is_alive ? 'Alive' : 'Dead'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-[9px] font-medium capitalize ${isFounder ? 'text-green-400' : 'text-text-3'}`}>
+                          {isFounder ? t('org_founder', 'Founder') : t('org_member', 'Member')}
+                        </span>
+                        {member.personality_traits?.slice(0, 3).map((trait: string) => (
+                          <span key={trait} className="text-[8px] px-1 py-0.5 rounded bg-cyan-dim text-cyan capitalize">
+                            {trait}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <ChevronRight size={12} className="text-text-3 opacity-40 flex-shrink-0" />
+                  </button>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* Effects (excluding purpose_category which is already shown) */}
+      {data.effects && Object.keys(data.effects).filter(k => k !== 'purpose_category' && k !== 'type').length > 0 && (
+        <div>
+          <SectionLabel label={t('detail_effects', 'Effects')} />
+          <JsonBlock data={Object.fromEntries(Object.entries(data.effects).filter(([k]) => k !== 'purpose_category' && k !== 'type'))} />
         </div>
       )}
     </div>

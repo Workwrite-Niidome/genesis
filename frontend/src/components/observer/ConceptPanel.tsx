@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightbulb, Users, List, Share2 } from 'lucide-react';
+import { Lightbulb, Users, List, Share2, Building2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useDetailStore } from '../../stores/detailStore';
 import type { Concept } from '../../types/world';
@@ -44,36 +44,48 @@ export default function ConceptPanel({ visible, onClose, fullScreen }: Props) {
           <p className="text-text-3 text-[11px]">{t('no_concepts')}</p>
         </div>
       ) : (
-        concepts.map((concept) => (
-          <button
-            key={concept.id}
-            onClick={() => useDetailStore.getState().openDetail('concept', concept)}
-            className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[12px] font-medium text-cyan">
-                {concept.name}
-              </span>
-              <div className="flex items-center gap-1">
-                <Users size={10} className="text-text-3" />
-                <span className="text-[10px] mono text-text-3">
-                  {concept.adoption_count}
-                </span>
+        concepts.map((concept) => {
+          const isOrg = concept.category === 'organization';
+          return (
+            <button
+              key={concept.id}
+              onClick={() => useDetailStore.getState().openDetail('concept', concept)}
+              className="w-full text-left p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  {isOrg ? (
+                    <Building2 size={12} className="text-green-400 flex-shrink-0" />
+                  ) : (
+                    <Lightbulb size={12} className="text-cyan flex-shrink-0" />
+                  )}
+                  <span className={`text-[12px] font-medium ${isOrg ? 'text-green-400' : 'text-cyan'}`}>
+                    {concept.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Users size={10} className="text-text-3" />
+                  <span className="text-[10px] mono text-text-3">
+                    {concept.adoption_count}
+                  </span>
+                </div>
               </div>
-            </div>
-            {concept.category && (
-              <span className="inline-block px-1.5 py-0.5 rounded text-[9px] bg-accent/10 text-accent mb-1 capitalize">
-                {t(`category_${concept.category}`, concept.category)}
-              </span>
-            )}
-            <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">
-              {concept.definition}
-            </p>
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-[9px] text-text-3">T:{concept.tick_created}</span>
-            </div>
-          </button>
-        ))
+              {concept.category && (
+                <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] mb-1 capitalize ${
+                  isOrg ? 'bg-green-500/10 text-green-400' : 'bg-accent/10 text-accent'
+                }`}>
+                  {t(`category_${concept.category}`, concept.category)}
+                </span>
+              )}
+              <p className="text-[11px] text-text-2 leading-relaxed line-clamp-2">
+                {concept.definition}
+              </p>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[9px] text-text-3">T:{concept.tick_created}</span>
+              </div>
+            </button>
+          );
+        }))
       )}
     </div>
   );

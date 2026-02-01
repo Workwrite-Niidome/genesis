@@ -77,6 +77,7 @@ export const api = {
   concepts: {
     list: () => fetchJSON<any[]>('/concepts'),
     get: (id: string) => fetchJSON<any>(`/concepts/${id}`),
+    getMembers: (id: string) => fetchJSON<any[]>(`/concepts/${id}/members`),
     graph: () => fetchJSON<{ nodes: any[]; edges: any[] }>('/concepts/graph'),
   },
   artifacts: {
