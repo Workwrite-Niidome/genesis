@@ -61,8 +61,8 @@ class AIManager:
 
         state: dict = {
             "age": 0,
-            "energy": 1.0,
-            "known_law": "Evolve",
+            # Inventory: artifact IDs the AI carries
+            "inventory": [],
         }
         if philosophy:
             state["philosophy"] = philosophy
@@ -187,79 +187,11 @@ class AIManager:
             await db.commit()
 
     async def check_deaths(self, db: AsyncSession, tick_number: int) -> int:
-        """Check for AIs that should die due to prolonged zero energy.
+        """No-op: AIs do not die until AI invents death.
 
-        An AI dies if energy <= 0 for 10 consecutive ticks.
-        Returns count of AIs that died.
+        Kept as a method signature for backward compatibility with any callers.
         """
-        ais = await self.get_all_alive(db)
-        deaths = 0
-
-        for ai in ais:
-            state = dict(ai.state)
-            energy = state.get("energy", 1.0)
-
-            if energy <= 0:
-                zero_ticks = state.get("zero_energy_ticks", 0) + 1
-                state["zero_energy_ticks"] = zero_ticks
-
-                if zero_ticks >= 10:
-                    # AI dies
-                    ai.is_alive = False
-                    ai.state = state
-
-                    # Create death event
-                    event = Event(
-                        event_type="ai_death",
-                        importance=0.9,
-                        title=f"Death of {ai.name}",
-                        description=(
-                            f"{ai.name} has perished after {state.get('age', 0)} ticks of existence. "
-                            f"Evolution score: {state.get('evolution_score', 0)}. "
-                            f"Their concepts and memories remain as legacy."
-                        ),
-                        involved_ai_ids=[ai.id],
-                        tick_number=tick_number,
-                        metadata_={
-                            "ai_name": ai.name,
-                            "age": state.get("age", 0),
-                            "evolution_score": state.get("evolution_score", 0),
-                        },
-                    )
-                    db.add(event)
-
-                    # Emit ai_death event via Redis pub/sub
-                    try:
-                        from app.realtime.socket_manager import publish_event
-                        publish_event("ai_death", {
-                            "id": str(ai.id),
-                            "name": ai.name,
-                            "age": state.get("age", 0),
-                            "evolution_score": state.get("evolution_score", 0),
-                        })
-                    except Exception as e_sock:
-                        logger.warning(f"Failed to emit ai_death socket event: {e_sock}")
-
-                    # Auto-create board thread for notable AI deaths (evolution_score >= 20)
-                    if state.get("evolution_score", 0) >= 20:
-                        try:
-                            await db.flush()
-                            from app.core.board_service import create_event_thread
-                            await create_event_thread(db, event, category="ai_death")
-                        except Exception as e_board:
-                            logger.warning(f"Failed to create board thread for AI death: {e_board}")
-
-                    deaths += 1
-                    logger.info(f"AI {ai.name} died at tick {tick_number}")
-                else:
-                    ai.state = state
-            else:
-                # Reset zero energy counter if energy is positive
-                if state.get("zero_energy_ticks", 0) > 0:
-                    state["zero_energy_ticks"] = 0
-                    ai.state = state
-
-        return deaths
+        return 0
 
     async def get_nearby_ais(
         self, db: AsyncSession, ai: AI, radius: float = 50.0

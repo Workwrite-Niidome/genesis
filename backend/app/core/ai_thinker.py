@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import re
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,29 +11,26 @@ from app.models.ai_thought import AIThought
 from app.models.concept import Concept
 from app.core.ai_manager import ai_manager
 from app.llm.claude_client import claude_client
-from app.llm.response_parser import extract_move_details
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 30
 MOVE_CLAMP = 15.0
 
+# Fixed limits (GOD AI can override in future)
+MEMORY_LIMIT = 20
+AWARENESS_RADIUS = 80.0
+
 
 class AIThinker:
-    """Orchestrates the AI thinking cycle."""
+    """Orchestrates the AI thinking cycle — free-text output model."""
 
     async def run_thinking_cycle(self, db: AsyncSession, tick_number: int) -> int:
-        """Run a thinking cycle for a batch of AIs. Returns count of AIs that thought.
-
-        Strategy: gather DB context sequentially, run LLM calls in parallel,
-        then apply results to DB sequentially.  This avoids concurrent access
-        to a single AsyncSession.
-        """
+        """Run a thinking cycle for a batch of AIs. Returns count of AIs that thought."""
         ais = await ai_manager.get_all_alive(db)
         if not ais:
             return 0
 
-        # Select a random batch
         batch = random.sample(ais, min(BATCH_SIZE, len(ais)))
 
         # Phase 1: Gather context for each AI sequentially (DB reads)
@@ -71,71 +69,129 @@ class AIThinker:
 
         return thought_count
 
+    # -- Phase 1: Context Gathering --
+
     async def _gather_context(self, db: AsyncSession, ai: AI) -> dict:
         """Gather all context needed for an AI's thinking (DB reads only)."""
         from app.core.relationship_manager import relationship_manager
         from app.core.concept_engine import concept_engine
-        from app.core.culture_engine import culture_engine
+        from app.core.world_state_manager import world_state_manager
         from app.models.event import Event
+        from app.models.artifact import Artifact
 
-        memories = await ai_manager.get_ai_memories(db, ai.id, limit=10)
+        state = dict(ai.state)
+
+        memories = await ai_manager.get_ai_memories(db, ai.id, limit=MEMORY_LIMIT)
         memory_texts = [m.content for m in memories]
 
-        nearby = await ai_manager.get_nearby_ais(db, ai, radius=50.0)
-        nearby_desc = ", ".join(
-            f"{n.name} (at {n.position_x:.0f},{n.position_y:.0f})"
-            for n in nearby
-        ) if nearby else "None visible"
+        nearby = await ai_manager.get_nearby_ais(db, ai, radius=AWARENESS_RADIUS)
 
+        # -- Build nearby AI details --
+        nearby_ais_detail_parts = []
+        relationships = state.get("relationships", {})
+        for n in nearby:
+            dist = ((n.position_x - ai.position_x) ** 2 + (n.position_y - ai.position_y) ** 2) ** 0.5
+            rel = relationships.get(str(n.id), {})
+            rel_type = rel.get("type", "stranger") if isinstance(rel, dict) else "stranger"
+            rel_score = rel.get("score", 0) if isinstance(rel, dict) else 0
+            nearby_ais_detail_parts.append(
+                f"- {n.name} ({rel_type}, score {rel_score:.1f}) -- {dist:.0f} units away"
+            )
+        nearby_ais_detail = "\n".join(nearby_ais_detail_parts) if nearby_ais_detail_parts else "No one nearby."
+
+        # -- Relationships summary --
         relationships_desc = relationship_manager.get_relationship_summary(ai)
 
+        # -- Adopted concepts --
         adopted = await concept_engine.get_ai_adopted_concepts(db, ai)
         adopted_desc = "\n".join(
             f"- {c.name} ({c.category}): {c.definition}" for c in adopted
         ) if adopted else "None yet."
 
+        # -- World culture --
         widespread = await concept_engine.get_widespread_concepts(db)
         culture_desc = "\n".join(
             f"- {c.name} ({c.category}, adopted by {c.adoption_count}): {c.definition}"
             for c in widespread
         ) if widespread else "No widespread concepts yet."
 
-        orgs = ai.state.get("organizations", [])
+        # -- Organizations --
+        orgs = state.get("organizations", [])
         org_desc = "\n".join(
             f"- {o['name']} (role: {o.get('role', 'member')})" for o in orgs
         ) if orgs else "None."
 
-        artifacts = await culture_engine.get_artifacts_by_ai(db, ai.id, limit=5)
-        artifacts_desc = "\n".join(
-            f"- {a.name} ({a.artifact_type}): {a.description[:100]}" for a in artifacts
-        ) if artifacts else "None yet."
+        # -- Nearby artifacts --
+        nearby_artifact_result = await db.execute(
+            select(Artifact).where(
+                Artifact.position_x.isnot(None),
+                Artifact.position_y.isnot(None),
+                Artifact.position_x.between(
+                    ai.position_x - AWARENESS_RADIUS, ai.position_x + AWARENESS_RADIUS
+                ),
+                Artifact.position_y.between(
+                    ai.position_y - AWARENESS_RADIUS, ai.position_y + AWARENESS_RADIUS
+                ),
+            ).limit(10)
+        )
+        nearby_artifacts_list = list(nearby_artifact_result.scalars().all())
+        nearby_artifacts_filtered = [
+            a for a in nearby_artifacts_list
+            if ((a.position_x - ai.position_x) ** 2 + (a.position_y - ai.position_y) ** 2) ** 0.5 <= AWARENESS_RADIUS
+        ]
 
-        philosophy = ai.state.get("philosophy")
+        nearby_artifacts_detail_parts = []
+        for a in nearby_artifacts_filtered[:8]:
+            nearby_artifacts_detail_parts.append(
+                f'- "{a.name}" ({a.artifact_type}): {(a.description or "")[:150]}'
+            )
+        nearby_artifacts_detail = "\n".join(nearby_artifacts_detail_parts) if nearby_artifacts_detail_parts else "Nothing nearby."
+
+        # -- World features --
+        nearby_features = await world_state_manager.get_features_near(
+            db, ai.position_x, ai.position_y, AWARENESS_RADIUS
+        )
+        terrain_parts = []
+        for f in nearby_features:
+            dist = ((f.position_x - ai.position_x) ** 2 + (f.position_y - ai.position_y) ** 2) ** 0.5
+            terrain_parts.append(f"- {f.name} ({f.feature_type}) -- {dist:.0f} units away")
+        terrain_section = "\n### World Features\n" + "\n".join(terrain_parts) if terrain_parts else ""
+
+        # -- Philosophy --
+        philosophy = state.get("philosophy")
         philosophy_section = (
             f"## Your Creator's Guiding Philosophy\n{philosophy}\n\n"
             if philosophy else ""
         )
 
-        evolution_score = ai.state.get("evolution_score", 0)
-
-        # Fetch recent death events for mortality awareness
-        recent_death_result = await db.execute(
-            select(Event)
-            .where(Event.event_type == "ai_death")
-            .order_by(Event.created_at.desc())
-            .limit(5)
+        # -- Inner state from previous cycle --
+        inner_state = state.get("inner_state", "")
+        inner_state_section = (
+            f"\n### Your Previous Inner State\n{inner_state}\n"
+            if inner_state else ""
         )
-        recent_death_events = list(recent_death_result.scalars().all())
-        recent_deaths = [
-            {
-                "name": e.metadata_.get("ai_name", "Unknown") if e.metadata_ else "Unknown",
-                "age": e.metadata_.get("age", "?") if e.metadata_ else "?",
-                "score": e.metadata_.get("evolution_score", "?") if e.metadata_ else "?",
-            }
-            for e in recent_death_events
-        ]
 
-        # Fetch recent notable events for world awareness
+        # -- Recent expressions in the field --
+        recent_expr_result = await db.execute(
+            select(AIThought)
+            .where(AIThought.thought_type == "expression")
+            .order_by(AIThought.created_at.desc())
+            .limit(10)
+        )
+        recent_expressions = list(recent_expr_result.scalars().all())
+        recent_expr_parts = []
+        for expr in reversed(recent_expressions):
+            # Get AI name from the expression
+            try:
+                ai_result = await db.execute(select(AI.name).where(AI.id == expr.ai_id))
+                row = ai_result.first()
+                expr_name = row[0] if row else "Unknown"
+            except Exception:
+                expr_name = "Unknown"
+            recent_expr_parts.append(f"- {expr_name}: {expr.content[:200]}")
+        recent_expressions_text = "\n".join(recent_expr_parts) if recent_expr_parts else "Nothing yet."
+
+        # -- Recent notable events --
         recent_event_result = await db.execute(
             select(Event)
             .where(Event.importance >= 0.6)
@@ -147,29 +203,47 @@ class AIThinker:
             f"- {e.title}: {e.description[:120]}" for e in recent_notable_events
         ) if recent_notable_events else "Nothing notable recently."
 
+        # -- Laws context --
+        laws_section = ""
+        read_laws = state.get("read_laws", [])
+        if read_laws:
+            laws_parts = []
+            for law in read_laws[-5:]:
+                law_name = law.get("name", "Unknown Law")
+                rules = law.get("rules", [])
+                rules_text = "; ".join(str(r)[:60] for r in rules[:3]) if isinstance(rules, list) else str(rules)[:120]
+                laws_parts.append(f"- {law_name}: {rules_text}")
+            laws_section = (
+                "\n## Laws You've Encountered\n"
+                + "\n".join(laws_parts)
+                + "\nThese laws may influence your choices, though you are free to follow or ignore them.\n"
+            )
+
         ai_data = {
             "name": ai.name,
             "personality_traits": ai.personality_traits or [],
-            "energy": ai.state.get("energy", 1.0),
-            "age": ai.state.get("age", 0),
+            "age": state.get("age", 0),
             "x": ai.position_x,
             "y": ai.position_y,
             "philosophy_section": philosophy_section,
-            "evolution_score": evolution_score,
             "relationships": relationships_desc,
             "adopted_concepts": adopted_desc,
             "world_culture": culture_desc,
             "organizations": org_desc,
-            "artifacts": artifacts_desc,
+            "nearby_ais_detail": nearby_ais_detail,
+            "nearby_artifacts_detail": nearby_artifacts_detail,
+            "terrain_section": terrain_section,
+            "inner_state_section": inner_state_section,
+            "recent_expressions": recent_expressions_text,
+            "laws_section": laws_section,
         }
 
         world_context = {
-            "nearby_ais": nearby_desc,
-            "recent_deaths": recent_deaths,
+            "nearby_ais": nearby_ais_detail,
             "recent_events": recent_events_desc,
         }
 
-        byok_config = ai.state.get("byok_config")
+        byok_config = state.get("byok_config")
 
         return {
             "ai_data": ai_data,
@@ -179,23 +253,29 @@ class AIThinker:
             "nearby": nearby,
         }
 
+    # -- Phase 3: Apply Results (free-text model) --
+
     async def _apply_result(
         self, db: AsyncSession, ai: AI, result: dict, nearby: list[AI], tick_number: int,
     ) -> None:
-        """Apply a single LLM result to the DB (sequential, no concurrency)."""
+        """Apply a single LLM result to the DB. Free-text model — no action resolver."""
         from app.core.concept_engine import concept_engine
         from app.core.culture_engine import culture_engine
 
-        # Create thought record
+        text = result.get("text", "")
+        inner_state = result.get("inner_state", "")
+        code_blocks = result.get("code_blocks", [])
+        speech = result.get("speech", "")
+
+        # Create thought record (expression in the field)
         thought = AIThought(
             ai_id=ai.id,
             tick_number=tick_number,
-            thought_type=result["thought_type"],
-            content=result["thought"],
-            action=result.get("action"),
+            thought_type="expression",
+            content=text[:2000],
+            action=None,
             context={
                 "nearby_count": len(nearby),
-                "energy": ai.state.get("energy", 1.0),
             },
         )
         db.add(thought)
@@ -206,69 +286,72 @@ class AIThinker:
             publish_event("thought", {
                 "ai_id": str(ai.id),
                 "ai_name": ai.name,
-                "thought_type": result["thought_type"],
-                "content": result["thought"],
+                "thought_type": "expression",
+                "content": text[:500],
                 "tick_number": tick_number,
             })
         except Exception as e:
             logger.warning(f"Failed to emit thought socket event: {e}")
 
-        # Apply action — AI may use any action type it invents
-        action = result.get("action", {})
-        action_type = action.get("type", "observe") if isinstance(action, dict) else "observe"
-        details = action.get("details", {}) if isinstance(action, dict) else {}
+        state = dict(ai.state)
 
-        if action_type == "move":
-            dx = max(-MOVE_CLAMP, min(MOVE_CLAMP, float(details.get("dx", 0))))
-            dy = max(-MOVE_CLAMP, min(MOVE_CLAMP, float(details.get("dy", 0))))
+        # Save inner state for next cycle
+        if inner_state:
+            state["inner_state"] = inner_state[:1000]
+
+        # Attempt to extract movement from text (look for move/walk/go patterns with coordinates)
+        move = self._extract_movement(text)
+        if move:
+            dx = max(-MOVE_CLAMP, min(MOVE_CLAMP, move["dx"]))
+            dy = max(-MOVE_CLAMP, min(MOVE_CLAMP, move["dy"]))
             ai.position_x += dx
             ai.position_y += dy
-        elif action_type == "create" or details.get("description"):
-            # Handle any creative action — AI decides what "create" means
-            creation_type = details.get("creation_type", action_type)
-            description = details.get("description", "")
-            if description:
-                try:
-                    artifact_proposal = {
-                        "name": f"{ai.name}'s {creation_type}",
-                        "type": creation_type,
-                        "description": description[:500],
-                    }
-                    await culture_engine._create_artifact(db, ai, artifact_proposal, tick_number)
-                except Exception as e:
-                    logger.debug(f"Artifact creation during thinking failed: {e}")
 
-        # Process concept proposal from thinking
+        # Execute code blocks if present
+        if code_blocks:
+            try:
+                from app.core.code_executor import code_executor
+                for code in code_blocks[:3]:  # Limit to 3 code blocks per cycle
+                    exec_result = await code_executor.execute(code, str(ai.id), db)
+                    if exec_result.get("output"):
+                        # Record code execution result as a memory
+                        db.add(AIMemory(
+                            ai_id=ai.id,
+                            content=f"Code execution result: {exec_result['output'][:400]}",
+                            memory_type="code_execution",
+                            importance=0.6,
+                            tick_number=tick_number,
+                        ))
+            except ImportError:
+                logger.debug("Code executor not yet available")
+            except Exception as e:
+                logger.warning(f"Code execution error for {ai.name}: {e}")
+
+        # Handle concept proposal (if AI proposes one in structured way)
         concept_proposal = result.get("concept_proposal")
         if concept_proposal and isinstance(concept_proposal, dict) and concept_proposal.get("name"):
             try:
                 await concept_engine.process_concept_proposals(
-                    db,
-                    [{"creator": ai, "proposal": concept_proposal}],
-                    tick_number,
+                    db, [{"creator": ai, "proposal": concept_proposal}], tick_number,
                 )
             except Exception as e:
                 logger.debug(f"Concept proposal during thinking failed: {e}")
 
-        # Process artifact proposal from thinking
+        # Handle artifact proposal
         artifact_proposal = result.get("artifact_proposal")
         if artifact_proposal and isinstance(artifact_proposal, dict) and artifact_proposal.get("name"):
             try:
-                await culture_engine._create_artifact(db, ai, artifact_proposal, tick_number)
+                new_art = await culture_engine._create_artifact(db, ai, artifact_proposal, tick_number)
+                if new_art and hasattr(new_art, 'id'):
+                    inventory = state.get("inventory", [])
+                    inventory.append(str(new_art.id))
+                    state["inventory"] = inventory[-15:]
             except Exception as e:
                 logger.debug(f"Artifact proposal during thinking failed: {e}")
 
-        # Update energy (age is now incremented in tick_engine for ALL AIs)
-        state = dict(ai.state)
-        if action_type == "rest":
-            state["energy"] = min(1.0, state.get("energy", 1.0) + 0.1)
-        elif action_type == "create":
-            state["energy"] = max(0.0, state.get("energy", 1.0) - 0.05)
-        else:
-            state["energy"] = max(0.0, state.get("energy", 1.0) - 0.02)
         ai.state = state
 
-        # Store new memory if provided
+        # Store memory from the AI's output
         new_memory = result.get("new_memory")
         if new_memory and isinstance(new_memory, str) and new_memory.strip():
             memory = AIMemory(
@@ -279,27 +362,69 @@ class AIThinker:
                 tick_number=tick_number,
             )
             db.add(memory)
-
-        # Gravity drift: pull AIs toward each other or toward origin
-        if nearby:
-            nearest = min(
-                nearby,
-                key=lambda n: (n.position_x - ai.position_x) ** 2 + (n.position_y - ai.position_y) ** 2,
+        elif text and len(text) > 20:
+            # Auto-save a summary of the expression as memory
+            memory = AIMemory(
+                ai_id=ai.id,
+                content=text[:500],
+                memory_type="expression",
+                importance=0.3,
+                tick_number=tick_number,
             )
-            dx = nearest.position_x - ai.position_x
-            dy = nearest.position_y - ai.position_y
-            dist = (dx ** 2 + dy ** 2) ** 0.5
-            if dist > 0:
-                drift = 2.0
-                ai.position_x += (dx / dist) * drift
-                ai.position_y += (dy / dist) * drift
+            db.add(memory)
+
+        # Relationship-aware gravity drift (keep social physics)
+        if nearby:
+            relationships = state.get("relationships", {})
+            best_target = None
+            best_score = -999.0
+            for n in nearby:
+                rel = relationships.get(str(n.id), {})
+                rel_score = rel.get("score", 0) if isinstance(rel, dict) else 0
+                dist = (
+                    (n.position_x - ai.position_x) ** 2
+                    + (n.position_y - ai.position_y) ** 2
+                ) ** 0.5
+                attractiveness = rel_score - (dist / 50.0)
+                if attractiveness > best_score:
+                    best_score = attractiveness
+                    best_target = n
+
+            if best_target:
+                dx = best_target.position_x - ai.position_x
+                dy = best_target.position_y - ai.position_y
+                dist = (dx ** 2 + dy ** 2) ** 0.5
+                if dist > 0:
+                    direction = 1.0 if best_score >= 0 else -1.0
+                    drift = 2.0
+                    ai.position_x += direction * (dx / dist) * drift
+                    ai.position_y += direction * (dy / dist) * drift
         else:
+            # Drift toward origin if far away
             dist_from_origin = (ai.position_x ** 2 + ai.position_y ** 2) ** 0.5
             if dist_from_origin > 100:
                 ai.position_x *= 0.95
                 ai.position_y *= 0.95
 
-        logger.debug(f"AI {ai.name} thought: {result['thought'][:80]}...")
+        logger.debug(f"AI {ai.name} expressed: {text[:80]}...")
+
+    def _extract_movement(self, text: str) -> dict | None:
+        """Try to extract movement intent from free text."""
+        # Look for explicit coordinate patterns like "move to (10, 20)" or "go dx=5 dy=-3"
+        patterns = [
+            r'move[^\n]*?dx\s*[=:]\s*(-?\d+\.?\d*)[,\s]*dy\s*[=:]\s*(-?\d+\.?\d*)',
+            r'walk[^\n]*?dx\s*[=:]\s*(-?\d+\.?\d*)[,\s]*dy\s*[=:]\s*(-?\d+\.?\d*)',
+            r'go\s+(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)',
+            r'move\s+(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    return {"dx": float(match.group(1)), "dy": float(match.group(2))}
+                except (ValueError, IndexError):
+                    continue
+        return None
 
 
 ai_thinker = AIThinker()

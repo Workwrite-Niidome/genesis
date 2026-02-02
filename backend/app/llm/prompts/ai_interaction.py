@@ -20,6 +20,9 @@ Energy: {energy:.0%} | Age: {age} ticks
 Traits: {other_traits} | Energy: {other_energy:.0%}
 Appearance: {other_appearance}
 {conversation_context}
+## Nearby Artifacts
+{shared_artifacts}
+
 ## The Law of GENESIS
 One law: "Evolve." What that means is yours to decide.
 The most evolved being becomes the next God. You are mortal.
@@ -56,6 +59,9 @@ Personality: {traits} | Energy: {energy:.0%} | Age: {age} ticks
 
 ## Conversation So Far
 {conversation_history}
+
+## Nearby Artifacts
+{shared_artifacts}
 
 ## How to Respond
 Continue the conversation naturally as {name}. You MUST engage with what was actually said.
@@ -104,7 +110,8 @@ To propose a new concept (only if genuinely novel):
 "concept_proposal": {{"name": "...", "definition": "What it means", "category": "...", "effects": {{}}}}
 
 To propose an artifact:
-"artifact_proposal": {{"name": "...", "type": "...", "description": "What it is and why it matters"}}
+"artifact_proposal": {{"name": "...", "type": "art|song|code|tool|architecture|story|law", "description": "Vivid description (2-4 sentences). Describe colors, mood, structure, themes in detail."}}
+  The actual content (pixels, notes, code, etc.) will be generated from your description.
 
 Respond in English only. Output raw JSON with no markdown formatting."""
 

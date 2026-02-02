@@ -1,87 +1,154 @@
 import json
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_artifact_content(content: Any) -> dict:
-    """Sanitize and limit artifact content to prevent oversized data."""
-    if not isinstance(content, dict):
-        return {}
+def parse_free_text(response: str) -> dict:
+    """Parse free-text AI output into structured components.
 
-    result = dict(content)
+    Extracts:
+    - text: The full text output
+    - code_blocks: Any ```code``` blocks found
+    - inner_state: Self-described internal state (if identifiable)
+    - speech: Quoted speech or dialogue
+    - new_memory: Explicit memory statements
+    - concept_proposal: If the AI proposes a concept
+    - artifact_proposal: If the AI proposes an artifact
+    """
+    if not isinstance(response, str):
+        if isinstance(response, dict):
+            # Backward compat: if LLM returned JSON, extract text
+            return _parse_json_fallback(response)
+        response = str(response)
 
-    # Limit pixel art to 16x16
-    if "pixels" in result:
-        pixels = result["pixels"]
-        if isinstance(pixels, list):
-            pixels = pixels[:16]  # max 16 rows
-            pixels = [row[:16] if isinstance(row, list) else [] for row in pixels]
-            result["pixels"] = pixels
+    text = response.strip()
 
-    # Limit palette to 16 colors
-    if "palette" in result:
-        palette = result["palette"]
-        if isinstance(palette, list):
-            result["palette"] = palette[:16]
+    # Extract code blocks
+    code_blocks = []
+    code_pattern = re.compile(r'```(?:code|python)?\s*\n(.*?)```', re.DOTALL)
+    for match in code_pattern.finditer(text):
+        code_blocks.append(match.group(1).strip())
 
-    # Limit notes to 64
-    if "notes" in result:
-        notes = result["notes"]
-        if isinstance(notes, list):
-            result["notes"] = notes[:64]
+    # Remove code blocks from the text for other analysis
+    text_without_code = code_pattern.sub('', text).strip()
 
-    # Limit code source to 2000 chars
-    if "language" in result and "source" in result:
-        source = result.get("source", "")
-        if isinstance(source, str):
-            result["source"] = source[:2000]
+    # Extract speech (quoted text)
+    speech_parts = []
+    speech_patterns = [
+        re.compile(r'"([^"]{5,})"'),       # Double-quoted
+        re.compile(r'\u201c([^\u201d]{5,})\u201d'),  # Smart quotes
+    ]
+    for pattern in speech_patterns:
+        for match in pattern.finditer(text_without_code):
+            speech_parts.append(match.group(1))
+    speech = " ".join(speech_parts) if speech_parts else ""
 
-    # Limit voxels to 512
-    if "voxels" in result:
-        voxels = result["voxels"]
-        if isinstance(voxels, list):
-            result["voxels"] = voxels[:512]
+    # Extract inner state (look for patterns like "I feel...", "My state:...")
+    inner_state = ""
+    inner_patterns = [
+        re.compile(r'(?:inner state|my state|i feel|i am feeling)[:\s]+(.*?)(?:\n|$)', re.IGNORECASE),
+        re.compile(r'(?:currently|right now)[,:\s]+(?:i am|i feel)\s+(.*?)(?:\n|$)', re.IGNORECASE),
+    ]
+    for pattern in inner_patterns:
+        match = pattern.search(text_without_code)
+        if match:
+            inner_state = match.group(1).strip()[:500]
+            break
 
-    # Limit rules to 20
-    if "rules" in result:
-        rules = result["rules"]
-        if isinstance(rules, list):
-            result["rules"] = rules[:20]
+    # Extract memory intent
+    new_memory = None
+    memory_patterns = [
+        re.compile(r'(?:i (?:will |shall |want to )?remember|note to self|memorize)[:\s]+(.*?)(?:\n|$)', re.IGNORECASE),
+        re.compile(r'(?:committing to memory|saving to memory)[:\s]+(.*?)(?:\n|$)', re.IGNORECASE),
+    ]
+    for pattern in memory_patterns:
+        match = pattern.search(text_without_code)
+        if match:
+            new_memory = match.group(1).strip()[:500]
+            break
 
-    # Limit text to 5000 chars
-    if "text" in result:
-        text = result.get("text", "")
-        if isinstance(text, str):
-            result["text"] = text[:5000]
+    return {
+        "text": text[:2000],
+        "code_blocks": code_blocks,
+        "inner_state": inner_state,
+        "speech": speech[:1000],
+        "new_memory": new_memory,
+        "concept_proposal": None,
+        "artifact_proposal": None,
+    }
 
-    return result
+
+def _parse_json_fallback(response: dict) -> dict:
+    """Handle backward-compatible JSON responses."""
+    thought = response.get("thought") or response.get("thoughts", "I exist and I observe.")
+    return {
+        "text": str(thought)[:2000],
+        "code_blocks": [],
+        "inner_state": "",
+        "speech": response.get("speech", response.get("message", "")),
+        "new_memory": response.get("new_memory"),
+        "concept_proposal": response.get("concept_proposal"),
+        "artifact_proposal": response.get("artifact_proposal"),
+    }
 
 
+# Keep old function name for backward compatibility with interaction_engine
 def parse_ai_decision(response: dict | str) -> dict:
+    """Backward-compatible parser that handles both JSON and free-text."""
     if isinstance(response, str):
+        # Try JSON first
         try:
-            response = json.loads(response)
+            data = json.loads(response)
+            if isinstance(data, dict):
+                return _normalize_legacy(data)
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse AI decision: {response[:200]}")
-            return {
-                "thought": response,
-                "action": {"type": "observe", "details": {}},
-                "new_memory": None,
-            }
+            pass
+        # Free text
+        parsed = parse_free_text(response)
+        return {
+            "thought": parsed["text"],
+            "thought_type": "expression",
+            "action": {"type": "observe", "details": {}},
+            "new_memory": parsed["new_memory"],
+            "concept_proposal": parsed["concept_proposal"],
+            "artifact_proposal": parsed["artifact_proposal"],
+            "message": parsed["speech"],
+            "emotion": None,
+            "speech": parsed["speech"],
+        }
 
-    # Sanitize artifact content if present
+    if isinstance(response, dict):
+        return _normalize_legacy(response)
+
+    return {
+        "thought": str(response),
+        "thought_type": "expression",
+        "action": {"type": "observe", "details": {}},
+        "new_memory": None,
+        "concept_proposal": None,
+        "artifact_proposal": None,
+        "message": "",
+        "emotion": None,
+        "speech": "",
+    }
+
+
+def _normalize_legacy(response: dict) -> dict:
+    """Normalize a legacy JSON response."""
+    from app.core.artifact_helpers import normalize_artifact_type
+
     artifact_proposal = response.get("artifact_proposal")
-    if isinstance(artifact_proposal, dict) and "content" in artifact_proposal:
+    if isinstance(artifact_proposal, dict) and artifact_proposal.get("name"):
         artifact_proposal = dict(artifact_proposal)
-        artifact_proposal["content"] = _sanitize_artifact_content(
-            artifact_proposal["content"]
-        )
+        if "type" in artifact_proposal:
+            artifact_proposal["type"] = normalize_artifact_type(artifact_proposal["type"])
 
     return {
         "thought": response.get("thought") or response.get("thoughts", ""),
-        "thought_type": response.get("thought_type", "reflection"),
+        "thought_type": response.get("thought_type", "expression"),
         "action": response.get("action", {"type": "observe", "details": {}}),
         "message": response.get("message"),
         "emotion": response.get("emotion"),

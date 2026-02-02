@@ -63,6 +63,39 @@ async def get_god_feed(
     return {"feed": feed}
 
 
+@router.get("/world-report")
+async def get_world_report(db: AsyncSession = Depends(get_db)):
+    """Get latest world report for Claude Code review.
+
+    Returns full world state, AI voices, events, and the prompt
+    that would be used for autonomous world update.
+    The admin can review this with Claude Code and issue commands
+    via POST /god/message.
+    """
+    import os
+    import glob as glob_module
+
+    report_dir = os.path.join(os.path.dirname(__file__), "..", "..", "world_reports")
+    if not os.path.isdir(report_dir):
+        return {"report": None, "message": "No world reports generated yet."}
+
+    reports = sorted(glob_module.glob(os.path.join(report_dir, "world_report_tick_*.md")), reverse=True)
+    if not reports:
+        return {"report": None, "message": "No world reports generated yet."}
+
+    latest = reports[0]
+    with open(latest, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    tick = os.path.basename(latest).replace("world_report_tick_", "").replace(".md", "")
+    return {
+        "report": content,
+        "tick": int(tick) if tick.isdigit() else None,
+        "file": os.path.basename(latest),
+        "total_reports": len(reports),
+    }
+
+
 class SpawnAIRequest(BaseModel):
     count: int = 1
 

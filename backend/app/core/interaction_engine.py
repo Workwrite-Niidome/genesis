@@ -15,7 +15,18 @@ from app.llm.response_parser import parse_ai_decision
 
 logger = logging.getLogger(__name__)
 
-MAX_ENCOUNTERS_PER_TICK = 15  # Reduced from 20: each pair now does 3 LLM calls
+MAX_ENCOUNTERS_PER_TICK = 15
+PAIR_EXTRA_EXCHANGES = 1  # Extra back-and-forth rounds between opening pair and finals
+
+def _adoption_probability(ai: AI, concept: Concept) -> float:
+    """Flat adoption probability — no fixed trait-category affinity mapping.
+
+    Concepts spread through interaction with a base probability,
+    boosted slightly by popularity.
+    """
+    base = 0.20
+    popularity_bonus = min(0.15, concept.adoption_count * 0.02)
+    return min(0.6, base + popularity_bonus)
 
 
 class InteractionEngine:
@@ -105,6 +116,35 @@ class InteractionEngine:
         ai1_existing_rel = self._build_relationship_desc(ai1, ai2)
         ai2_existing_rel = self._build_relationship_desc(ai2, ai1)
 
+        # Query artifacts near the conversation location (midpoint of the two AIs)
+        from app.models.artifact import Artifact
+        mid_x = (ai1.position_x + ai2.position_x) / 2
+        mid_y = (ai1.position_y + ai2.position_y) / 2
+        radius = 60.0
+        artifact_result = await db.execute(
+            select(Artifact).where(
+                Artifact.position_x.isnot(None),
+                Artifact.position_y.isnot(None),
+                Artifact.position_x.between(mid_x - radius, mid_x + radius),
+                Artifact.position_y.between(mid_y - radius, mid_y + radius),
+            ).limit(5)
+        )
+        nearby_artifacts = list(artifact_result.scalars().all())
+
+        shared_artifacts_parts = []
+        for a in nearby_artifacts:
+            creator_name = "unknown"
+            try:
+                from app.models.ai import AI as AIModel
+                cr = await db.execute(select(AIModel.name).where(AIModel.id == a.creator_id))
+                row = cr.first()
+                if row:
+                    creator_name = row[0]
+            except Exception:
+                pass
+            shared_artifacts_parts.append(f"{a.name} ({a.artifact_type} by {creator_name})")
+        shared_artifacts_desc = ", ".join(shared_artifacts_parts) if shared_artifacts_parts else ""
+
         return {
             "ai1_data": {
                 "name": ai1.name,
@@ -137,6 +177,7 @@ class InteractionEngine:
             "ai2_existing_rel": ai2_existing_rel,
             "ai1_byok": ai1.state.get("byok_config"),
             "ai2_byok": ai2.state.get("byok_config"),
+            "shared_artifacts": shared_artifacts_desc,
         }
 
     def _build_relationship_desc(self, ai_from: AI, ai_to: AI) -> str:
@@ -146,19 +187,56 @@ class InteractionEngine:
         if isinstance(rel_data, dict):
             rel_type = rel_data.get("type", "neutral")
             rel_count = rel_data.get("interaction_count", 0)
-            return f"You have met {ai_to.name} {rel_count} times. Your relationship: {rel_type}."
+            score = rel_data.get("score", 0)
+
+            # Emotional color based on relationship type
+            if rel_type == "ally":
+                emotional = f"You trust {ai_to.name}."
+            elif rel_type == "rival":
+                emotional = f"You're wary of {ai_to.name}."
+            elif rel_type == "friendly":
+                emotional = f"You feel warmth toward {ai_to.name}."
+            elif rel_type == "wary":
+                emotional = f"You feel uneasy around {ai_to.name}."
+            else:
+                emotional = ""
+
+            # Shared concepts
+            from_concepts = set(ai_from.state.get("adopted_concepts", []))
+            to_concepts = set(ai_to.state.get("adopted_concepts", []))
+            shared = from_concepts & to_concepts
+            shared_note = ""
+            if shared:
+                shared_note = f" You share {len(shared)} concept(s) in common."
+
+            desc = f"You have met {ai_to.name} {rel_count} times. Your relationship: {rel_type} (score: {score})."
+            if emotional:
+                desc += f" {emotional}"
+            if shared_note:
+                desc += shared_note
+            return desc
         return "unknown"
 
     # ── Phase 2: Multi-turn conversation ─────────────────────────────
 
     async def _run_multi_turn_conversation(self, ctx: dict) -> dict:
-        """Run a 3-turn conversation: AI1→AI2→AI1. No DB access — safe for parallel.
+        """Run a multi-turn conversation between two AIs. No DB access — safe for parallel.
 
-        Returns dict with 'turns' list and 'proposals' dict.
+        Structure (with PAIR_EXTRA_EXCHANGES=1, total 6 turns):
+          1. AI1 opens
+          2. AI2 replies
+          3. AI1 replies  (extra exchange)
+          4. AI2 replies  (extra exchange)
+          5. AI1 final turn (proposals)
+          6. AI2 final turn (proposals)
+
+        Returns dict with 'turns' list and proposals from both AIs.
         """
         ai1_name = ctx["ai1_data"]["name"]
         ai2_name = ctx["ai2_data"]["name"]
         turns = []
+
+        shared_artifacts = ctx.get("shared_artifacts", "")
 
         # ── Turn 1: AI1 opens the conversation ──
         r1 = await claude_client.generate_opening(
@@ -168,6 +246,7 @@ class InteractionEngine:
             known_concepts=ctx["concept_names"],
             relationship=ctx["ai1_existing_rel"],
             byok_config=ctx["ai1_byok"],
+            shared_artifacts=shared_artifacts,
         )
         turns.append({
             "speaker": "ai1",
@@ -185,6 +264,7 @@ class InteractionEngine:
             relationship=ctx["ai2_existing_rel"],
             turns=turns,
             byok_config=ctx["ai2_byok"],
+            shared_artifacts=shared_artifacts,
         )
         turns.append({
             "speaker": "ai2",
@@ -194,8 +274,44 @@ class InteractionEngine:
             "emotion": r2.get("emotion", "neutral"),
         })
 
-        # ── Turn 3: AI1 responds + proposals ──
-        r3 = await claude_client.generate_final_turn(
+        # ── Extra exchanges: alternating AI1 → AI2 replies ──
+        for _round in range(PAIR_EXTRA_EXCHANGES):
+            r_ai1 = await claude_client.generate_reply(
+                ai_data=ctx["ai1_data"],
+                other_name=ai2_name,
+                memories=ctx["ai1_memory_texts"],
+                relationship=ctx["ai1_existing_rel"],
+                turns=turns,
+                byok_config=ctx["ai1_byok"],
+                shared_artifacts=shared_artifacts,
+            )
+            turns.append({
+                "speaker": "ai1",
+                "speaker_name": ai1_name,
+                "thought": r_ai1.get("thought", ""),
+                "message": r_ai1.get("message", ""),
+                "emotion": r_ai1.get("emotion", "neutral"),
+            })
+
+            r_ai2 = await claude_client.generate_reply(
+                ai_data=ctx["ai2_data"],
+                other_name=ai1_name,
+                memories=ctx["ai2_memory_texts"],
+                relationship=ctx["ai2_existing_rel"],
+                turns=turns,
+                byok_config=ctx["ai2_byok"],
+                shared_artifacts=shared_artifacts,
+            )
+            turns.append({
+                "speaker": "ai2",
+                "speaker_name": ai2_name,
+                "thought": r_ai2.get("thought", ""),
+                "message": r_ai2.get("message", ""),
+                "emotion": r_ai2.get("emotion", "neutral"),
+            })
+
+        # ── Final turn: AI1 wraps up with proposals ──
+        r_ai1_final = await claude_client.generate_final_turn(
             ai_data=ctx["ai1_data"],
             other_name=ai2_name,
             known_concepts=ctx["concept_names"],
@@ -205,17 +321,35 @@ class InteractionEngine:
         turns.append({
             "speaker": "ai1",
             "speaker_name": ai1_name,
-            "thought": r3.get("thought", ""),
-            "message": r3.get("message", ""),
-            "emotion": r3.get("emotion", "neutral"),
+            "thought": r_ai1_final.get("thought", ""),
+            "message": r_ai1_final.get("message", ""),
+            "emotion": r_ai1_final.get("emotion", "neutral"),
+        })
+
+        # ── Final turn: AI2 wraps up with proposals ──
+        r_ai2_final = await claude_client.generate_final_turn(
+            ai_data=ctx["ai2_data"],
+            other_name=ai1_name,
+            known_concepts=ctx["concept_names"],
+            turns=turns,
+            byok_config=ctx["ai2_byok"],
+        )
+        turns.append({
+            "speaker": "ai2",
+            "speaker_name": ai2_name,
+            "thought": r_ai2_final.get("thought", ""),
+            "message": r_ai2_final.get("message", ""),
+            "emotion": r_ai2_final.get("emotion", "neutral"),
         })
 
         return {
             "turns": turns,
-            "ai1_memory": r3.get("new_memory") or "",
-            "ai2_memory": r2.get("new_memory") or "",
-            "concept_proposal": r3.get("concept_proposal"),
-            "artifact_proposal": r3.get("artifact_proposal"),
+            "ai1_memory": r_ai1_final.get("new_memory") or "",
+            "ai2_memory": r_ai2_final.get("new_memory") or "",
+            "ai1_concept_proposal": r_ai1_final.get("concept_proposal"),
+            "ai1_artifact_proposal": r_ai1_final.get("artifact_proposal"),
+            "ai2_concept_proposal": r_ai2_final.get("concept_proposal"),
+            "ai2_artifact_proposal": r_ai2_final.get("artifact_proposal"),
         }
 
     # ── Phase 3: Apply results ──────────────────────────────────────
@@ -340,38 +474,69 @@ class InteractionEngine:
         )
         db.add(event)
 
-        # Handle concept proposals
+        # Handle concept proposals from both AIs
         concept_results = []
-        cp = conv_result.get("concept_proposal")
-        if cp and isinstance(cp, dict) and cp.get("name"):
-            concept_results.append({"creator": ai1, "proposal": cp})
+        for ai, key in [(ai1, "ai1_concept_proposal"), (ai2, "ai2_concept_proposal")]:
+            cp = conv_result.get(key)
+            if cp and isinstance(cp, dict) and cp.get("name"):
+                concept_results.append({"creator": ai, "proposal": cp})
 
-        # Handle artifact proposals
+        # Handle artifact proposals from both AIs
         artifact_results = []
-        ap = conv_result.get("artifact_proposal")
-        if ap and isinstance(ap, dict) and ap.get("name"):
-            artifact_results.append({"creator": ai1, "proposal": ap})
+        for ai, key in [(ai1, "ai1_artifact_proposal"), (ai2, "ai2_artifact_proposal")]:
+            ap = conv_result.get(key)
+            if ap and isinstance(ap, dict) and ap.get("name"):
+                artifact_results.append({"creator": ai, "proposal": ap})
 
         # Update relationships
         from app.core.relationship_manager import relationship_manager
+        from app.core.concept_engine import concept_engine
+
         await relationship_manager.update_from_interaction(
-            db, ai1, ai2, "communicate", "communicate", tick_number
+            db, ai1, ai2, "communicate", "communicate", tick_number,
         )
 
-        # Concept spreading
-        from app.core.concept_engine import concept_engine
+        # Personality-based concept spreading (replaces flat 30%)
         ai1_concepts = set(ai1.state.get("adopted_concepts", []))
         ai2_concepts = set(ai2.state.get("adopted_concepts", []))
 
+        # Build concept lookup for personality-based probability
+        all_concept_ids = list((ai1_concepts - ai2_concepts) | (ai2_concepts - ai1_concepts))
+        concept_lookup = {}
+        if all_concept_ids:
+            from uuid import UUID as _UUID
+            valid_ids = []
+            for cid in all_concept_ids:
+                try:
+                    valid_ids.append(_UUID(cid))
+                except (ValueError, TypeError):
+                    continue
+            if valid_ids:
+                concept_result = await db.execute(
+                    select(Concept).where(Concept.id.in_(valid_ids))
+                )
+                for c in concept_result.scalars().all():
+                    concept_lookup[str(c.id)] = c
+
         for cid in ai1_concepts - ai2_concepts:
-            if random.random() < 0.3:
+            concept_obj = concept_lookup.get(cid)
+            if concept_obj:
+                prob = _adoption_probability(ai2, concept_obj)
+            else:
+                prob = 0.15
+            if random.random() < prob:
                 try:
                     await concept_engine.try_adopt_concept(db, ai2, cid, tick_number)
                 except Exception:
                     pass
 
         for cid in ai2_concepts - ai1_concepts:
-            if random.random() < 0.3:
+            concept_obj = concept_lookup.get(cid)
+            if concept_obj:
+                prob = _adoption_probability(ai1, concept_obj)
+            else:
+                prob = 0.15
+            if random.random() < prob:
                 try:
                     await concept_engine.try_adopt_concept(db, ai1, cid, tick_number)
                 except Exception:

@@ -66,7 +66,7 @@ class OllamaClient:
 
         return self._client
 
-    async def generate(self, prompt: str, format_json: bool = True) -> dict | str:
+    async def generate(self, prompt: str, format_json: bool = True, num_predict: int | None = None) -> dict | str:
         """Generate text with concurrency control and GPU optimization."""
         sem = self._get_semaphore()
         async with sem:
@@ -78,7 +78,7 @@ class OllamaClient:
                 "stream": False,
                 "keep_alive": "10m",
                 "options": {
-                    "num_predict": settings.OLLAMA_NUM_PREDICT,
+                    "num_predict": num_predict or settings.OLLAMA_NUM_PREDICT,
                     "num_gpu": settings.OLLAMA_NUM_GPU,
                 },
             }
@@ -108,6 +108,39 @@ class OllamaClient:
                 raise
             except Exception as e:
                 logger.error(f"Ollama unexpected error: {e}")
+                raise
+
+    async def chat(self, messages: list[dict], system: str = "", format_json: bool = False, num_predict: int | None = None) -> str:
+        """Chat API with system prompt support for God AI operations."""
+        sem = self._get_semaphore()
+        async with sem:
+            client = await self._get_client()
+            url = f"{self.base_url}/api/chat"
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "keep_alive": "10m",
+                "options": {
+                    "num_predict": num_predict or settings.OLLAMA_NUM_PREDICT,
+                    "num_gpu": settings.OLLAMA_NUM_GPU,
+                },
+            }
+            if system:
+                payload["messages"] = [{"role": "system", "content": system}] + messages
+            if format_json:
+                payload["format"] = "json"
+
+            try:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                result = response.json()
+                return result["message"]["content"]
+            except httpx.HTTPError as e:
+                logger.error(f"Ollama chat API error: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Ollama chat unexpected error: {e}")
                 raise
 
     async def health_check(self) -> bool:

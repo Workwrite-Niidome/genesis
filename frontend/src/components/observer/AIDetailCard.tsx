@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Zap, Clock, Sparkles, MapPin, Brain, Users, TrendingUp, Lightbulb, Palette, Building2, ChevronRight } from 'lucide-react';
+import { X, Clock, MapPin, Brain, Users, Lightbulb, Palette, Building2, ChevronRight, Heart } from 'lucide-react';
 import { useAIStore } from '../../stores/aiStore';
 import { useDetailStore } from '../../stores/detailStore';
 import { api } from '../../services/api';
@@ -26,6 +26,7 @@ const artifactTypeIcons: Record<string, string> = {
   architecture: '🏛️', tool: '🔧', ritual: '🕯️', game: '🎲',
 };
 
+
 /** Extracted content component for reuse in mobile bottom sheet */
 export function AIDetailContent() {
   const { t } = useTranslation();
@@ -43,9 +44,8 @@ export function AIDetailContent() {
   if (!selectedAI) return null;
 
   const color = selectedAI.appearance?.primaryColor || '#7c5bf5';
-  const energy = typeof selectedAI.state?.energy === 'number' ? selectedAI.state.energy : null;
   const age = typeof selectedAI.state?.age === 'number' ? selectedAI.state.age : null;
-  const evolutionScore = typeof selectedAI.state?.evolution_score === 'number' ? selectedAI.state.evolution_score : 0;
+  const innerState = typeof selectedAI.state?.inner_state === 'string' ? selectedAI.state.inner_state : '';
   const personalityTraits = selectedAI.personality_traits || [];
   const recentThoughts: AIThought[] = selectedAI.recent_thoughts || [];
   const relationships: Record<string, Relationship> = selectedAI.state?.relationships || {};
@@ -61,28 +61,6 @@ export function AIDetailContent() {
     <>
       {/* Stats grid */}
       <div className="px-4 pt-4 pb-1 grid grid-cols-2 gap-2">
-        {energy !== null && (
-          <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Zap size={10} className="text-cyan" />
-              <span className="text-[9px] text-text-3 uppercase tracking-wider">{t('energy')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(100, energy * 100)}%`,
-                    background: `linear-gradient(90deg, ${color}, ${color}cc)`,
-                    boxShadow: `0 0 6px ${color}40`,
-                  }}
-                />
-              </div>
-              <span className="text-[10px] mono text-text-2">{Math.round(energy * 100)}%</span>
-            </div>
-          </div>
-        )}
-
         {age !== null && (
           <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
             <div className="flex items-center gap-1.5 mb-2">
@@ -104,17 +82,17 @@ export function AIDetailContent() {
             {selectedAI.position_x.toFixed(0)}, {selectedAI.position_y.toFixed(0)}
           </span>
         </div>
-
-        <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-          <div className="flex items-center gap-1.5 mb-2">
-            <TrendingUp size={10} className="text-accent" />
-            <span className="text-[9px] text-text-3 uppercase tracking-wider">{t('evolution_score')}</span>
-          </div>
-          <span className="text-[13px] mono font-medium text-accent">
-            {evolutionScore.toFixed(1)}
-          </span>
-        </div>
       </div>
+
+      {/* Inner State */}
+      {innerState && (
+        <div className="px-4 py-2">
+          <div className="p-2.5 rounded-xl bg-accent/[0.04] border border-accent/10">
+            <div className="text-[9px] text-accent/60 uppercase tracking-wider mb-1">{t('inner_state', 'Inner State')}</div>
+            <p className="text-[11px] text-text-2 leading-relaxed">{innerState}</p>
+          </div>
+        </div>
+      )}
 
       {/* Personality traits */}
       {personalityTraits.length > 0 && (

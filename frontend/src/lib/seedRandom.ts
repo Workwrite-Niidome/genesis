@@ -37,45 +37,58 @@ export function createSeededRandom(seed: string) {
   return { next, nextInt, pick };
 }
 
-/** Default palette for fallback generation */
+/** Default palette for fallback generation (12 colors) */
 const FALLBACK_PALETTE = [
-  '#06060c', '#7c5bf5', '#58d5f0', '#34d399',
-  '#f472b6', '#fbbf24', '#818cf8', '#f87171',
+  '#06060c', '#1a1a2e', '#7c5bf5', '#58d5f0',
+  '#34d399', '#f472b6', '#fbbf24', '#818cf8',
+  '#f87171', '#a78bfa', '#2dd4bf', '#fb923c',
 ];
 
 /** Generate fallback pixel art from an artifact ID */
-export function generateFallbackPixels(id: string, size = 8): { pixels: number[][]; palette: string[] } {
+export function generateFallbackPixels(id: string, size = 32): { pixels: number[][]; palette: string[] } {
   const rng = createSeededRandom(id);
-  const palette = FALLBACK_PALETTE.slice(0, 4 + rng.nextInt(0, 4));
-  const half = Math.ceil(size / 2);
+  const palette = FALLBACK_PALETTE.slice(0, 6 + rng.nextInt(0, 6));
+  const half = Math.floor(size / 2);
   const pixels: number[][] = [];
+
+  let prevRow: number[] = new Array(half).fill(0);
 
   for (let y = 0; y < size; y++) {
     const row: number[] = [];
     for (let x = 0; x < half; x++) {
-      row.push(rng.next() < 0.4 ? 0 : rng.nextInt(1, palette.length));
+      let val: number;
+      if (rng.next() < 0.3) {
+        // Background
+        val = 0;
+      } else if (x > 0 && rng.next() < 0.5) {
+        // Same as left neighbor (horizontal runs)
+        val = row[x - 1];
+      } else if (y > 0 && rng.next() < 0.4) {
+        // Same as top neighbor (vertical continuity)
+        val = prevRow[x];
+      } else {
+        val = rng.nextInt(1, palette.length);
+      }
+      row.push(val);
     }
-    // Mirror for symmetry
-    const mirrored = [...row];
-    for (let x = half - 1 - (size % 2 === 0 ? 0 : 1); x >= 0; x--) {
-      mirrored.push(row[x]);
-    }
-    pixels.push(mirrored.slice(0, size));
+    prevRow = [...row];
+    // Mirror left-right for symmetry
+    pixels.push([...row, ...row.slice().reverse()]);
   }
 
   return { pixels, palette };
 }
 
-/** Generate fallback notes from an artifact ID */
+/** Generate fallback notes from an artifact ID — pentatonic melody */
 export function generateFallbackNotes(id: string): { note: string; dur: number }[] {
   const rng = createSeededRandom(id);
-  const scale = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
-  const durations = [0.25, 0.25, 0.5, 0.5, 1.0];
-  const count = 8 + rng.nextInt(0, 8);
+  const scale = ['C4', 'D4', 'E4', 'G4', 'A4', 'C5', 'D5', 'E5'];
+  const durations = [0.25, 0.5, 0.5, 0.75, 1.0, 1.0, 1.5];
+  const count = 8 + rng.nextInt(0, 12);
   const notes: { note: string; dur: number }[] = [];
 
   for (let i = 0; i < count; i++) {
-    if (rng.next() < 0.15) {
+    if (rng.next() < 0.2) {
       notes.push({ note: 'rest', dur: rng.pick(durations) });
     } else {
       notes.push({ note: rng.pick(scale), dur: rng.pick(durations) });

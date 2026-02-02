@@ -116,7 +116,7 @@ export default function MobileAISheet() {
               </span>
             </div>
             <div className="text-[10px] text-text-3 mt-0.5">
-              {t('evolution_score')}: <span className="mono text-accent">{(selectedAI.state?.evolution_score ?? 0).toFixed(1)}</span>
+              {t('age')}: <span className="mono text-text-2">{selectedAI.state?.age ?? 0} ticks</span>
             </div>
           </div>
           <div className="flex items-center gap-1">

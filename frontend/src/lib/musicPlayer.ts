@@ -67,36 +67,67 @@ export class ChiptuneEngine {
     this._song = song;
 
     this.ctx = new AudioContext();
+
+    // Master output
     this.gainNode = this.ctx.createGain();
-    this.gainNode.gain.value = 0.15;
+    this.gainNode.gain.value = 0.12;
     this.gainNode.connect(this.ctx.destination);
 
-    const secPerBeat = 60 / (song.tempo || 120);
+    // Low-pass filter — removes harsh harmonics for a warmer tone
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1800;
+    filter.Q.value = 0.7;
+    filter.connect(this.gainNode);
+
+    // Delay-based reverb for spatial depth
+    const delay = this.ctx.createDelay(1.0);
+    delay.delayTime.value = 0.25;
+    const feedback = this.ctx.createGain();
+    feedback.gain.value = 0.2;
+    const wetGain = this.ctx.createGain();
+    wetGain.gain.value = 0.3;
+    filter.connect(delay);
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(wetGain);
+    wetGain.connect(this.gainNode);
+
+    const secPerBeat = 60 / (song.tempo || 72);
     let time = this.ctx.currentTime + 0.05;
     this._startTime = time;
 
     for (const note of song.notes) {
-      const dur = (note.dur || 0.25) * secPerBeat;
+      const dur = (note.dur || 0.5) * secPerBeat;
       const freq = noteToFreq(note.note);
 
       if (freq !== null) {
-        const osc = this.ctx.createOscillator();
-        osc.type = song.wave || 'square';
-        osc.frequency.value = freq;
+        // Two slightly detuned oscillators — chorus effect for warmth
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        osc1.type = song.wave || 'sine';
+        osc2.type = song.wave || 'sine';
+        osc1.frequency.value = freq;
+        osc2.frequency.value = freq * 1.004; // ~7 cents sharp
 
-        // Envelope for 8-bit feel
+        // Soft envelope
         const env = this.ctx.createGain();
+        const attack = Math.min(0.08, dur * 0.15);
+        const release = Math.min(0.15, dur * 0.3);
         env.gain.setValueAtTime(0, time);
-        env.gain.linearRampToValueAtTime(1, time + 0.005);
-        env.gain.setValueAtTime(1, time + dur - 0.01);
+        env.gain.linearRampToValueAtTime(0.4, time + attack);
+        env.gain.setValueAtTime(0.4, time + dur - release);
         env.gain.linearRampToValueAtTime(0, time + dur);
 
-        osc.connect(env);
-        env.connect(this.gainNode!);
+        osc1.connect(env);
+        osc2.connect(env);
+        env.connect(filter);
 
-        osc.start(time);
-        osc.stop(time + dur + 0.01);
-        this.scheduledSources.push(osc);
+        osc1.start(time);
+        osc2.start(time);
+        osc1.stop(time + dur + 0.02);
+        osc2.stop(time + dur + 0.02);
+        this.scheduledSources.push(osc1, osc2);
       }
 
       time += dur;
@@ -121,10 +152,10 @@ export class ChiptuneEngine {
       }, 50);
     }
 
-    // Auto-stop when done
+    // Auto-stop when done (extra second for reverb tail)
     setTimeout(() => {
       if (this._playing) this.stop();
-    }, this._duration * 1000 + 200);
+    }, (this._duration + 1) * 1000 + 200);
   }
 
   stop() {

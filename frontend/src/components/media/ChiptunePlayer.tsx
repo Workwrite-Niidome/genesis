@@ -21,8 +21,8 @@ export default function ChiptunePlayer({ artifact }: ChiptunePlayerProps) {
     }
     return {
       notes,
-      tempo: content.tempo || 120,
-      wave: content.wave || 'square',
+      tempo: content.tempo || 72,
+      wave: content.wave || 'sine',
     };
   }, [artifact.id, artifact.content]);
 

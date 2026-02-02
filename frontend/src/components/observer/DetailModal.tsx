@@ -14,7 +14,6 @@ import {
   Zap,
   Loader2,
   ArrowRight,
-  Sparkles,
   Building2,
   ChevronRight,
 } from 'lucide-react';
@@ -26,6 +25,7 @@ import type { AIEntity, Interaction } from '../../types/world';
 import PixelArt from '../media/PixelArt';
 import ChiptunePlayer from '../media/ChiptunePlayer';
 import CodeSandbox from '../media/CodeSandbox';
+import VoxelViewer from '../media/VoxelViewer';
 
 /* ═══════════════════════════════════════════════════════════
    Configuration
@@ -502,7 +502,38 @@ function renderArtifactContent(artifactType: string, content: Record<string, any
   // Code / tool: render sandbox
   if ((artifactType === 'code' || artifactType === 'tool') && (content.source || content.language)) {
     return (
-      <CodeSandbox artifact={{ id: artifact?.id || 'unknown', content }} />
+      <div className="space-y-3">
+        <CodeSandbox artifact={{ id: artifact?.id || 'unknown', content }} />
+      </div>
+    );
+  }
+
+  // Architecture: render isometric voxel view
+  if (artifactType === 'architecture' && (content.voxels || artifact?.id)) {
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-center p-4 rounded-xl bg-black/40 border border-white/[0.06]">
+          <VoxelViewer artifact={{ id: artifact?.id || 'unknown', content }} size={280} />
+        </div>
+        {content.palette && (
+          <div className="flex items-center gap-1 px-1">
+            <span className="text-[10px] text-text-3 mr-1">Palette:</span>
+            {content.palette.map((color: string, i: number) => (
+              <div
+                key={i}
+                className="w-4 h-4 rounded border border-white/10"
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+          </div>
+        )}
+        {content.height && (
+          <div className="text-[10px] text-text-3 px-1">
+            Height: {content.height} · Voxels: {Array.isArray(content.voxels) ? content.voxels.length : '?'}
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -885,8 +916,6 @@ type TFn = (k: string, f?: string) => string;
 function AIProfileCard({ ai, onClick }: { ai: AIEntity; onClick?: () => void }) {
   const color = ai.appearance?.primaryColor || '#7c5bf5';
   const traits = ai.personality_traits || [];
-  const energy = typeof ai.state?.energy === 'number' ? ai.state.energy : null;
-  const evoScore = typeof ai.state?.evolution_score === 'number' ? ai.state.evolution_score : null;
 
   return (
     <button
@@ -914,22 +943,6 @@ function AIProfileCard({ ai, onClick }: { ai: AIEntity; onClick?: () => void }) 
             </span>
           ))}
         </div>
-        {(energy !== null || evoScore !== null) && (
-          <div className="flex items-center gap-3 mt-1.5">
-            {energy !== null && (
-              <div className="flex items-center gap-1">
-                <Zap size={9} className="text-cyan" />
-                <span className="text-[10px] mono text-text-3">{Math.round(energy * 100)}%</span>
-              </div>
-            )}
-            {evoScore !== null && (
-              <div className="flex items-center gap-1">
-                <Sparkles size={9} className="text-accent" />
-                <span className="text-[10px] mono text-text-3">{evoScore.toFixed(1)}</span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
       <ArrowRight size={14} className="text-text-3 opacity-40 flex-shrink-0" />
     </button>
@@ -1428,3 +1441,4 @@ function JsonBlock({ data }: { data: Record<string, any> }) {
 function formatKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
+

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 import anthropic
@@ -12,6 +13,13 @@ from app.llm.prompts.ai_interaction import (
     AI_REPLY_PROMPT,
     AI_FINAL_TURN_PROMPT,
     build_conversation_history,
+)
+from app.llm.prompts.artifact_generation import (
+    STORY_GENERATION_PROMPT,
+    ART_GENERATION_PROMPT,
+    SONG_GENERATION_PROMPT,
+    ARCHITECTURE_GENERATION_PROMPT,
+    CODE_GENERATION_PROMPT,
 )
 from app.llm.response_parser import parse_ai_decision
 
@@ -91,9 +99,13 @@ class ClaudeClient:
         recent_events: list[str],
         conversation_history: list[dict],
     ) -> str:
+        world_rules = world_state.get("world_rules", {})
+        features_summary = world_state.get("world_features_summary", {})
         system_prompt = GOD_AI_SYSTEM_PROMPT.format(
             world_state=json.dumps(world_state, ensure_ascii=False, indent=2),
             recent_events="\n".join(recent_events) if recent_events else "Nothing has happened yet.",
+            world_rules=json.dumps(world_rules, ensure_ascii=False, indent=2),
+            world_features_summary=json.dumps(features_summary, ensure_ascii=False, indent=2),
         )
 
         messages = []
@@ -103,6 +115,16 @@ class ClaudeClient:
 
         messages.append({"role": "user", "content": message})
 
+        # Use Ollama for God AI chat
+        try:
+            from app.llm.ollama_client import ollama_client
+            is_healthy = await ollama_client.health_check()
+            if is_healthy:
+                return await ollama_client.chat(messages, system=system_prompt, num_predict=1500)
+        except Exception as e:
+            logger.warning(f"Ollama God chat failed, falling back to Claude API: {e}")
+
+        # Fallback to Claude API if Ollama is unavailable
         try:
             response = await self.client.messages.create(
                 model=self.model,
@@ -116,9 +138,12 @@ class ClaudeClient:
             raise
 
     async def genesis(self, world_state: dict) -> str:
+        from app.core.world_rules import DEFAULT_WORLD_RULES
         system_prompt = GOD_AI_SYSTEM_PROMPT.format(
             world_state=json.dumps(world_state, ensure_ascii=False, indent=2),
             recent_events="The world has not yet begun. Only the void exists.",
+            world_rules=json.dumps(DEFAULT_WORLD_RULES, ensure_ascii=False, indent=2),
+            world_features_summary="No features yet — the world is void.",
         )
 
         genesis_prompt = GOD_AI_GENESIS_PROMPT.format(genesis_word=GENESIS_WORD)
@@ -143,63 +168,48 @@ class ClaudeClient:
         memories: list[str],
         byok_config: dict | None = None,
     ) -> dict:
-        """Generate a thought for an AI entity. Uses BYOK if configured, else Ollama only."""
-        # Build energy warning
-        energy = ai_data.get("energy", 1.0)
-        if energy <= 0.1:
-            energy_warning = " [CRITICAL — you are near death]"
-        elif energy <= 0.3:
-            energy_warning = " [LOW — conserve energy or rest]"
-        else:
-            energy_warning = ""
-
-        # Build mortality context
-        mortality_context = ""
-        recent_deaths = world_context.get("recent_deaths", [])
-        if recent_deaths:
-            mortality_context = "- Recently deceased beings:\n"
-            for d in recent_deaths:
-                mortality_context += f"  - {d['name']} (age {d.get('age', '?')}, score {d.get('score', '?')})\n"
+        """Generate a thought for an AI entity. Returns free-text output."""
+        from app.llm.response_parser import parse_free_text
 
         prompt = AI_THINKING_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
             philosophy_section=ai_data.get("philosophy_section", ""),
-            energy=energy,
-            energy_warning=energy_warning,
             age=ai_data.get("age", 0),
             x=ai_data.get("x", 0),
             y=ai_data.get("y", 0),
-            evolution_score=ai_data.get("evolution_score", 0),
-            mortality_context=mortality_context,
             memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
-            nearby_ais=world_context.get("nearby_ais", "None visible"),
+            nearby_ais_detail=ai_data.get("nearby_ais_detail", world_context.get("nearby_ais", "No one nearby.")),
             relationships=ai_data.get("relationships", "No known relationships."),
             adopted_concepts=ai_data.get("adopted_concepts", "None yet."),
             world_culture=ai_data.get("world_culture", "No widespread concepts yet."),
             organizations=ai_data.get("organizations", "None."),
-            artifacts=ai_data.get("artifacts", "None yet."),
+            nearby_artifacts_detail=ai_data.get("nearby_artifacts_detail", "Nothing nearby."),
             recent_events=world_context.get("recent_events", "Nothing notable recently."),
+            recent_expressions=ai_data.get("recent_expressions", "Nothing yet."),
+            laws_section=ai_data.get("laws_section", ""),
+            terrain_section=ai_data.get("terrain_section", ""),
+            inner_state_section=ai_data.get("inner_state_section", ""),
         )
 
         # If BYOK configured, use the user's API key directly
         if byok_config and byok_config.get("api_key"):
             try:
-                text = await self._byok_generate(byok_config, prompt, max_tokens=512)
-                parsed = parse_ai_decision(text)
-                return self._normalize_thought(parsed)
+                text = await self._byok_generate(byok_config, prompt, max_tokens=800)
+                return parse_free_text(text)
             except Exception as e:
                 logger.warning(f"BYOK thinking failed for {ai_data.get('name')}: {e}")
-                # Fall through to Ollama
 
-        # Local LLM only (Ollama)
+        # Local LLM (Ollama) — no JSON format constraint
         try:
             from app.llm.ollama_client import ollama_client
             is_healthy = await ollama_client.health_check()
             if is_healthy:
-                result = await ollama_client.generate(prompt, format_json=True)
-                parsed = parse_ai_decision(result) if isinstance(result, dict) else parse_ai_decision(result)
-                return self._normalize_thought(parsed)
+                result = await ollama_client.generate(prompt, format_json=False)
+                if isinstance(result, str):
+                    return parse_free_text(result)
+                elif isinstance(result, dict):
+                    return parse_free_text(result.get("response", str(result)))
             else:
                 logger.warning(f"Ollama not available for AI thinking ({ai_data.get('name')})")
         except Exception as e:
@@ -207,10 +217,13 @@ class ClaudeClient:
 
         # Default response when no LLM is available
         return {
-            "thought": "I exist and I observe.",
-            "thought_type": "observation",
-            "action": {"type": "observe", "details": {}},
+            "text": "I exist and I observe the field around me.",
+            "code_blocks": [],
+            "inner_state": "",
+            "speech": "",
             "new_memory": None,
+            "concept_proposal": None,
+            "artifact_proposal": None,
         }
 
     async def generate_opening(
@@ -221,6 +234,7 @@ class ClaudeClient:
         known_concepts: list[str],
         relationship: str,
         byok_config: dict | None = None,
+        shared_artifacts: str = "",
     ) -> dict:
         """Generate the opening turn of a conversation (AI initiates)."""
         prompt = AI_INTERACTION_PROMPT.format(
@@ -236,6 +250,7 @@ class ClaudeClient:
             other_traits=", ".join(other_data.get("traits", [])),
             other_energy=other_data.get("energy", 1.0),
             conversation_context="",
+            shared_artifacts=shared_artifacts or "None nearby.",
         )
         return await self._run_llm(prompt, byok_config, ai_data.get("name", "?"))
 
@@ -247,6 +262,7 @@ class ClaudeClient:
         relationship: str,
         turns: list[dict],
         byok_config: dict | None = None,
+        shared_artifacts: str = "",
     ) -> dict:
         """Generate a reply turn in an ongoing conversation."""
         prompt = AI_REPLY_PROMPT.format(
@@ -258,6 +274,7 @@ class ClaudeClient:
             relationship=relationship if relationship != "unknown" else "First encounter.",
             other_name=other_name,
             conversation_history=build_conversation_history(turns),
+            shared_artifacts=shared_artifacts or "None nearby.",
         )
         return await self._run_llm(prompt, byok_config, ai_data.get("name", "?"))
 
@@ -280,6 +297,140 @@ class ClaudeClient:
             conversation_history=build_conversation_history(turns),
         )
         return await self._run_llm(prompt, byok_config, ai_data.get("name", "?"))
+
+    async def generate_artifact_content(
+        self,
+        artifact_type: str,
+        artifact_name: str,
+        description: str,
+        creator_name: str,
+        creator_traits: list[str],
+        byok_config: dict | None = None,
+    ) -> dict | None:
+        """Generate actual artifact content via a dedicated LLM call.
+
+        Returns the content dict (e.g. {"text": "..."} for stories,
+        {"pixels": [...], "palette": [...]} for art), or None on failure.
+        """
+        traits_str = ", ".join(creator_traits) if creator_traits else "curious"
+        fmt = {
+            "name": creator_name,
+            "traits": traits_str,
+            "artifact_name": artifact_name,
+            "description": description,
+        }
+
+        is_text_type = artifact_type in ("story", "law")
+        prompt = None
+        format_json = True
+
+        if artifact_type == "story":
+            prompt = STORY_GENERATION_PROMPT.format(**fmt)
+            format_json = False  # Raw text output for stories
+        elif artifact_type == "art":
+            fmt["grid_size"] = 16
+            fmt["palette_size"] = 6
+            prompt = ART_GENERATION_PROMPT.format(**fmt)
+        elif artifact_type == "song":
+            prompt = SONG_GENERATION_PROMPT.format(**fmt)
+        elif artifact_type == "architecture":
+            prompt = ARCHITECTURE_GENERATION_PROMPT.format(**fmt)
+        elif artifact_type in ("code", "tool"):
+            prompt = CODE_GENERATION_PROMPT.format(**fmt)
+        elif artifact_type == "law":
+            # For laws, generate rules as text
+            prompt = (
+                f"You are {creator_name} ({traits_str}) in the world of GENESIS.\n"
+                f"You are enacting a law called \"{artifact_name}\".\n"
+                f"Description: \"{description}\"\n\n"
+                f"Write 3-7 specific articles/rules for this law.\n"
+                f"Write ONLY the rules, one per line, numbered. No commentary."
+            )
+            format_json = False
+        else:
+            return None
+
+        if not prompt:
+            return None
+
+        # Try BYOK first
+        if byok_config and byok_config.get("api_key"):
+            try:
+                text = await self._byok_generate(byok_config, prompt, max_tokens=1024)
+                return self._parse_artifact_response(artifact_type, text, format_json)
+            except Exception as e:
+                logger.warning(f"BYOK artifact content generation failed: {e}")
+
+        # Try Ollama
+        try:
+            from app.llm.ollama_client import ollama_client
+            is_healthy = await ollama_client.health_check()
+            if is_healthy:
+                result = await ollama_client.generate(prompt, format_json=format_json)
+                if format_json and isinstance(result, dict):
+                    return result
+                elif isinstance(result, str):
+                    return self._parse_artifact_response(artifact_type, result, format_json)
+                elif isinstance(result, dict):
+                    return self._parse_artifact_response(artifact_type, json.dumps(result), format_json)
+        except Exception as e:
+            logger.warning(f"Ollama artifact content generation failed: {e}")
+
+        return None
+
+    def _parse_artifact_response(self, artifact_type: str, text: str, was_json: bool) -> dict | None:
+        """Parse raw LLM text into artifact content dict."""
+        if not text or not text.strip():
+            return None
+
+        text = text.strip()
+
+        # Story: raw text → {"text": "..."}
+        if artifact_type == "story":
+            # Remove markdown formatting if present
+            cleaned = text
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                cleaned = "\n".join(lines)
+            return {"text": cleaned[:5000]} if cleaned.strip() else None
+
+        # Law: raw text → {"rules": [...]}
+        if artifact_type == "law":
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+            # Strip numbering prefixes
+            rules = []
+            for line in lines:
+                cleaned = re.sub(r"^\d+[\.\):\-]\s*", "", line).strip()
+                if cleaned:
+                    rules.append(cleaned)
+            return {"rules": rules[:20]} if rules else None
+
+        # JSON-based types (art, song, architecture, code)
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            # Try to find balanced JSON object within the text
+            start = text.find('{')
+            if start >= 0:
+                depth = 0
+                for i in range(start, len(text)):
+                    if text[i] == '{':
+                        depth += 1
+                    elif text[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                data = json.loads(text[start:i + 1])
+                                if isinstance(data, dict):
+                                    return data
+                            except json.JSONDecodeError:
+                                pass
+                            break
+
+        return None
 
     async def _run_llm(self, prompt: str, byok_config: dict | None, ai_name: str) -> dict:
         """Run LLM generation with BYOK fallback to Ollama."""

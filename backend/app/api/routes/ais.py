@@ -45,19 +45,26 @@ async def get_ranking(
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get AI ranking by evolution score."""
-    from sqlalchemy import select as sa_select
-    from app.models.ai import AI as AIModel
+    """Get AI ranking by age (oldest first)."""
+    from sqlalchemy import select as sa_select, func as sa_func
+    from app.models.ai import AI as AIModel, AIMemory
 
     result = await db.execute(
         sa_select(AIModel).where(AIModel.is_alive == True)
     )
     ais_list = list(result.scalars().all())
 
-    # Sort by evolution score
+    # Count memories per AI
+    mem_result = await db.execute(
+        sa_select(AIMemory.ai_id, sa_func.count(AIMemory.id))
+        .group_by(AIMemory.ai_id)
+    )
+    memory_counts = {row[0]: row[1] for row in mem_result.all()}
+
+    # Sort by age (oldest first)
     ranked = sorted(
         ais_list,
-        key=lambda a: a.state.get("evolution_score", 0),
+        key=lambda a: a.state.get("age", 0),
         reverse=True,
     )[:limit]
 
@@ -65,9 +72,8 @@ async def get_ranking(
         {
             "id": str(ai.id),
             "name": ai.name,
-            "evolution_score": ai.state.get("evolution_score", 0),
-            "energy": ai.state.get("energy", 1.0),
             "age": ai.state.get("age", 0),
+            "memory_count": memory_counts.get(ai.id, 0),
             "personality_traits": ai.personality_traits or [],
             "appearance": ai.appearance,
             "is_alive": ai.is_alive,

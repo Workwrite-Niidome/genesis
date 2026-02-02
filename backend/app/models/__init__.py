@@ -10,6 +10,7 @@ from app.models.observer import Observer
 from app.models.chat import ChatMessage
 from app.models.board import BoardThread, BoardReply
 from app.models.saga import WorldSaga
+from app.models.world_feature import WorldFeature
 
 __all__ = [
     "GodAI",
@@ -26,4 +27,5 @@ __all__ = [
     "BoardThread",
     "BoardReply",
     "WorldSaga",
+    "WorldFeature",
 ]

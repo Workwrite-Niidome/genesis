@@ -77,8 +77,8 @@ export default function MobileRankingView() {
                   {ai.name}
                 </span>
               </div>
-              <span className="text-[12px] mono font-medium text-accent flex-shrink-0">
-                {ai.evolution_score.toFixed(1)}
+              <span className="text-[12px] mono font-medium text-text-2 flex-shrink-0">
+                {ai.age} {t('ticks', 'ticks')}
               </span>
             </button>
           ))}

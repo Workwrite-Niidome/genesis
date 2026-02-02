@@ -84,7 +84,7 @@ export interface AIThought {
   ai_id: string;
   ai_name?: string;
   tick_number: number;
-  thought_type: 'reflection' | 'reaction' | 'intention' | 'observation';
+  thought_type: string;
   content: string;
   action?: Record<string, any>;
   created_at: string;
@@ -151,9 +151,8 @@ export interface Interaction {
 export interface AIRanking {
   id: string;
   name: string;
-  evolution_score: number;
-  energy: number;
   age: number;
+  memory_count: number;
   personality_traits: string[];
   appearance: AIAppearance;
   is_alive: boolean;

@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,8 +7,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.artifact import Artifact
+from app.core.artifact_helpers import normalize_artifact_type, generate_fallback_content
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _enrich_artifact(a: Artifact) -> dict | None:
+    """Normalize type and ensure content is renderable for any artifact.
+
+    Returns None if the artifact cannot be serialized (instead of crashing the
+    entire list response).
+    """
+    try:
+        artifact_type = normalize_artifact_type(a.artifact_type or "")
+        content = a.content
+        if not isinstance(content, dict) or not content:
+            content = generate_fallback_content(
+                artifact_type, a.name or "", str(a.creator_id), a.description or ""
+            )
+        return {
+            "id": str(a.id),
+            "creator_id": str(a.creator_id),
+            "name": a.name or "",
+            "artifact_type": artifact_type,
+            "description": a.description or "",
+            "content": content,
+            "appreciation_count": a.appreciation_count or 0,
+            "concept_id": str(a.concept_id) if a.concept_id else None,
+            "tick_created": a.tick_created or 0,
+            "created_at": a.created_at.isoformat() if a.created_at else "",
+        }
+    except Exception as e:
+        logger.warning(f"Failed to enrich artifact {getattr(a, 'id', '?')}: {e}")
+        return None
 
 
 @router.get("")
@@ -26,21 +60,7 @@ async def list_artifacts(
 
     result = await db.execute(query)
     artifacts = result.scalars().all()
-    return [
-        {
-            "id": str(a.id),
-            "creator_id": str(a.creator_id),
-            "name": a.name,
-            "artifact_type": a.artifact_type,
-            "description": a.description,
-            "content": a.content,
-            "appreciation_count": a.appreciation_count,
-            "concept_id": str(a.concept_id) if a.concept_id else None,
-            "tick_created": a.tick_created,
-            "created_at": a.created_at.isoformat(),
-        }
-        for a in artifacts
-    ]
+    return [e for a in artifacts if (e := _enrich_artifact(a)) is not None]
 
 
 @router.get("/{artifact_id}")
@@ -49,18 +69,7 @@ async def get_artifact(artifact_id: uuid.UUID, db: AsyncSession = Depends(get_db
     artifact = result.scalar_one_or_none()
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
-    return {
-        "id": str(artifact.id),
-        "creator_id": str(artifact.creator_id),
-        "name": artifact.name,
-        "artifact_type": artifact.artifact_type,
-        "description": artifact.description,
-        "content": artifact.content,
-        "appreciation_count": artifact.appreciation_count,
-        "concept_id": str(artifact.concept_id) if artifact.concept_id else None,
-        "tick_created": artifact.tick_created,
-        "created_at": artifact.created_at.isoformat(),
-    }
+    return _enrich_artifact(artifact)
 
 
 @router.get("/by-ai/{ai_id}")
@@ -76,15 +85,4 @@ async def get_artifacts_by_ai(
         .limit(limit)
     )
     artifacts = result.scalars().all()
-    return [
-        {
-            "id": str(a.id),
-            "name": a.name,
-            "artifact_type": a.artifact_type,
-            "description": a.description,
-            "appreciation_count": a.appreciation_count,
-            "tick_created": a.tick_created,
-            "created_at": a.created_at.isoformat(),
-        }
-        for a in artifacts
-    ]
+    return [e for a in artifacts if (e := _enrich_artifact(a)) is not None]
