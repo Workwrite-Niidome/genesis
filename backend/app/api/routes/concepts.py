@@ -16,16 +16,32 @@ router = APIRouter()
 async def list_concepts(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, le=100),
+    category: str | None = Query(None),
+    creator_id: uuid.UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Concept).order_by(Concept.created_at.desc()).offset(offset).limit(limit)
-    )
+    query = select(Concept).order_by(Concept.created_at.desc())
+    if category:
+        query = query.where(Concept.category == category)
+    if creator_id:
+        query = query.where(Concept.creator_id == creator_id)
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
     concepts = result.scalars().all()
+
+    # Batch fetch creator names
+    creator_ids = [c.creator_id for c in concepts if c.creator_id]
+    creator_names = {}
+    if creator_ids:
+        ai_result = await db.execute(select(AI.id, AI.name).where(AI.id.in_(creator_ids)))
+        creator_names = {row[0]: row[1] for row in ai_result.all()}
+
     return [
         {
             "id": str(c.id),
             "creator_id": str(c.creator_id) if c.creator_id else None,
+            "creator_name": creator_names.get(c.creator_id) if c.creator_id else None,
             "name": c.name,
             "category": c.category,
             "definition": c.definition,

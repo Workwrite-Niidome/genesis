@@ -9,8 +9,15 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Health check cache duration (seconds)
-_HEALTH_CACHE_TTL = 30.0
+# Health check cache — module-level so it persists across event loops (Celery ticks)
+_HEALTH_CACHE_TTL = 15.0
+_health_cache_ok: bool | None = None
+_health_cache_at: float = 0.0
+
+
+def _invalidate_health_cache() -> None:
+    global _health_cache_ok
+    _health_cache_ok = None
 
 
 class OllamaClient:
@@ -21,8 +28,6 @@ class OllamaClient:
         self._client_loop: asyncio.AbstractEventLoop | None = None
         self._semaphore: asyncio.Semaphore | None = None
         self._sem_loop: asyncio.AbstractEventLoop | None = None
-        self._healthy: bool | None = None
-        self._health_checked_at: float = 0.0
 
     def _get_semaphore(self) -> asyncio.Semaphore:
         """Get or create semaphore for the current event loop.
@@ -104,9 +109,11 @@ class OllamaClient:
 
                 return result["response"]
             except httpx.HTTPError as e:
+                _invalidate_health_cache()
                 logger.error(f"Ollama API error: {e}")
                 raise
             except Exception as e:
+                _invalidate_health_cache()
                 logger.error(f"Ollama unexpected error: {e}")
                 raise
 
@@ -137,27 +144,34 @@ class OllamaClient:
                 result = response.json()
                 return result["message"]["content"]
             except httpx.HTTPError as e:
+                _invalidate_health_cache()
                 logger.error(f"Ollama chat API error: {e}")
                 raise
             except Exception as e:
+                _invalidate_health_cache()
                 logger.error(f"Ollama chat unexpected error: {e}")
                 raise
 
     async def health_check(self) -> bool:
-        """Cached health check — avoids hammering Ollama every LLM call."""
+        """Cached health check — avoids hammering Ollama every LLM call.
+
+        Cache is stored in module-level globals so it persists across
+        event loops (Celery creates a new loop per tick via asyncio.run()).
+        """
+        global _health_cache_ok, _health_cache_at
         now = time.monotonic()
-        if self._healthy is not None and (now - self._health_checked_at) < _HEALTH_CACHE_TTL:
-            return self._healthy
+        if _health_cache_ok is not None and (now - _health_cache_at) < _HEALTH_CACHE_TTL:
+            return _health_cache_ok
 
         try:
             client = await self._get_client()
             response = await client.get(f"{self.base_url}/api/tags")
-            self._healthy = response.status_code == 200
+            _health_cache_ok = response.status_code == 200
         except Exception:
-            self._healthy = False
+            _health_cache_ok = False
 
-        self._health_checked_at = now
-        return self._healthy
+        _health_cache_at = now
+        return _health_cache_ok
 
     async def close(self):
         """Close the HTTP client."""

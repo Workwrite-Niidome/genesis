@@ -96,6 +96,41 @@ async def get_world_report(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/evaluate-ranking")
+async def evaluate_ranking(db: AsyncSession = Depends(get_db)):
+    """Manually trigger God AI ranking evaluation."""
+    from sqlalchemy import select
+    from app.models.tick import Tick
+
+    god = await god_ai_manager.get_or_create(db)
+    if god.state.get("phase") != "post_genesis":
+        return {"success": False, "message": "Genesis has not been performed yet."}
+
+    # Get current tick number
+    tick_result = await db.execute(
+        select(Tick).order_by(Tick.tick_number.desc()).limit(1)
+    )
+    latest_tick = tick_result.scalar_one_or_none()
+    tick_number = latest_tick.tick_number if latest_tick else 0
+
+    try:
+        await god_ai_manager._evaluate_rankings(db, god, tick_number)
+        await db.commit()
+
+        # Return updated ranking
+        current_ranking = god.state.get("current_ranking", [])
+        criteria = god.state.get("ranking_criteria", "")
+        return {
+            "success": True,
+            "criteria": criteria,
+            "ranking": current_ranking,
+            "tick": tick_number,
+        }
+    except Exception as e:
+        logger.error(f"Manual ranking evaluation failed: {e}")
+        return {"success": False, "message": str(e)}
+
+
 class SpawnAIRequest(BaseModel):
     count: int = 1
 

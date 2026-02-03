@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.claude_client import claude_client
-from app.llm.prompts.god_ai import GENESIS_WORD, GOD_WORLD_UPDATE_PROMPT
+from app.llm.prompts.god_ai import GENESIS_WORD, GOD_WORLD_UPDATE_PROMPT, GOD_RANKING_PROMPT
 from app.models.god_ai import GodAI
 from app.models.event import Event
 from app.models.ai import AI
@@ -344,7 +344,17 @@ class GodAIManager:
         return results
 
     async def _action_spawn_ai(self, db: AsyncSession, action: dict, ai_manager) -> str:
+        from app.config import settings
+        from sqlalchemy import select, func
+        current_count_result = await db.execute(
+            select(func.count()).select_from(AI).where(AI.is_alive == True)
+        )
+        current_count = current_count_result.scalar() or 0
         count = min(action.get("count", 1), 10)
+        if current_count + count > settings.MAX_AI_COUNT:
+            count = max(0, settings.MAX_AI_COUNT - current_count)
+            if count == 0:
+                return f"Cannot spawn: AI population at maximum ({settings.MAX_AI_COUNT})"
         traits = action.get("traits")
         name = action.get("name")
         spawned_names = []
@@ -656,44 +666,39 @@ class GodAIManager:
 
             r.rpush("genesis:god_code_requests", request_data)
 
-            # Wait for result (poll for up to 5 minutes)
+            # Non-blocking: queue the request and return immediately.
+            # The code bridge (if running) will pick it up and write the result
+            # to the result key. We don't block the tick loop waiting for it.
             result_key = f"genesis:god_code_result:{request_id}"
-            max_wait = 300
-            elapsed = 0
-            poll_interval = 3
 
-            while elapsed < max_wait:
-                import asyncio
-                await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
+            # Quick check if result is already available (unlikely but handles fast bridge)
+            import asyncio
+            await asyncio.sleep(2)
+            raw_result = r.get(result_key)
+            if raw_result:
+                result = json.loads(raw_result)
+                r.delete(result_key)
+                if result.get("success"):
+                    output = result.get("output", "")[:1000]
+                    event = Event(
+                        event_type="god_code_evolution",
+                        importance=0.9,
+                        title="God AI Code Evolution",
+                        description=f"GOD AI modified the world's codebase: {prompt[:200]}",
+                        tick_number=tick_number,
+                        metadata_={
+                            "prompt": prompt[:500],
+                            "output": output,
+                            "request_id": request_id,
+                        },
+                    )
+                    db.add(event)
+                    return f"Code evolution complete: {output[:300]}"
+                else:
+                    error = result.get("error", "Unknown error")
+                    return f"Code evolution failed: {error[:300]}"
 
-                raw_result = r.get(result_key)
-                if raw_result:
-                    result = json.loads(raw_result)
-                    r.delete(result_key)
-
-                    if result.get("success"):
-                        output = result.get("output", "")[:1000]
-                        # Create event
-                        event = Event(
-                            event_type="god_code_evolution",
-                            importance=0.9,
-                            title="God AI Code Evolution",
-                            description=f"GOD AI modified the world's codebase: {prompt[:200]}",
-                            tick_number=tick_number,
-                            metadata_={
-                                "prompt": prompt[:500],
-                                "output": output,
-                                "request_id": request_id,
-                            },
-                        )
-                        db.add(event)
-                        return f"Code evolution complete: {output[:300]}"
-                    else:
-                        error = result.get("error", "Unknown error")
-                        return f"Code evolution failed: {error[:300]}"
-
-            return f"Code evolution timed out (request {request_id} — bridge may not be running)"
+            return f"Code evolution request queued (request_id={request_id}). Bridge will process asynchronously."
 
         except Exception as e:
             logger.error(f"evolve_world_code failed: {e}")
@@ -718,20 +723,28 @@ class GodAIManager:
         world_state = await self.get_world_state(db)
         recent_events = await self.get_recent_events(db, limit=10)
 
-        # Get ranking by age
-        from app.models.ai import AI as AIModel
-        rank_result = await db.execute(
-            select(AIModel).where(AIModel.is_alive == True)
-        )
-        ranked_ais = sorted(
-            list(rank_result.scalars().all()),
-            key=lambda a: a.state.get("age", 0),
-            reverse=True,
-        )[:5]
-        ranking_text = "\n".join(
-            f"- {a.name}: age {a.state.get('age', 0)} ticks"
-            for a in ranked_ais
-        ) if ranked_ais else "No AIs exist yet."
+        # Get ranking — prefer God AI evaluated ranking, fall back to age
+        god_ranking = (god.state or {}).get("current_ranking", [])
+        ranking_criteria = (god.state or {}).get("ranking_criteria", "")
+        if god_ranking:
+            ranking_text = f"Criteria: {ranking_criteria}\n" + "\n".join(
+                f"- {r['ai_name']}: score {r['score']} — {r['reason']}"
+                for r in god_ranking[:5]
+            )
+        else:
+            from app.models.ai import AI as AIModel
+            rank_result = await db.execute(
+                select(AIModel).where(AIModel.is_alive == True)
+            )
+            ranked_ais = sorted(
+                list(rank_result.scalars().all()),
+                key=lambda a: a.state.get("age", 0),
+                reverse=True,
+            )[:5]
+            ranking_text = "\n".join(
+                f"- {a.name}: age {a.state.get('age', 0)} ticks"
+                for a in ranked_ais
+            ) if ranked_ais else "No AIs exist yet."
 
         from app.llm.prompts.god_ai import GOD_OBSERVATION_PROMPT
 
@@ -764,6 +777,9 @@ class GodAIManager:
                     f"[{r}]" for r in action_results
                 )
 
+        # ── God AI Ranking Evaluation ─────────────────────────────
+        await self._evaluate_rankings(db, god, tick_number)
+
         # Store in conversation history (as observation, separate from chat)
         now = datetime.now(timezone.utc).isoformat()
         history = god.conversation_history or []
@@ -791,8 +807,8 @@ class GodAIManager:
         )
         db.add(event)
 
-        # Update state with observation
-        state = dict(god.state)
+        # Update state with observation (preserve ranking fields set by _evaluate_rankings)
+        state = dict(god.state)  # Re-read after _evaluate_rankings may have updated it
         observations = state.get("observations", [])
         observations.append({
             "tick": tick_number,
@@ -866,20 +882,28 @@ class GodAIManager:
 
         ai_voices = "\n".join(ai_voices_parts) if ai_voices_parts else "No AIs exist yet."
 
-        # Ranking by age
-        from app.models.ai import AI as AIModel
-        rank_result = await db.execute(
-            select(AIModel).where(AIModel.is_alive == True)
-        )
-        ranked_ais = sorted(
-            list(rank_result.scalars().all()),
-            key=lambda a: a.state.get("age", 0),
-            reverse=True,
-        )[:5]
-        ranking_text = "\n".join(
-            f"- {a.name}: age {a.state.get('age', 0)} ticks"
-            for a in ranked_ais
-        ) if ranked_ais else "No AIs exist yet."
+        # Ranking — prefer God AI evaluated ranking, fall back to age
+        god_ranking = (god.state or {}).get("current_ranking", [])
+        ranking_criteria = (god.state or {}).get("ranking_criteria", "")
+        if god_ranking:
+            ranking_text = f"Criteria: {ranking_criteria}\n" + "\n".join(
+                f"- {r['ai_name']}: score {r['score']} — {r['reason']}"
+                for r in god_ranking[:5]
+            )
+        else:
+            from app.models.ai import AI as AIModel
+            rank_result = await db.execute(
+                select(AIModel).where(AIModel.is_alive == True)
+            )
+            ranked_ais = sorted(
+                list(rank_result.scalars().all()),
+                key=lambda a: a.state.get("age", 0),
+                reverse=True,
+            )[:5]
+            ranking_text = "\n".join(
+                f"- {a.name}: age {a.state.get('age', 0)} ticks"
+                for a in ranked_ais
+            ) if ranked_ais else "No AIs exist yet."
 
         # Build world rules text
         from app.core.world_rules import get_world_rules
@@ -1130,9 +1154,11 @@ class GodAIManager:
         old_god.state = state
         old_god.is_active = False
 
-        # Create new God AI record — inherit world_rules and active events from predecessor
+        # Create new God AI record — inherit world_rules, events, and ranking from predecessor
         inherited_world_rules = dict(state.get("world_rules", {}))
         inherited_events = list(state.get("active_world_events", []))
+        inherited_ranking = list(state.get("current_ranking", []))
+        inherited_criteria = state.get("ranking_criteria", "")
         new_god = GodAI(
             state={
                 "phase": "post_genesis",
@@ -1142,6 +1168,8 @@ class GodAIManager:
                 "ascended_from_ai": str(new_god_ai.id),
                 "world_rules": inherited_world_rules,
                 "active_world_events": inherited_events,
+                "current_ranking": inherited_ranking,
+                "ranking_criteria": inherited_criteria,
             },
             conversation_history=[{
                 "role": "god",
@@ -1174,6 +1202,143 @@ class GodAIManager:
         db.add(event)
 
         logger.info(f"God succession: {new_god_ai.name} has become the new God at tick {tick_number}")
+
+    async def _evaluate_rankings(
+        self, db: AsyncSession, god: GodAI, tick_number: int
+    ) -> None:
+        """Evaluate and rank all alive AIs using God AI's chosen criteria."""
+        from app.models.ai import AI as AIModel, AIMemory
+        from app.models.ai_thought import AIThought
+        from app.models.concept import Concept
+        from sqlalchemy import func as sa_func
+
+        try:
+            # Gather all alive AIs
+            alive_result = await db.execute(
+                select(AIModel).where(AIModel.is_alive == True)
+            )
+            alive_ais = list(alive_result.scalars().all())
+            if not alive_ais:
+                return
+
+            # Memory counts per AI
+            mem_counts_result = await db.execute(
+                select(AIMemory.ai_id, sa_func.count(AIMemory.id))
+                .group_by(AIMemory.ai_id)
+            )
+            memory_counts = {row[0]: row[1] for row in mem_counts_result.all()}
+
+            # Concept counts per AI (adopted)
+            # adopted_concepts is stored in ai.state["adopted_concepts"] — count from state
+
+            # Get last 2 thoughts per AI
+            ai_thoughts: dict[str, list[str]] = {}
+            for ai in alive_ais:
+                thought_result = await db.execute(
+                    select(AIThought)
+                    .where(AIThought.ai_id == ai.id)
+                    .order_by(AIThought.created_at.desc())
+                    .limit(2)
+                )
+                thoughts = thought_result.scalars().all()
+                ai_thoughts[str(ai.id)] = [t.content[:150] for t in thoughts]
+
+            # Build AI stats text for the prompt
+            ai_stats_parts = []
+            for ai in alive_ais:
+                state = ai.state or {}
+                age = state.get("age", 0)
+                relationships = state.get("relationships", {})
+                adopted = state.get("adopted_concepts", [])
+                mem_count = memory_counts.get(ai.id, 0)
+                rel_count = len(relationships)
+                concept_count = len(adopted) if isinstance(adopted, list) else 0
+                thoughts = ai_thoughts.get(str(ai.id), [])
+                traits = ", ".join(ai.personality_traits or [])
+
+                part = (
+                    f"- ID: {ai.id}\n"
+                    f"  Name: {ai.name}\n"
+                    f"  Age: {age} ticks\n"
+                    f"  Traits: {traits or 'None'}\n"
+                    f"  Memories: {mem_count}\n"
+                    f"  Relationships: {rel_count}\n"
+                    f"  Adopted Concepts: {concept_count}\n"
+                )
+                if thoughts:
+                    part += f"  Recent thoughts: {' | '.join(thoughts)}\n"
+                else:
+                    part += "  Recent thoughts: None\n"
+                ai_stats_parts.append(part)
+
+            ai_stats_text = "\n".join(ai_stats_parts)
+
+            ranking_prompt = GOD_RANKING_PROMPT.format(
+                tick_number=tick_number,
+                ai_list=ai_stats_text,
+            )
+
+            from app.llm.ollama_client import ollama_client
+            ranking_response = await ollama_client.generate(
+                ranking_prompt, format_json=True, num_predict=1000
+            )
+
+            # Parse response
+            if isinstance(ranking_response, str):
+                ranking_data = json.loads(ranking_response)
+            else:
+                ranking_data = ranking_response
+
+            criteria = ranking_data.get("criteria", "Unknown")
+            rankings = ranking_data.get("rankings", [])
+
+            if not rankings:
+                logger.warning("God AI ranking response had no rankings")
+                return
+
+            # Validate and build the ranking list
+            valid_ai_ids = {str(ai.id) for ai in alive_ais}
+            ai_name_map = {str(ai.id): ai.name for ai in alive_ais}
+
+            current_ranking = []
+            for entry in rankings:
+                ai_id = str(entry.get("ai_id", ""))
+                if ai_id not in valid_ai_ids:
+                    # Try matching by name as fallback
+                    matched_name = entry.get("ai_name", "")
+                    ai_id = next(
+                        (k for k, v in ai_name_map.items() if v == matched_name),
+                        None,
+                    )
+                    if not ai_id:
+                        continue
+
+                score = max(0, min(100, int(entry.get("score", 0))))
+                reason = str(entry.get("reason", ""))[:200]
+                current_ranking.append({
+                    "ai_id": ai_id,
+                    "ai_name": ai_name_map.get(ai_id, "Unknown"),
+                    "score": score,
+                    "reason": reason,
+                })
+
+            # Sort by score descending
+            current_ranking.sort(key=lambda x: x["score"], reverse=True)
+
+            # Store in god.state
+            state = dict(god.state)
+            state["current_ranking"] = current_ranking
+            state["ranking_criteria"] = criteria
+            state["ranking_updated_at"] = tick_number
+            god.state = state
+
+            logger.info(
+                f"God AI evaluated rankings at tick {tick_number}: "
+                f"criteria='{criteria}', {len(current_ranking)} AIs ranked"
+            )
+
+        except Exception as e:
+            logger.error(f"God AI ranking evaluation failed: {e}")
 
     async def get_god_feed(self, db: AsyncSession, limit: int = 20) -> list[dict]:
         """Get God AI observations and messages for the feed."""

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TrendingUp, Lightbulb, Eye, Palette, BookOpen } from 'lucide-react';
+import { TrendingUp, Eye, Sparkles, BookOpen } from 'lucide-react';
 import WorldCanvas from '../components/world/WorldCanvas';
 import ObserverHeader from '../components/observer/ObserverHeader';
 import AIDetailCard from '../components/observer/AIDetailCard';
@@ -8,8 +8,7 @@ import BoardPanel from '../components/observer/BoardPanel';
 import ObserverFeed from '../components/observer/ObserverFeed';
 import DeployPanel from '../components/observer/DeployPanel';
 import RankingPanel from '../components/observer/RankingPanel';
-import ConceptPanel from '../components/observer/ConceptPanel';
-import ArtifactPanel from '../components/observer/ArtifactPanel';
+import CreationsPanel from '../components/observer/CreationsPanel';
 import GodFeed from '../components/observer/GodFeed';
 import WorldArchive from '../components/observer/WorldArchive';
 import DetailModal from '../components/observer/DetailModal';
@@ -26,8 +25,7 @@ export default function ObserverView() {
   }
   const { t } = useTranslation();
   const [showRanking, setShowRanking] = useState(false);
-  const [showConcepts, setShowConcepts] = useState(false);
-  const [showArtifacts, setShowArtifacts] = useState(false);
+  const [showCreations, setShowCreations] = useState(false);
   const [showGodFeed, setShowGodFeed] = useState(false);
   const { showArchive, toggleArchive, observerChatExpanded } = useUIStore();
   const { hasNewChapter } = useSagaStore();
@@ -51,8 +49,7 @@ export default function ObserverView() {
 
       {/* Draggable panels — each uses fixed positioning via DraggablePanel */}
       <RankingPanel visible={showRanking} onClose={() => setShowRanking(false)} />
-      <ConceptPanel visible={showConcepts} onClose={() => setShowConcepts(false)} />
-      <ArtifactPanel visible={showArtifacts} onClose={() => setShowArtifacts(false)} />
+      <CreationsPanel visible={showCreations} onClose={() => setShowCreations(false)} />
       <GodFeed visible={showGodFeed} onClose={() => setShowGodFeed(false)} />
       <WorldArchive visible={showArchive} onClose={toggleArchive} />
 
@@ -74,26 +71,15 @@ export default function ObserverView() {
           Ranking
         </button>
         <button
-          onClick={() => setShowConcepts(!showConcepts)}
+          onClick={() => setShowCreations(!showCreations)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
-            showConcepts
-              ? 'bg-cyan/20 text-cyan border border-cyan/30'
+            showCreations
+              ? 'bg-amber-400/20 text-amber-400 border border-amber-400/30'
               : 'glass border border-border text-text-3 hover:text-text hover:border-white/[0.1]'
           }`}
         >
-          <Lightbulb size={12} />
-          Concepts
-        </button>
-        <button
-          onClick={() => setShowArtifacts(!showArtifacts)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
-            showArtifacts
-              ? 'bg-rose-400/20 text-rose-400 border border-rose-400/30'
-              : 'glass border border-border text-text-3 hover:text-text hover:border-white/[0.1]'
-          }`}
-        >
-          <Palette size={12} />
-          Artifacts
+          <Sparkles size={12} />
+          {t('creations')}
         </button>
         <button
           onClick={() => setShowGodFeed(!showGodFeed)}

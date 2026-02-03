@@ -47,6 +47,7 @@ export interface AIMemory {
 export interface Concept {
   id: string;
   creator_id?: string;
+  creator_name?: string;
   name: string;
   category: string;
   definition: string;
@@ -59,6 +60,7 @@ export interface Concept {
 export interface Artifact {
   id: string;
   creator_id: string;
+  creator_name?: string;
   name: string;
   artifact_type: string;
   description: string;
@@ -158,6 +160,9 @@ export interface AIRanking {
   is_alive: boolean;
   relationships_count: number;
   adopted_concepts_count: number;
+  god_score?: number;
+  god_reason?: string;
+  ranking_criteria?: string;
 }
 
 export interface Relationship {

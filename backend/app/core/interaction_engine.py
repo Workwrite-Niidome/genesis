@@ -16,7 +16,7 @@ from app.llm.response_parser import parse_ai_decision
 logger = logging.getLogger(__name__)
 
 MAX_ENCOUNTERS_PER_TICK = 15
-PAIR_EXTRA_EXCHANGES = 1  # Extra back-and-forth rounds between opening pair and finals
+PAIR_EXTRA_EXCHANGES = 0  # Extra back-and-forth rounds between opening pair and finals
 
 def _adoption_probability(ai: AI, concept: Concept) -> float:
     """Flat adoption probability — no fixed trait-category affinity mapping.

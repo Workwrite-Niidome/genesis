@@ -81,7 +81,7 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
   // Fetch architecture artifacts periodically
   useEffect(() => {
     const load = () => {
-      api.artifacts.list('architecture').then((arts) => {
+      api.artifacts.list({ artifact_type: 'architecture' }).then((arts) => {
         setStructures((arts || []).slice(0, 20));
       }).catch(() => {});
     };
@@ -120,27 +120,35 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
             <AIEntity key={ai.id} ai={ai} />
           ))}
 
-          {/* Architecture structures (voxel buildings) */}
+          {/* Architecture structures (voxel buildings) - spread in 3D space */}
           {!isMobile && structures.map((artifact, i) => {
-            // Position near the creator AI if found, otherwise spread out
+            // Position near the creator AI if found, otherwise spread out in a grid
             const creatorAI = ais.find((a) => a.id === artifact.creator_id);
-            const baseX = creatorAI ? creatorAI.position_x + 15 : (i % 5) * 30 - 60;
-            const baseY = creatorAI ? creatorAI.position_y - 10 : Math.floor(i / 5) * 30 - 40;
+            // Spread structures in 3D using golden angle for XY and varied Z
+            const offsetAngle = (i * 137.5) * (Math.PI / 180);
+            const offsetRadius = 25 + (i % 3) * 15;
+            const offsetX = Math.cos(offsetAngle) * offsetRadius;
+            const offsetY = Math.sin(offsetAngle) * offsetRadius;
+            // Vary Z position based on artifact id hash for 3D depth
+            const zHash = artifact.id.charCodeAt(0) + artifact.id.charCodeAt(2);
+            const offsetZ = ((zHash % 5) - 2) * 12; // Range: -24 to +24
+            const baseX = creatorAI ? creatorAI.position_x + offsetX : (i % 6) * 50 - 125;
+            const baseY = creatorAI ? creatorAI.position_y + offsetY : Math.floor(i / 6) * 50 - 100;
             return (
               <WorldStructure
                 key={artifact.id}
                 artifact={artifact}
-                position={[baseX, baseY, -5]}
+                position={[baseX, baseY, offsetZ]}
               />
             );
           })}
 
-          {/* Post-processing for mystical glow (lighter on mobile) */}
+          {/* Post-processing for holographic glow */}
           <EffectComposer>
             <Bloom
-              intensity={isMobile ? 0.5 : 0.8}
-              luminanceThreshold={isMobile ? 0.3 : 0.2}
-              luminanceSmoothing={0.9}
+              intensity={isMobile ? 0.6 : 1.1}
+              luminanceThreshold={isMobile ? 0.25 : 0.15}
+              luminanceSmoothing={0.85}
               mipmapBlur
             />
             {!isMobile && <Vignette eskil={false} offset={0.1} darkness={0.8} />}
@@ -148,16 +156,19 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
 
           <OrbitControls
             ref={controlsRef}
-            enableRotate={false}
+            enableRotate={true}
             enablePan={true}
             enableZoom={true}
             minDistance={30}
             maxDistance={800}
+            minPolarAngle={Math.PI * 0.1}
+            maxPolarAngle={Math.PI * 0.75}
+            rotateSpeed={0.5}
             zoomSpeed={0.6}
             panSpeed={1}
             dampingFactor={0.08}
             enableDamping
-            touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN }}
+            touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
           />
 
           <CameraController controlsRef={controlsRef} />

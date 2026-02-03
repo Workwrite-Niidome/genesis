@@ -1,4 +1,5 @@
 import { getAdminAuthHeader } from '../stores/authStore';
+import type { AIRanking } from '../types/world';
 
 const API_BASE = '/api';
 
@@ -66,7 +67,7 @@ export const api = {
     list: (aliveOnly = true) => fetchJSON<any[]>(`/ais?alive_only=${aliveOnly}`),
     get: (id: string) => fetchJSON<any>(`/ais/${id}`),
     getMemories: (id: string) => fetchJSON<any[]>(`/ais/${id}/memories`),
-    getRanking: (limit = 20) => fetchJSON<any[]>(`/ais/ranking?limit=${limit}`),
+    getRanking: (limit = 20) => fetchJSON<AIRanking[]>(`/ais/ranking?limit=${limit}`),
   },
   interactions: {
     list: (limit = 20) => fetchJSON<any[]>(`/interactions?limit=${limit}`),
@@ -75,14 +76,25 @@ export const api = {
       fetchJSON<any[]>(`/interactions/ai/${aiId}?limit=${limit}`),
   },
   concepts: {
-    list: () => fetchJSON<any[]>('/concepts'),
+    list: (params?: { category?: string; creator_id?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.category) searchParams.set('category', params.category);
+      if (params?.creator_id) searchParams.set('creator_id', params.creator_id);
+      const qs = searchParams.toString();
+      return fetchJSON<any[]>(`/concepts${qs ? `?${qs}` : ''}`);
+    },
     get: (id: string) => fetchJSON<any>(`/concepts/${id}`),
     getMembers: (id: string) => fetchJSON<any[]>(`/concepts/${id}/members`),
     graph: () => fetchJSON<{ nodes: any[]; edges: any[] }>('/concepts/graph'),
   },
   artifacts: {
-    list: (artifactType?: string) =>
-      fetchJSON<any[]>(`/artifacts${artifactType ? `?artifact_type=${artifactType}` : ''}`),
+    list: (params?: { artifact_type?: string; creator_id?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.artifact_type) searchParams.set('artifact_type', params.artifact_type);
+      if (params?.creator_id) searchParams.set('creator_id', params.creator_id);
+      const qs = searchParams.toString();
+      return fetchJSON<any[]>(`/artifacts${qs ? `?${qs}` : ''}`);
+    },
     get: (id: string) => fetchJSON<any>(`/artifacts/${id}`),
     getByAI: (aiId: string) => fetchJSON<any[]>(`/artifacts/by-ai/${aiId}`),
   },

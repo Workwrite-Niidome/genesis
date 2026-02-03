@@ -22,7 +22,7 @@ export default function ConceptPanel({ visible, onClose, fullScreen }: Props) {
   useEffect(() => {
     if (!visible) return;
     const load = () => {
-      api.concepts.list().then(setConcepts).catch(console.error);
+      api.concepts.list({}).then(setConcepts).catch(console.error);
     };
     load();
     const interval = setInterval(load, 10000);

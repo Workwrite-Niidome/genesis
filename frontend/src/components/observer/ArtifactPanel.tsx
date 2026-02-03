@@ -37,7 +37,7 @@ export default function ArtifactPanel({ visible, onClose, fullScreen }: Props) {
   useEffect(() => {
     if (!visible) return;
     const load = () => {
-      api.artifacts.list().then(setArtifacts).catch(console.error);
+      api.artifacts.list({}).then(setArtifacts).catch(console.error);
     };
     load();
     const interval = setInterval(load, 8000);
