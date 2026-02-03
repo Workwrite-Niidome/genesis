@@ -1,7 +1,7 @@
 import { getAdminAuthHeader } from '../stores/authStore';
 import type { AIRanking } from '../types/world';
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {

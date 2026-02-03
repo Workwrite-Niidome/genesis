@@ -11,11 +11,11 @@ let socket: Socket | null = null;
 export function connectSocket(): Socket {
   if (socket?.connected) return socket;
 
-  // In production (served by nginx), use same origin; in dev, swap port to 8000
+  // Use API URL from env, or same origin in dev
   const isDev = import.meta.env.DEV;
   const wsUrl = isDev
     ? window.location.origin.replace(/:\d+$/, ':8000')
-    : window.location.origin;
+    : import.meta.env.VITE_API_URL || window.location.origin;
 
   socket = io(wsUrl, {
     path: '/ws/socket.io',
