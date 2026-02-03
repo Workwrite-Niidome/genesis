@@ -24,17 +24,17 @@ export default function MobileLayout() {
   }
 
   return (
-    <div className="h-screen w-screen bg-bg overflow-hidden">
+    <div className="mobile-layout">
       {/* Film grain */}
       <div className="noise-overlay" />
 
       {/* Fixed Header */}
-      <div className="fixed top-0 left-0 right-0 z-50">
+      <header className="mobile-header-fixed">
         <MobileHeader />
-      </div>
+      </header>
 
-      {/* Main content area with padding for fixed header/tabbar */}
-      <main className="h-full overflow-auto pt-[52px] pb-[60px]">
+      {/* Main content area */}
+      <main className="mobile-content">
         {mobileActiveTab === 'world' && <MobileWorldView />}
         {mobileActiveTab === 'ranking' && <MobileRankingView />}
         {mobileActiveTab === 'feed' && <MobileFeedView />}
@@ -43,9 +43,9 @@ export default function MobileLayout() {
       </main>
 
       {/* Fixed Tab Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50">
+      <nav className="mobile-tabbar-fixed">
         <MobileTabBar />
-      </div>
+      </nav>
 
       {/* Modals */}
       <DetailModal />

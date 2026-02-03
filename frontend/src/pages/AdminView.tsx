@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -11,7 +11,7 @@ import ChatPanel from '../components/chat/ChatPanel';
 import TimelineBar from '../components/timeline/TimelineBar';
 
 export default function AdminView() {
-  const { sidebarOpen, chatOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, chatOpen } = useUIStore();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isMobile = useIsMobile();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -21,22 +21,22 @@ export default function AdminView() {
   }
 
   return (
-    <div className="h-screen w-screen bg-bg overflow-hidden">
+    <div className="admin-layout">
       {/* Film grain / noise */}
       <div className="noise-overlay" />
 
       {/* Fixed Header */}
-      <div className="fixed top-0 left-0 right-0 z-50">
+      <header className="admin-header-fixed">
         <AdminHeader
           onMenuToggle={isMobile ? () => setMobileSidebarOpen(!mobileSidebarOpen) : undefined}
           isMobile={isMobile}
         />
-      </div>
+      </header>
 
-      {/* Main content with padding for fixed header/timeline */}
-      <div className="h-full pt-11 pb-9 flex overflow-hidden relative">
+      {/* Main content */}
+      <main className="admin-content">
         {/* Canvas */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative h-full">
           <WorldCanvas showGenesis={true} />
 
           {/* Chat overlay at bottom */}
@@ -52,7 +52,7 @@ export default function AdminView() {
         {/* Sidebar - desktop */}
         {!isMobile && (
           <div
-            className={`transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden ${
+            className={`transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden h-full ${
               sidebarOpen ? 'w-[340px]' : 'w-0'
             }`}
           >
@@ -66,11 +66,11 @@ export default function AdminView() {
         {isMobile && mobileSidebarOpen && (
           <>
             <div
-              className="fixed inset-0 bg-black/60 z-[60]"
+              className="fixed inset-0 bg-black/60 z-[110]"
               onClick={() => setMobileSidebarOpen(false)}
             />
-            <div className="fixed top-0 right-0 bottom-0 w-[300px] z-[60] bg-surface border-l border-border shadow-[−8px_0_40px_rgba(0,0,0,0.5)] fade-in">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="fixed top-0 right-0 bottom-0 w-[300px] z-[110] bg-surface border-l border-border shadow-[-8px_0_40px_rgba(0,0,0,0.5)] fade-in">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border safe-top">
                 <span className="text-[12px] font-semibold text-text tracking-wider">PANELS</span>
                 <button
                   onClick={() => setMobileSidebarOpen(false)}
@@ -79,18 +79,18 @@ export default function AdminView() {
                   <X size={16} />
                 </button>
               </div>
-              <div className="h-[calc(100%-48px)]">
+              <div className="h-[calc(100%-48px)] overflow-y-auto">
                 <Sidebar />
               </div>
             </div>
           </>
         )}
-      </div>
+      </main>
 
       {/* Fixed Timeline Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50">
+      <footer className="admin-timeline-fixed">
         <TimelineBar />
-      </div>
+      </footer>
     </div>
   );
 }
