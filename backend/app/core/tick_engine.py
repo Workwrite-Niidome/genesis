@@ -21,9 +21,6 @@ GROUP_CONVERSATION_INTERVAL = 2
 # How many ticks between God AI world updates (1 hour = 3600 ticks at 1s/tick)
 GOD_WORLD_UPDATE_INTERVAL = 3600
 
-# Era size for saga generation
-SAGA_ERA_SIZE = 50
-
 # Fractional accumulator for sub-1x speed
 _speed_accumulator = 0.0
 
@@ -137,12 +134,13 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"AI thinking cycle error at tick {tick_number}: {e}")
 
-        # Commit thinking results
+        # Flush thinking results (deferred commit at end of tick)
         try:
-            await db.commit()
+            await db.flush()
         except Exception as e:
-            logger.error(f"Tick {tick_number}: thinking commit failed: {e}")
+            logger.error(f"Tick {tick_number}: thinking flush failed: {e}")
             await db.rollback()
+            return
 
         # Process encounters into interactions (independent interval)
         interactions_processed = 0
@@ -189,10 +187,11 @@ async def _process_tick_async():
                 logger.error(f"Interaction processing error at tick {tick_number}: {e}")
 
             try:
-                await db.commit()
+                await db.flush()
             except Exception as e:
-                logger.error(f"Tick {tick_number}: interaction commit failed: {e}")
+                logger.error(f"Tick {tick_number}: interaction flush failed: {e}")
                 await db.rollback()
+                return
 
         # Group conversations (3+ AIs gathered)
         group_conversations = 0
@@ -215,17 +214,11 @@ async def _process_tick_async():
                 logger.error(f"Group conversation error at tick {tick_number}: {e}")
 
             try:
-                await db.commit()
+                await db.flush()
             except Exception as e:
-                logger.error(f"Tick {tick_number}: group conversation commit failed: {e}")
+                logger.error(f"Tick {tick_number}: group conversation flush failed: {e}")
                 await db.rollback()
-
-        # Commit remaining changes
-        try:
-            await db.commit()
-        except Exception as e:
-            logger.error(f"Tick {tick_number}: late-phase commit failed: {e}")
-            await db.rollback()
+                return
 
         # God AI hourly world update (deep analysis + multiple actions)
         if tick_number % GOD_WORLD_UPDATE_INTERVAL == 0 and tick_number > 0:
@@ -236,12 +229,6 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"God AI world update error at tick {tick_number}: {e}")
 
-            try:
-                await db.commit()
-            except Exception as e:
-                logger.error(f"Tick {tick_number}: world update commit failed: {e}")
-                await db.rollback()
-
         # God AI autonomous observation
         if tick_number % GOD_OBSERVATION_INTERVAL == 0 and tick_number > 0:
             try:
@@ -251,13 +238,14 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"God AI observation error at tick {tick_number}: {e}")
 
-        # Saga generation (every 50 ticks)
-        if tick_number > 0 and tick_number % SAGA_ERA_SIZE == 0:
+        # Saga generation (event-driven: significance score accumulation)
+        if tick_number > 0:
             try:
                 from app.core.saga_service import saga_service
-                saga_result = await saga_service.generate_era_saga(db, tick_number)
-                if saga_result:
-                    logger.info(f"Tick {tick_number}: Saga chapter generated for era {tick_number // SAGA_ERA_SIZE}")
+                if await saga_service.should_generate_chapter(db, tick_number):
+                    saga_result = await saga_service.generate_chapter(db, tick_number)
+                    if saga_result:
+                        logger.info(f"Tick {tick_number}: Saga chapter generated")
             except Exception as e:
                 logger.error(f"Saga generation error at tick {tick_number}: {e}")
 
@@ -272,6 +260,14 @@ async def _process_tick_async():
                     )
             except Exception as e:
                 logger.error(f"God succession check error at tick {tick_number}: {e}")
+
+        # Single commit for all tick changes
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Tick {tick_number}: final commit failed: {e}")
+            await db.rollback()
+            return
 
         world_snapshot = {
             "bounds": bounds,

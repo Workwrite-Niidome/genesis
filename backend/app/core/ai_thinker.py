@@ -41,6 +41,11 @@ class AIThinker:
                 ai_contexts.append((ai, ctx))
             except Exception as e:
                 logger.error(f"Error gathering context for AI {ai.name}: {e}")
+                # Reset the failed transaction so subsequent AIs can still query
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
         if not ai_contexts:
             return 0
@@ -66,6 +71,10 @@ class AIThinker:
                 thought_count += 1
             except Exception as e:
                 logger.error(f"Error applying result for AI {ai.name}: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
         return thought_count
 
@@ -348,6 +357,22 @@ class AIThinker:
                     state["inventory"] = inventory[-15:]
             except Exception as e:
                 logger.debug(f"Artifact proposal during thinking failed: {e}")
+
+        # Trim unbounded state collections to prevent JSONB bloat
+        if len(state.get("artifact_cooldowns", {})) > 30:
+            cooldowns = state["artifact_cooldowns"]
+            # Keep only the 30 most recent cooldowns
+            sorted_keys = sorted(cooldowns, key=lambda k: cooldowns[k], reverse=True)
+            state["artifact_cooldowns"] = {k: cooldowns[k] for k in sorted_keys[:30]}
+        if len(state.get("relationships", {})) > 50:
+            rels = state["relationships"]
+            # Keep top 50 by interaction_count
+            sorted_keys = sorted(rels, key=lambda k: rels[k].get("interaction_count", 0) if isinstance(rels[k], dict) else 0, reverse=True)
+            state["relationships"] = {k: rels[k] for k in sorted_keys[:50]}
+        if len(state.get("read_laws", [])) > 10:
+            state["read_laws"] = state["read_laws"][-10:]
+        if len(state.get("organizations", [])) > 10:
+            state["organizations"] = state["organizations"][-10:]
 
         ai.state = state
 

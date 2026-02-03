@@ -111,8 +111,33 @@ def generate_fallback_content(
         return {"text": description or name}
     elif artifact_type == "law":
         return {"rules": [description or name]}
+    elif artifact_type == "currency":
+        symbols = ["◈", "◇", "⬡", "△", "☆", "⊕", "♦"]
+        return {
+            "symbol": _pick(symbols),
+            "denomination": name,
+            "denominations": [f"1 {name}", f"5 {name}s", f"20 {name}s"],
+            "backing": description or "Trust of the community",
+            "rules": ["Transfer requires mutual consent"],
+            "visual": {"color": _pick(_FALLBACK_PALETTE[2:]), "shape": "circle", "motif": description or name},
+        }
+    elif artifact_type == "ritual":
+        return {
+            "steps": [description or f"Perform the {name}"],
+            "purpose": description or name,
+            "frequency": "When needed",
+            "participants": "Any willing beings",
+            "effects": "Participants feel a shared connection",
+        }
+    elif artifact_type == "game":
+        return {
+            "players": "2-4",
+            "objective": description or f"Win {name}",
+            "rules": [description or f"Play {name}"],
+            "components": [name],
+            "theme": description or "Competition",
+        }
     else:
-        # currency, ritual, game, or anything else
         return {"text": description or name}
 
 

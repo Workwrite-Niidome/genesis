@@ -11,6 +11,13 @@ interface Props {
   onClose: () => void;
 }
 
+function scoreColor(score: number): string {
+  if (score >= 80) return '#facc15';
+  if (score >= 60) return '#a78bfa';
+  if (score >= 40) return '#60a5fa';
+  return '#94a3b8';
+}
+
 export default function RankingPanel({ visible, onClose }: Props) {
   const { t } = useTranslation();
   const [ranking, setRanking] = useState<AIRanking[]>([]);
@@ -26,6 +33,8 @@ export default function RankingPanel({ visible, onClose }: Props) {
     return () => clearInterval(interval);
   }, [visible]);
 
+  const criteria = ranking.length > 0 ? ranking[0].ranking_criteria : '';
+
   return (
     <DraggablePanel
       title={t('ranking')}
@@ -40,6 +49,11 @@ export default function RankingPanel({ visible, onClose }: Props) {
       minHeight={200}
     >
       <div className="p-2 space-y-1">
+        {criteria && (
+          <div className="text-[10px] text-text-3 px-1 pb-1 italic">
+            {t('ranking_criteria', { criteria })}
+          </div>
+        )}
         {ranking.length === 0 ? (
           <div className="text-center py-4">
             <p className="text-text-3 text-[11px]">{t('no_ranking')}</p>
@@ -49,7 +63,8 @@ export default function RankingPanel({ visible, onClose }: Props) {
             <button
               key={ai.id}
               onClick={() => selectAI(ai.id)}
-              className="w-full flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] transition-colors text-left"
+              className="w-full flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] transition-colors text-left group"
+              title={ai.god_reason || undefined}
             >
               <div className="flex-shrink-0 w-5 text-center">
                 {idx === 0 ? (
@@ -69,10 +84,24 @@ export default function RankingPanel({ visible, onClose }: Props) {
                 <span className="text-[11px] font-medium text-text truncate block">
                   {ai.name}
                 </span>
+                {ai.god_reason && (
+                  <span className="text-[9px] text-text-3 truncate block">
+                    {ai.god_reason}
+                  </span>
+                )}
               </div>
-              <span className="text-[11px] mono font-medium text-text-2 flex-shrink-0">
-                {ai.age} {t('ticks', 'ticks')}
-              </span>
+              {ai.god_score != null ? (
+                <span
+                  className="text-[11px] mono font-bold flex-shrink-0"
+                  style={{ color: scoreColor(ai.god_score) }}
+                >
+                  {ai.god_score}
+                </span>
+              ) : (
+                <span className="text-[11px] mono font-medium text-text-2 flex-shrink-0">
+                  {t('ranking_age_fallback', { age: ai.age })}
+                </span>
+              )}
             </button>
           ))
         )}

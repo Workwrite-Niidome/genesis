@@ -38,9 +38,10 @@ export function connectSocket(): Socket {
   });
 
   socket.on('event', (data: any) => {
-    // Events are handled by the event feed polling for now
-    // but this can be used for immediate notification
-    console.log('[GENESIS] Event:', data.event_type, data.title);
+    // Update world store counts on significant events
+    const world = useWorldStore.getState();
+    if (data.event_type === 'ai_birth') world.fetchState();
+    if (data.event_type === 'concept_created') world.fetchState();
   });
 
   socket.on('world_update', (data: any) => {
@@ -69,12 +70,12 @@ export function connectSocket(): Socket {
     }
   });
 
-  socket.on('interaction', (data: any) => {
-    console.log('[GENESIS] Interaction:', data);
+  socket.on('interaction', (_data: any) => {
+    // Interactions are reflected through world_update tick counts
   });
 
-  socket.on('god_observation', (data: any) => {
-    console.log('[GENESIS] God observes:', data.content);
+  socket.on('god_observation', (_data: any) => {
+    // God observations are fetched via the god feed polling
   });
 
   socket.on('ai_death', (data: any) => {
@@ -83,16 +84,17 @@ export function connectSocket(): Socket {
     console.log('[GENESIS] AI died:', data.name);
   });
 
-  socket.on('concept_created', (data: any) => {
-    console.log('[GENESIS] New concept:', data.name);
+  socket.on('concept_created', (_data: any) => {
+    // Refresh world state to update concept count
+    useWorldStore.getState().fetchState();
   });
 
-  socket.on('artifact_created', (data: any) => {
-    console.log('[GENESIS] New artifact:', data.name, `(${data.artifact_type})`);
+  socket.on('artifact_created', (_data: any) => {
+    // Artifacts are fetched via panel polling
   });
 
-  socket.on('organization_formed', (data: any) => {
-    console.log('[GENESIS] Organization formed:', data.name);
+  socket.on('organization_formed', (_data: any) => {
+    // Organizations are fetched via concept panel polling
   });
 
   socket.on('chat_message', (data: any) => {

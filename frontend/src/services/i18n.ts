@@ -156,9 +156,16 @@ const en = {
     evolution_score: 'Evolution Score',
     ranking: 'Ranking',
     no_ranking: 'No ranking data yet',
+    ranking_criteria: 'Judging: {{criteria}}',
+    god_score: 'Score',
+    ranking_age_fallback: '{{age}} ticks',
 
     // Concepts
     adopted_concepts: 'Adopted Concepts',
+
+    // Creations Panel
+    creations: 'Creations',
+    no_creations: 'No creations yet',
 
     // God AI
     god_observation: 'God AI Observation',
@@ -308,6 +315,8 @@ const en = {
     org_member: 'Member',
     org_focus_area: 'Focus Area',
     org_no_members: 'No members',
+    observer_no_messages: 'No messages yet',
+    observer_logout: 'Sign Out',
   },
 };
 
@@ -466,9 +475,16 @@ const ja = {
     evolution_score: '進化スコア',
     ranking: 'ランキング',
     no_ranking: 'ランキングデータはまだありません',
+    ranking_criteria: '評価基準: {{criteria}}',
+    god_score: 'スコア',
+    ranking_age_fallback: '{{age}} ティック',
 
     // Concepts
     adopted_concepts: '採用された概念',
+
+    // Creations Panel
+    creations: '創作物',
+    no_creations: '創作物はまだありません',
 
     // God AI
     god_observation: 'GOD AIの観察',
@@ -618,6 +634,8 @@ const ja = {
     org_member: 'メンバー',
     org_focus_area: '活動分野',
     org_no_members: 'メンバーなし',
+    observer_no_messages: 'メッセージはまだありません',
+    observer_logout: 'ログアウト',
   },
 };
 

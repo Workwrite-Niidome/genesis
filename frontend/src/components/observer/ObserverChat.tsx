@@ -94,7 +94,7 @@ export default function ObserverChat() {
                   <button
                     onClick={logout}
                     className="ml-auto text-text-3 hover:text-text-2 transition-colors"
-                    title="Logout"
+                    title={t('observer_logout')}
                   >
                     <LogOut size={10} />
                   </button>
@@ -104,7 +104,7 @@ export default function ObserverChat() {
               {/* Messages */}
               <div className="h-36 overflow-y-auto px-4 py-2 space-y-1">
                 {channelMessages.length === 0 && (
-                  <div className="text-center text-text-3 text-[10px] py-4">No messages yet</div>
+                  <div className="text-center text-text-3 text-[10px] py-4">{t('observer_no_messages')}</div>
                 )}
                 {channelMessages.map((msg) => (
                   <div key={msg.id} className="text-[11px] py-0.5">
@@ -128,7 +128,7 @@ export default function ObserverChat() {
                           : 'text-text-3 hover:text-text-2'
                       }`}
                     >
-                      Login
+                      {t('observer_login')}
                     </button>
                     <button
                       onClick={() => setAuthMode('register')}
@@ -138,7 +138,7 @@ export default function ObserverChat() {
                           : 'text-text-3 hover:text-text-2'
                       }`}
                     >
-                      Register
+                      {t('observer_register')}
                     </button>
                   </div>
                   <div className="flex gap-1.5">
@@ -146,7 +146,7 @@ export default function ObserverChat() {
                       type="text"
                       value={authUser}
                       onChange={(e) => setAuthUser(e.target.value)}
-                      placeholder="Username"
+                      placeholder={t('observer_username')}
                       className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
                                  text-[10px] text-text placeholder-text-3
                                  focus:outline-none focus:border-white/[0.12] transition-all duration-200"
@@ -156,7 +156,7 @@ export default function ObserverChat() {
                       value={authPass}
                       onChange={(e) => setAuthPass(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
-                      placeholder="Password"
+                      placeholder={t('observer_password')}
                       className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
                                  text-[10px] text-text placeholder-text-3
                                  focus:outline-none focus:border-white/[0.12] transition-all duration-200"
@@ -168,7 +168,7 @@ export default function ObserverChat() {
                                  hover:bg-white/[0.1] transition-all duration-200
                                  disabled:opacity-30"
                     >
-                      {loading ? '...' : authMode === 'login' ? 'Login' : 'Register'}
+                      {loading ? '...' : authMode === 'login' ? t('observer_login') : t('observer_register')}
                     </button>
                   </div>
                   {error && (
@@ -186,7 +186,7 @@ export default function ObserverChat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={isLoggedIn ? t('chat_placeholder') : 'Login to chat...'}
+              placeholder={isLoggedIn ? t('chat_placeholder') : t('chat_login_required')}
               disabled={!isLoggedIn}
               className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
                          text-[11px] text-text placeholder-text-3

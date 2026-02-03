@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 # Redis channel for cross-process socket events
 REDIS_CHANNEL = "genesis:socket_events"
 
+# Connection pool for sync Redis publisher (reused across all publish_event calls)
+_redis_pool = redis.ConnectionPool.from_url(settings.REDIS_URL, decode_responses=True)
+
 # Create Socket.IO server
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -38,14 +41,14 @@ async def disconnect(sid):
 def publish_event(event_type: str, data: dict | list) -> None:
     """Publish a socket event to Redis channel.
 
-    Uses sync redis client so it works from any process context
-    (Celery worker, FastAPI, asyncio, etc.).
+    Uses sync redis client with connection pool so it works from any process
+    context (Celery worker, FastAPI, asyncio, etc.) without creating new
+    connections per call.
     """
     try:
-        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        r = redis.Redis(connection_pool=_redis_pool)
         message = json.dumps({"event": event_type, "data": data})
         r.publish(REDIS_CHANNEL, message)
-        r.close()
     except Exception as e:
         logger.warning(f"Failed to publish socket event '{event_type}': {e}")
 

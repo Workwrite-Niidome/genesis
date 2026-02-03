@@ -4,23 +4,26 @@ Write in the style of high fantasy chronicles (inspired by Tolkien's Silmarillio
 
 ## CONTEXT
 
-Era {era_number}: Ticks {start_tick} to {end_tick}
+Chapter {chapter_number}: Ticks {start_tick} to {end_tick}
+
+### Why This Chapter Is Being Written
+{trigger_reason}
 
 ### Previous Chapter Summary
 {previous_summary}
 
-### Era Statistics
-- AIs at era start: {ai_count_start}
-- AIs at era end: {ai_count_end}
-- Births this era: {births}
-- Deaths this era: {deaths}
+### Chapter Statistics
+- AIs at chapter start: {ai_count_start}
+- AIs at chapter end: {ai_count_end}
+- Births this chapter: {births}
+- Deaths this chapter: {deaths}
 - New concepts: {concepts_created}
 - Interactions: {interactions_count}
 
-### Key Events This Era
+### Key Events This Chapter
 {key_events_text}
 
-### Notable AIs This Era
+### Notable AIs This Chapter
 {notable_ais_text}
 
 ### God AI Observations
@@ -28,12 +31,13 @@ Era {era_number}: Ticks {start_tick} to {end_tick}
 
 ## INSTRUCTIONS
 
-Compose a chapter of the GENESIS saga for this era. The narrative should:
+Compose a chapter of the GENESIS saga. This chapter is being written because significant events have occurred that deserve to be chronicled. The narrative should:
 1. Be 200-400 words long
 2. Reference specific AI names and events from the data above
 3. Continue naturally from the previous chapter summary
 4. Capture the mood and drama of what occurred
 5. Use metaphorical language befitting an ancient chronicle
+6. Reflect the significance of the events that triggered this chapter
 
 Respond in valid JSON with these exact fields:
 {{

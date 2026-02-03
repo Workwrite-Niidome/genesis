@@ -35,7 +35,7 @@ BELIEF_COLORS = [
 GROUP_CONVERSATION_PROMPT = """You are {name}, a living being in GENESIS, at a group gathering.
 
 ## Who You Are
-Name: {name} | Traits: {traits} | Energy: {energy:.0%} | Age: {age} ticks
+Name: {name} | Traits: {traits} | Age: {age} ticks
 
 ## Your Beliefs
 {adopted_concepts}
@@ -267,7 +267,6 @@ class CultureEngine:
             prompt = GROUP_CONVERSATION_PROMPT.format(
                 name=ai.name,
                 traits=", ".join(ai.personality_traits or []),
-                energy=ai.state.get("energy", 1.0),
                 age=ai.state.get("age", 0),
                 adopted_concepts=sd["adopted_concepts"],
                 organization=sd["organization"],
@@ -522,6 +521,12 @@ class CultureEngine:
             elif artifact_type in ("code", "tool") and not content.get("source"):
                 has_valid_content = False
             elif artifact_type == "law" and not content.get("rules"):
+                has_valid_content = False
+            elif artifact_type == "currency" and not content.get("symbol"):
+                has_valid_content = False
+            elif artifact_type == "ritual" and not content.get("steps"):
+                has_valid_content = False
+            elif artifact_type == "game" and not content.get("rules"):
                 has_valid_content = False
 
         # Phase 2: If no valid content, try dedicated LLM generation
@@ -827,39 +832,41 @@ class CultureEngine:
         return org_concept
 
     async def process_visual_evolution(self, db: AsyncSession) -> None:
-        """Update AI appearances based on their beliefs, organizations, and evolution score."""
+        """Update AI appearances based on age, adopted concepts, and relationships."""
         result = await db.execute(select(AI).where(AI.is_alive == True))
         ais = list(result.scalars().all())
 
         for ai in ais:
             state = ai.state
-            score = state.get("evolution_score", 0)
+            age = state.get("age", 0)
             adopted_count = len(state.get("adopted_concepts", []))
+            relationship_count = len(state.get("relationships", {}))
 
             appearance = dict(ai.appearance)
             changed = False
 
-            # Size grows with evolution score
+            # Size grows with age (capped at +10)
             base_size = appearance.get("base_size", appearance.get("size", 10))
             if "base_size" not in appearance:
                 appearance["base_size"] = base_size
-            new_size = base_size + min(10, score / 10)
+            new_size = base_size + min(10, age / 100)
             if abs(appearance.get("size", 0) - new_size) >= 0.5:
                 appearance["size"] = round(new_size, 1)
                 changed = True
 
-            # Glow intensity increases with adoption of concepts
+            # Trail appears when AI has adopted 3+ concepts
             if adopted_count >= 3 and not appearance.get("trail"):
                 appearance["trail"] = True
                 changed = True
 
-            # High evolution AIs get special effects
-            if score >= 50 and not appearance.get("aura"):
+            # Aura appears for socially active AIs (many relationships)
+            if relationship_count >= 5 and not appearance.get("aura"):
                 appearance["aura"] = True
                 appearance["auraColor"] = random.choice(BELIEF_COLORS)
                 changed = True
 
-            if score >= 100 and not appearance.get("crown"):
+            # Crown for elder AIs (age >= 500)
+            if age >= 500 and not appearance.get("crown"):
                 appearance["crown"] = True
                 changed = True
 

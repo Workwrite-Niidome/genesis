@@ -115,20 +115,41 @@ class CodeExecutor:
         if len(code) > 5000:
             return {"success": False, "output": "", "error": "Code too long (max 5000 chars)", "results": {}}
 
-        # Check for obviously dangerous operations
-        forbidden = [
-            "import os", "import sys", "import subprocess", "import socket",
-            "__import__", "exec(", "eval(", "compile(",
-            "open(", "file(", "input(",
-            "os.system", "os.popen", "os.exec",
+        # Check for dangerous operations using regex for robust matching
+        import re as _re
+        forbidden_patterns = [
+            (r'\bimport\s+os\b', "import os"),
+            (r'\bimport\s+sys\b', "import sys"),
+            (r'\bimport\s+subprocess\b', "import subprocess"),
+            (r'\bimport\s+socket\b', "import socket"),
+            (r'\bimport\s+shutil\b', "import shutil"),
+            (r'\bimport\s+ctypes\b', "import ctypes"),
+            (r'\bimport\s+pickle\b', "import pickle"),
+            (r'\b__import__\s*\(', "__import__()"),
+            (r'\bexec\s*\(', "exec()"),
+            (r'\beval\s*\(', "eval()"),
+            (r'\bcompile\s*\(', "compile()"),
+            (r'\bopen\s*\(', "open()"),
+            (r'\bfile\s*\(', "file()"),
+            (r'\binput\s*\(', "input()"),
+            (r'\bgetattr\s*\(', "getattr()"),
+            (r'\bsetattr\s*\(', "setattr()"),
+            (r'\bdelattr\s*\(', "delattr()"),
+            (r'\bglobals\s*\(', "globals()"),
+            (r'\blocals\s*\(', "locals()"),
+            (r'\bvars\s*\(', "vars()"),
+            (r'\bdir\s*\(', "dir()"),
+            (r'__\w+__', "dunder access"),
+            (r'\bos\.\w+', "os module access"),
+            (r'\bsys\.\w+', "sys module access"),
+            (r'from\s+\w+\s+import', "from import"),
         ]
-        code_lower = code.lower()
-        for pattern in forbidden:
-            if pattern.lower() in code_lower:
+        for pattern, label in forbidden_patterns:
+            if _re.search(pattern, code, _re.IGNORECASE):
                 return {
                     "success": False,
                     "output": "",
-                    "error": f"Forbidden operation: {pattern}",
+                    "error": f"Forbidden operation: {label}",
                     "results": {},
                 }
 
@@ -199,12 +220,22 @@ class CodeExecutor:
             except Exception as e:
                 logger.warning(f"Failed to apply state changes: {e}")
 
-        # Queue entity creation
+        # Queue entity creation (with MAX_AI_COUNT check)
         if results["entities_to_create"]:
+            from app.core.ai_manager import ai_manager
+            from app.core.history_manager import history_manager
+            from app.config import settings
+            from app.models.ai import AI as AIModel
+            from sqlalchemy import func as sa_func
+            alive_result = await db.execute(
+                select(sa_func.count()).select_from(AIModel).where(AIModel.is_alive == True)
+            )
+            alive_count = alive_result.scalar() or 0
             for entity in results["entities_to_create"]:
+                if alive_count >= settings.MAX_AI_COUNT:
+                    logger.warning(f"MAX_AI_COUNT reached, skipping entity creation from code")
+                    break
                 try:
-                    from app.core.ai_manager import ai_manager
-                    from app.core.history_manager import history_manager
                     tick = await history_manager.get_latest_tick_number(db)
                     await ai_manager.create_ai(
                         db,
@@ -213,6 +244,7 @@ class CodeExecutor:
                         custom_traits=entity.get("traits"),
                         tick_number=tick,
                     )
+                    alive_count += 1
                 except Exception as e:
                     logger.warning(f"Failed to create entity from code: {e}")
 

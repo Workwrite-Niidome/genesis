@@ -22,6 +22,8 @@ RELATIONSHIP_SCORES = {
 # Score thresholds for relationship types
 ALLY_THRESHOLD = 3
 RIVAL_THRESHOLD = -3
+# Soft cap: scores are clamped to this range to prevent runaway accumulation
+SCORE_CAP = 15.0
 
 
 class RelationshipManager:
@@ -100,7 +102,7 @@ class RelationshipManager:
                 "last_interaction": 0,
             }
 
-        rel["score"] = rel.get("score", 0) + delta
+        rel["score"] = max(-SCORE_CAP, min(SCORE_CAP, rel.get("score", 0) + delta))
         rel["interaction_count"] = rel.get("interaction_count", 0) + 1
         rel["name"] = other_name
 
@@ -143,7 +145,7 @@ class RelationshipManager:
                 "last_interaction": tick_number,
             }
 
-        rel["score"] = rel.get("score", 0) + delta
+        rel["score"] = max(-SCORE_CAP, min(SCORE_CAP, rel.get("score", 0) + delta))
         rel["interaction_count"] = rel.get("interaction_count", 0) + 1
         rel["last_interaction"] = tick_number
         rel["name"] = other.name

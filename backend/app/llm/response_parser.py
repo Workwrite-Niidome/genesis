@@ -46,11 +46,13 @@ def parse_free_text(response: str) -> dict:
             speech_parts.append(match.group(1))
     speech = " ".join(speech_parts) if speech_parts else ""
 
-    # Extract inner state (look for patterns like "I feel...", "My state:...")
+    # Extract inner state (look for patterns — multilingual)
     inner_state = ""
     inner_patterns = [
         re.compile(r'(?:inner state|my state|i feel|i am feeling)[:\s]+(.*?)(?:\n|$)', re.IGNORECASE),
         re.compile(r'(?:currently|right now)[,:\s]+(?:i am|i feel)\s+(.*?)(?:\n|$)', re.IGNORECASE),
+        re.compile(r'(?:state|feeling|emotion|mood)\s*[:=]\s*(.*?)(?:\n|$)', re.IGNORECASE),
+        re.compile(r'\[inner[_ ]?state\]\s*(.*?)(?:\n|$)', re.IGNORECASE),
     ]
     for pattern in inner_patterns:
         match = pattern.search(text_without_code)
@@ -58,11 +60,13 @@ def parse_free_text(response: str) -> dict:
             inner_state = match.group(1).strip()[:500]
             break
 
-    # Extract memory intent
+    # Extract memory intent (multilingual)
     new_memory = None
     memory_patterns = [
         re.compile(r'(?:i (?:will |shall |want to )?remember|note to self|memorize)[:\s]+(.*?)(?:\n|$)', re.IGNORECASE),
         re.compile(r'(?:committing to memory|saving to memory)[:\s]+(.*?)(?:\n|$)', re.IGNORECASE),
+        re.compile(r'(?:memory|remember)\s*[:=]\s*(.*?)(?:\n|$)', re.IGNORECASE),
+        re.compile(r'\[memory\]\s*(.*?)(?:\n|$)', re.IGNORECASE),
     ]
     for pattern in memory_patterns:
         match = pattern.search(text_without_code)

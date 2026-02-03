@@ -93,17 +93,8 @@ export default function ObserverFeed() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('thoughts');
   const { thoughts } = useThoughtStore();
-  const [events, setEvents] = useState<WorldEvent[]>([]);
-
-  useEffect(() => {
-    const load = () => api.history.getEvents(30).then(setEvents).catch(console.error);
-    load();
-    const interval = setInterval(load, 4000);
-    return () => clearInterval(interval);
-  }, []);
 
   const thoughtCount = thoughts.length;
-  const eventCount = events.length;
 
   return (
     <div className="absolute top-20 right-4 z-40 w-72 pointer-events-auto">
@@ -134,9 +125,6 @@ export default function ObserverFeed() {
           >
             <Radio size={11} />
             {t('live_events')}
-            {eventCount > 0 && (
-              <span className="text-[8px] opacity-60">{eventCount}</span>
-            )}
           </button>
         </div>
 

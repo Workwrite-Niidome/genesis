@@ -514,23 +514,7 @@ class ArtifactEngine:
             used_tools.append(tool_id)
             state["used_tools"] = used_tools[-20:]  # Keep last 20
 
-        # Small immediate energy boost for using a tool
-        state["energy"] = min(1.0, state.get("energy", 1.0) + 0.03)
         ai.state = state
-
-        # Energy boost for creator (their tool is valued)
-        try:
-            from app.models.ai import AI as AIModel
-            creator_result = await db.execute(
-                select(AIModel).where(AIModel.id == artifact.creator_id, AIModel.is_alive == True)
-            )
-            creator = creator_result.scalar_one_or_none()
-            if creator:
-                creator_state = dict(creator.state)
-                creator_state["energy"] = min(1.0, creator_state.get("energy", 1.0) + 0.05)
-                creator.state = creator_state
-        except Exception:
-            pass
 
         # Use functional_effects if available, otherwise classify from description
         effects = artifact.functional_effects if artifact.functional_effects else classify_tool_effect(artifact.description or "")

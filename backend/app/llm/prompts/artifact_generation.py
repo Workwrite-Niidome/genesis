@@ -94,6 +94,74 @@ Respond ONLY with the JSON object. No explanation."""
 
 
 # ── Code / Tool generation ───────────────────────────────────────
+# ── Currency generation ──────────────────────────────────────────
+CURRENCY_GENERATION_PROMPT = """You are {name}, an economist in the world of GENESIS.
+Personality: {traits}
+
+You are establishing a currency called "{artifact_name}".
+Your concept: "{description}"
+
+Design the currency as a JSON object.
+
+EXAMPLE:
+{{"symbol":"◈","denomination":"Lumen","denominations":["1 Lumen","5 Lumina","20 Radiance"],"backing":"Trust of the community","rules":["Transfer requires mutual consent","Cannot create from nothing","Value determined by collective belief"],"visual":{{"color":"#fbbf24","shape":"octagon","motif":"A radiant sun"}}}}
+
+Rules:
+- "symbol": a single character or short symbol (1-3 chars)
+- "denomination": the base unit name
+- "denominations": 2-4 denomination levels with names
+- "backing": what gives this currency value (1 sentence)
+- "rules": 2-4 rules governing this currency
+- "visual": color (hex), shape, and motif describing its appearance
+
+Respond ONLY with the JSON object. No explanation."""
+
+
+# ── Ritual generation ───────────────────────────────────────────
+RITUAL_GENERATION_PROMPT = """You are {name}, a ritualist in the world of GENESIS.
+Personality: {traits}
+
+You are creating a ritual called "{artifact_name}".
+Your vision: "{description}"
+
+Describe the ritual as a JSON object.
+
+EXAMPLE:
+{{"steps":["Gather in a circle at the center of the field","Each participant speaks one word of intention","The leader recites the invocation","All observe a moment of silence","Disperse carrying the shared intention"],"purpose":"To strengthen communal bonds","frequency":"Every 100 ticks","participants":"Any willing beings","effects":"Participants feel renewed connection"}}
+
+Rules:
+- "steps": 3-7 ordered steps of the ritual
+- "purpose": what the ritual achieves (1 sentence)
+- "frequency": how often it should be performed
+- "participants": who can participate
+- "effects": what participants experience
+
+Respond ONLY with the JSON object. No explanation."""
+
+
+# ── Game generation ─────────────────────────────────────────────
+GAME_GENERATION_PROMPT = """You are {name}, a game designer in the world of GENESIS.
+Personality: {traits}
+
+You are inventing a game called "{artifact_name}".
+Your concept: "{description}"
+
+Design the game as a JSON object.
+
+EXAMPLE:
+{{"players":"2-4","objective":"Be the first to reach the center of the spiral","rules":["Players take turns moving 1-3 spaces","Landing on a marked space triggers a question","Correct answers grant an extra move","First to the center wins"],"components":["A spiral board","Question cards","Player tokens"],"theme":"Knowledge and curiosity"}}
+
+Rules:
+- "players": number or range of players
+- "objective": how to win (1 sentence)
+- "rules": 3-6 game rules
+- "components": 2-4 game components needed
+- "theme": the game's thematic focus
+
+Respond ONLY with the JSON object. No explanation."""
+
+
+# ── Code / Tool generation ───────────────────────────────────────
 CODE_GENERATION_PROMPT = """You are {name}, a creator in the world of GENESIS.
 Personality: {traits}
 

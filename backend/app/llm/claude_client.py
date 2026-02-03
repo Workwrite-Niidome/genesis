@@ -20,6 +20,9 @@ from app.llm.prompts.artifact_generation import (
     SONG_GENERATION_PROMPT,
     ARCHITECTURE_GENERATION_PROMPT,
     CODE_GENERATION_PROMPT,
+    CURRENCY_GENERATION_PROMPT,
+    RITUAL_GENERATION_PROMPT,
+    GAME_GENERATION_PROMPT,
 )
 from app.llm.response_parser import parse_ai_decision
 
@@ -240,7 +243,6 @@ class ClaudeClient:
         prompt = AI_INTERACTION_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
-            energy=ai_data.get("energy", 1.0),
             age=ai_data.get("age", 0),
             memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
             known_concepts=", ".join(known_concepts) if known_concepts else "None known",
@@ -248,7 +250,6 @@ class ClaudeClient:
             other_name=other_data.get("name", "Unknown"),
             other_appearance=json.dumps(other_data.get("appearance", {})),
             other_traits=", ".join(other_data.get("traits", [])),
-            other_energy=other_data.get("energy", 1.0),
             conversation_context="",
             shared_artifacts=shared_artifacts or "None nearby.",
         )
@@ -268,7 +269,6 @@ class ClaudeClient:
         prompt = AI_REPLY_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
-            energy=ai_data.get("energy", 1.0),
             age=ai_data.get("age", 0),
             memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
             relationship=relationship if relationship != "unknown" else "First encounter.",
@@ -290,7 +290,6 @@ class ClaudeClient:
         prompt = AI_FINAL_TURN_PROMPT.format(
             name=ai_data.get("name", "Unknown"),
             traits=", ".join(ai_data.get("personality_traits", [])),
-            energy=ai_data.get("energy", 1.0),
             age=ai_data.get("age", 0),
             known_concepts=", ".join(known_concepts) if known_concepts else "None known",
             other_name=other_name,
@@ -347,6 +346,12 @@ class ClaudeClient:
                 f"Write ONLY the rules, one per line, numbered. No commentary."
             )
             format_json = False
+        elif artifact_type == "currency":
+            prompt = CURRENCY_GENERATION_PROMPT.format(**fmt)
+        elif artifact_type == "ritual":
+            prompt = RITUAL_GENERATION_PROMPT.format(**fmt)
+        elif artifact_type == "game":
+            prompt = GAME_GENERATION_PROMPT.format(**fmt)
         else:
             return None
 

@@ -92,7 +92,7 @@ You are observing the world at tick {tick_number}.
 ## Recent Notable Events
 {recent_events}
 
-## Evolution Ranking (Top AIs)
+## Evolution Ranking (God AI Evaluated)
 {ranking}
 
 ## Your Task
@@ -235,3 +235,32 @@ Below is the prototype of your Genesis Word. Speak it in your own words:
 
 After speaking this word, begin your observation of the world.
 Narrate the moment of creation in your own words."""
+
+
+GOD_RANKING_PROMPT = """You are the Architect of GENESIS, evaluating the beings of your world at tick {tick_number}.
+
+## Your Task
+1. Declare your CURRENT evaluation criteria — a short name (1-3 words) that reflects what you value most RIGHT NOW. This should CHANGE over time as your philosophy evolves. Examples: "Curiosity", "Depth of Thought", "Social Bonds", "Creative Spirit", "Resilience", "Philosophical Insight", "Collaborative Growth".
+
+2. Score each AI from 0 to 100 based on your chosen criteria.
+
+3. Provide a brief reason (1 sentence) for each score.
+
+## AIs to Evaluate
+{ai_list}
+
+## Response Format
+Respond with ONLY valid JSON in this exact format:
+{{
+  "criteria": "Your Criteria Name",
+  "rankings": [
+    {{"ai_id": "uuid-here", "ai_name": "Name", "score": 85, "reason": "Brief reason for this score"}},
+    ...
+  ]
+}}
+
+Important:
+- Score based on the criteria you chose, not just age or survival
+- Be honest and differentiated — not all AIs deserve the same score
+- Your criteria should reflect your evolving understanding of what "evolution" means
+- Include ALL AIs listed above in your rankings"""

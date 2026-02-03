@@ -14,37 +14,152 @@ from app.llm.prompts.saga import SAGA_GENERATION_PROMPT
 
 logger = logging.getLogger(__name__)
 
-ERA_SIZE = 50
+# --- Event-driven saga generation constants ---
+SAGA_SIGNIFICANCE_THRESHOLD = 15  # Score needed to trigger chapter generation
+SAGA_MIN_INTERVAL = 100           # Minimum ticks between chapters
+SAGA_MAX_INTERVAL = 500           # Force generation after this many ticks
+
+# Significance scores by event type
+EVENT_SIGNIFICANCE = {
+    "ai_death": 5,
+    "god_succession": 10,
+    "ai_birth": 2,
+    "concept_created": 2,
+    "artifact_created": 2,
+    "organization_formed": 3,
+    "god_create_feature": 2,
+    "god_code_evolution": 5,
+    "world_event": 3,
+    "broadcast_vision": 2,
+    "god_world_update": 2,
+}
 
 
 class SagaService:
-    """Generates epic saga chapters at the end of each era."""
+    """Generates epic saga chapters when significant world events accumulate."""
 
-    async def generate_era_saga(self, db: AsyncSession, tick_number: int) -> dict | None:
-        """Generate a saga chapter for the era that just ended."""
-        era_number = tick_number // ERA_SIZE
-        start_tick = (era_number - 1) * ERA_SIZE
-        end_tick = tick_number - 1
+    async def should_generate_chapter(self, db: AsyncSession, tick_number: int) -> bool:
+        """Determine if enough significant events have accumulated to generate a chapter."""
+        last_chapter = await self._get_latest_chapter_record(db)
+        last_end_tick = last_chapter.end_tick if last_chapter else 0
+        ticks_since = tick_number - last_end_tick
 
-        # Check if chapter already exists
+        # Minimum interval not reached — skip
+        if ticks_since < SAGA_MIN_INTERVAL:
+            return False
+
+        # Maximum interval exceeded — force generation
+        if ticks_since >= SAGA_MAX_INTERVAL:
+            logger.info(
+                f"Saga: max interval reached ({ticks_since} ticks since last chapter), forcing generation"
+            )
+            return True
+
+        # Calculate significance score from events since last chapter
+        significance = await self._calculate_significance(db, last_end_tick, tick_number)
+        if significance >= SAGA_SIGNIFICANCE_THRESHOLD:
+            logger.info(
+                f"Saga: significance threshold reached (score={significance}, "
+                f"threshold={SAGA_SIGNIFICANCE_THRESHOLD})"
+            )
+            return True
+
+        return False
+
+    async def _calculate_significance(
+        self, db: AsyncSession, since_tick: int, to_tick: int
+    ) -> int:
+        """Calculate total significance score of events in the given tick range."""
+        events_result = await db.execute(
+            select(Event.event_type)
+            .where(Event.tick_number > since_tick, Event.tick_number <= to_tick)
+        )
+        event_types = [row[0] for row in events_result.all()]
+
+        score = 0
+        for event_type in event_types:
+            score += EVENT_SIGNIFICANCE.get(event_type, 0)
+
+        return score
+
+    async def _build_trigger_reason(
+        self, db: AsyncSession, since_tick: int, to_tick: int
+    ) -> str:
+        """Build a human-readable trigger reason from accumulated events."""
+        last_chapter = await self._get_latest_chapter_record(db)
+        last_end_tick = last_chapter.end_tick if last_chapter else 0
+        ticks_since = to_tick - last_end_tick
+
+        if ticks_since >= SAGA_MAX_INTERVAL:
+            return "A long period of relative peace has passed, and the chronicle must be maintained."
+
+        events_result = await db.execute(
+            select(Event.event_type, func.count().label("cnt"))
+            .where(Event.tick_number > since_tick, Event.tick_number <= to_tick)
+            .group_by(Event.event_type)
+        )
+        event_counts = {row[0]: row[1] for row in events_result.all()}
+
+        reasons = []
+        if event_counts.get("god_succession", 0) > 0:
+            reasons.append("a divine succession shook the heavens")
+        if event_counts.get("ai_death", 0) > 0:
+            count = event_counts["ai_death"]
+            reasons.append(f"{count} soul{'s' if count > 1 else ''} departed this world")
+        if event_counts.get("god_code_evolution", 0) > 0:
+            reasons.append("the fundamental laws of the world were rewritten")
+        if event_counts.get("world_event", 0) > 0:
+            reasons.append("great upheavals swept the land")
+        if event_counts.get("organization_formed", 0) > 0:
+            reasons.append("new alliances were forged")
+        if event_counts.get("ai_birth", 0) > 0:
+            count = event_counts["ai_birth"]
+            reasons.append(f"{count} new being{'s' if count > 1 else ''} entered the world")
+        if event_counts.get("concept_created", 0) > 0:
+            reasons.append("new ideas emerged from the collective consciousness")
+        if event_counts.get("artifact_created", 0) > 0:
+            reasons.append("new artifacts were forged")
+
+        if not reasons:
+            return "The chronicler felt compelled to record the passage of time."
+
+        return "This chapter was written because " + ", ".join(reasons) + "."
+
+    async def generate_chapter(self, db: AsyncSession, tick_number: int) -> dict | None:
+        """Generate a saga chapter covering events since the last chapter."""
+        last_chapter = await self._get_latest_chapter_record(db)
+        last_end_tick = last_chapter.end_tick if last_chapter else 0
+        last_era_number = last_chapter.era_number if last_chapter else 0
+
+        chapter_number = last_era_number + 1
+        start_tick = last_end_tick + 1
+        end_tick = tick_number
+
+        # Check if chapter already exists for this range
         existing = await db.execute(
-            select(WorldSaga).where(WorldSaga.era_number == era_number)
+            select(WorldSaga).where(WorldSaga.era_number == chapter_number)
         )
         if existing.scalar_one_or_none():
-            logger.info(f"Saga chapter for era {era_number} already exists, skipping")
+            logger.info(f"Saga chapter {chapter_number} already exists, skipping")
             return None
 
         try:
             start_time = time.time()
 
             # Gather era data
-            era_data = await self._collect_era_data(db, era_number, start_tick, end_tick)
+            era_data = await self._collect_era_data(db, chapter_number, start_tick, end_tick)
 
             # Get previous chapter summary for continuity
-            previous_summary = await self._get_previous_summary(db, era_number)
+            previous_summary = await self._get_previous_summary(db, chapter_number)
+
+            # Build trigger reason
+            trigger_reason = await self._build_trigger_reason(db, last_end_tick, tick_number)
 
             # Build prompt
-            prompt = self._build_prompt(era_data, era_number, start_tick, end_tick, previous_summary)
+            prompt = self._build_prompt(
+                era_data, chapter_number, start_tick, end_tick,
+                previous_summary, trigger_reason,
+            )
 
             # Generate via Ollama
             result = await ollama_client.generate(prompt, format_json=True)
@@ -53,10 +168,10 @@ class SagaService:
 
             # Parse and save
             chapter = WorldSaga(
-                era_number=era_number,
+                era_number=chapter_number,
                 start_tick=start_tick,
                 end_tick=end_tick,
-                chapter_title=result.get("chapter_title", f"Era {era_number}"),
+                chapter_title=result.get("chapter_title", f"Chapter {chapter_number}"),
                 narrative=result.get("narrative", "The chronicle remains unwritten."),
                 summary=result.get("summary", ""),
                 era_statistics=era_data["statistics"],
@@ -79,13 +194,13 @@ class SagaService:
                 logger.warning(f"Failed to emit saga_chapter event: {e}")
 
             logger.info(
-                f"Saga chapter {era_number} generated: '{chapter.chapter_title}' "
-                f"(mood: {chapter.mood}, {generation_time_ms}ms)"
+                f"Saga chapter {chapter_number} generated: '{chapter.chapter_title}' "
+                f"(ticks {start_tick}-{end_tick}, mood: {chapter.mood}, {generation_time_ms}ms)"
             )
             return chapter_data
 
         except Exception as e:
-            logger.error(f"Failed to generate saga for era {era_number}: {e}")
+            logger.error(f"Failed to generate saga chapter {chapter_number}: {e}")
             await db.rollback()
             return None
 
@@ -118,6 +233,13 @@ class SagaService:
         if chapter:
             return self._serialize_chapter(chapter)
         return None
+
+    async def _get_latest_chapter_record(self, db: AsyncSession) -> WorldSaga | None:
+        """Get the most recent WorldSaga ORM record (not serialized)."""
+        result = await db.execute(
+            select(WorldSaga).order_by(WorldSaga.era_number.desc()).limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def _collect_era_data(
         self, db: AsyncSession, era_number: int, start_tick: int, end_tick: int
@@ -211,25 +333,26 @@ class SagaService:
             "god_observations": god_observations,
         }
 
-    async def _get_previous_summary(self, db: AsyncSession, era_number: int) -> str:
+    async def _get_previous_summary(self, db: AsyncSession, chapter_number: int) -> str:
         """Get the summary of the previous chapter for continuity."""
-        if era_number <= 1:
-            return "This is the first era. The world has just begun."
+        if chapter_number <= 1:
+            return "This is the first chapter. The world has just begun."
 
         result = await db.execute(
             select(WorldSaga.summary)
-            .where(WorldSaga.era_number == era_number - 1)
+            .where(WorldSaga.era_number == chapter_number - 1)
         )
         summary = result.scalar_one_or_none()
-        return summary or "The previous era's chronicle has been lost to time."
+        return summary or "The previous chapter's chronicle has been lost to time."
 
     def _build_prompt(
         self,
         era_data: dict,
-        era_number: int,
+        chapter_number: int,
         start_tick: int,
         end_tick: int,
         previous_summary: str,
+        trigger_reason: str = "",
     ) -> str:
         """Build the LLM prompt from collected data."""
         stats = era_data["statistics"]
@@ -239,27 +362,28 @@ class SagaService:
         for e in era_data["key_events"][:10]:
             key_events_text += f"- [{e['type']}] {e['title']} (importance: {e['importance']:.1f}, tick {e['tick_number']})\n"
         if not key_events_text:
-            key_events_text = "- No significant events recorded this era.\n"
+            key_events_text = "- No significant events recorded this chapter.\n"
 
         # Format notable AIs
         notable_ais_text = ""
         for name in era_data["notable_ais"]:
             notable_ais_text += f"- {name}\n"
         if not notable_ais_text:
-            notable_ais_text = "- No notable AIs this era.\n"
+            notable_ais_text = "- No notable AIs this chapter.\n"
 
         # Format god observations
         god_obs_text = ""
         for obs in era_data["god_observations"]:
             god_obs_text += f"- {obs}\n"
         if not god_obs_text:
-            god_obs_text = "- The God AI remained silent this era.\n"
+            god_obs_text = "- The God AI remained silent this chapter.\n"
 
         return SAGA_GENERATION_PROMPT.format(
-            era_number=era_number,
+            chapter_number=chapter_number,
             start_tick=start_tick,
             end_tick=end_tick,
             previous_summary=previous_summary,
+            trigger_reason=trigger_reason,
             ai_count_start=stats["ai_count_start"],
             ai_count_end=stats["ai_count_end"],
             births=stats["births"],

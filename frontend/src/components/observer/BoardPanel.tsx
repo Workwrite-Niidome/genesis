@@ -57,6 +57,370 @@ function categoryColor(cat: string | null): string {
   return colors[cat] || 'bg-white/[0.06] text-text-3';
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Shared sub-components (used by both fullScreen and bottom-bar)
+   ═══════════════════════════════════════════════════════════ */
+
+function BoardListView({
+  threads,
+  loading,
+  categoryFilter,
+  setCategoryFilter,
+  isLoggedIn,
+  setView,
+  logout,
+  openThread,
+  t,
+}: {
+  threads: any[];
+  loading: boolean;
+  categoryFilter: string | null;
+  setCategoryFilter: (c: string | null) => void;
+  isLoggedIn: boolean;
+  setView: (v: 'list' | 'detail' | 'create') => void;
+  logout: () => void;
+  openThread: (id: string) => void;
+  t: (k: string, f?: string) => string;
+}) {
+  return (
+    <>
+      {/* Category filter + actions */}
+      <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat ?? 'all'}
+            onClick={() => setCategoryFilter(cat)}
+            className={`px-2 py-0.5 rounded-lg text-[9px] transition-all duration-150 ${
+              categoryFilter === cat
+                ? 'bg-white/[0.06] text-text shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
+                : 'text-text-3 hover:text-text-2'
+            }`}
+          >
+            {cat === null ? t('board_category_all') : categoryLabel(cat)}
+          </button>
+        ))}
+        <div className="flex-1" />
+        {isLoggedIn && (
+          <>
+            <button
+              onClick={() => setView('create')}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] text-cyan hover:bg-cyan/10 transition-all"
+            >
+              <Plus size={9} />
+              {t('board_new_thread')}
+            </button>
+            <button
+              onClick={logout}
+              className="text-text-3 hover:text-text-2 transition-colors"
+              title={t('observer_logout')}
+            >
+              <LogOut size={10} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Thread list (2ch-style compact) */}
+      <div className="h-48 overflow-y-auto">
+        {threads.length === 0 && (
+          <div className="text-center text-text-3 text-[10px] py-6">
+            {loading ? '...' : t('board_no_threads')}
+          </div>
+        )}
+        {threads.map((thread) => (
+          <button
+            key={thread.id}
+            onClick={() => openThread(thread.id)}
+            className="w-full text-left px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors flex items-center gap-2"
+          >
+            {thread.is_pinned && <Pin size={8} className="text-amber-400 flex-shrink-0" />}
+            <span className="text-[11px] text-text truncate flex-1">
+              {thread.title}
+            </span>
+            {thread.category && (
+              <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(thread.category)}`}>
+                {categoryLabel(thread.category)}
+              </span>
+            )}
+            <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px] text-text-3">
+              <MessageSquare size={8} />
+              {thread.reply_count}
+            </span>
+            <span className="flex-shrink-0 text-[8px] text-text-3 w-8 text-right">
+              {timeAgo(thread.last_reply_at || thread.created_at)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function BoardDetailView({
+  currentThread,
+  isLoggedIn,
+  loading,
+  replyInput,
+  setReplyInput,
+  handleReply,
+  goBack,
+  bottomRef,
+  t,
+}: {
+  currentThread: any;
+  isLoggedIn: boolean;
+  loading: boolean;
+  replyInput: string;
+  setReplyInput: (v: string) => void;
+  handleReply: () => void;
+  goBack: () => void;
+  bottomRef: React.RefObject<HTMLDivElement | null>;
+  t: (k: string, f?: string) => string;
+}) {
+  return (
+    <>
+      {/* Header with back button */}
+      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border">
+        <button onClick={goBack} className="text-text-3 hover:text-text transition-colors">
+          <ArrowLeft size={12} />
+        </button>
+        <span className="text-[11px] text-text font-medium truncate flex-1">
+          {currentThread.title}
+        </span>
+        {currentThread.category && (
+          <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(currentThread.category)}`}>
+            {categoryLabel(currentThread.category)}
+          </span>
+        )}
+      </div>
+
+      {/* Thread body + replies */}
+      <div className="h-48 overflow-y-auto px-4 py-2 space-y-1.5">
+        {/* OP */}
+        <div className="pb-1.5 border-b border-white/[0.04]">
+          <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
+            <span className="font-medium text-cyan">
+              {currentThread.author_name || currentThread.author_type.toUpperCase()}
+            </span>
+            <span>&middot;</span>
+            <span>{timeAgo(currentThread.created_at)}</span>
+          </div>
+          {currentThread.body && (
+            <div className="text-[11px] text-text-2 whitespace-pre-wrap">{currentThread.body}</div>
+          )}
+        </div>
+
+        {/* Replies */}
+        {currentThread.replies.length === 0 && (
+          <div className="text-center text-text-3 text-[10px] py-3">{t('board_no_replies')}</div>
+        )}
+        {currentThread.replies.map((reply: any, idx: number) => (
+          <div key={reply.id} className="py-1 text-[11px]">
+            <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
+              <span className="text-text-3 font-mono">{idx + 1}</span>
+              <span className="font-medium text-cyan">
+                {reply.author_name || reply.author_type.toUpperCase()}
+              </span>
+              <span>&middot;</span>
+              <span>{timeAgo(reply.created_at)}</span>
+            </div>
+            <div className="text-text-2 pl-4">{reply.content}</div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Reply input */}
+      <div className="flex gap-2 px-3 py-2 border-t border-border">
+        <input
+          type="text"
+          value={replyInput}
+          onChange={(e) => setReplyInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleReply()}
+          placeholder={isLoggedIn ? t('board_reply') + '...' : t('board_login_required')}
+          disabled={!isLoggedIn}
+          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
+                     text-[11px] text-text placeholder-text-3
+                     focus:outline-none focus:border-white/[0.12] transition-all duration-200
+                     disabled:opacity-30"
+        />
+        <button
+          onClick={handleReply}
+          disabled={!replyInput.trim() || !isLoggedIn || loading}
+          className="w-7 h-7 flex items-center justify-center rounded-lg
+                     hover:bg-white/[0.06] text-text-2 transition-all duration-200
+                     disabled:opacity-15"
+        >
+          <ArrowUp size={12} />
+        </button>
+      </div>
+    </>
+  );
+}
+
+function BoardCreateView({
+  newTitle,
+  setNewTitle,
+  newBody,
+  setNewBody,
+  newCategory,
+  setNewCategory,
+  handleCreateThread,
+  loading,
+  goBack,
+  t,
+}: {
+  newTitle: string;
+  setNewTitle: (v: string) => void;
+  newBody: string;
+  setNewBody: (v: string) => void;
+  newCategory: string;
+  setNewCategory: (v: string) => void;
+  handleCreateThread: () => void;
+  loading: boolean;
+  goBack: () => void;
+  t: (k: string, f?: string) => string;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border">
+        <button onClick={goBack} className="text-text-3 hover:text-text transition-colors">
+          <ArrowLeft size={12} />
+        </button>
+        <span className="text-[11px] text-text font-medium">
+          {t('board_new_thread')}
+        </span>
+      </div>
+
+      <div className="px-4 py-2 space-y-2">
+        <input
+          type="text"
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder={t('board_thread_title')}
+          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
+                     text-[11px] text-text placeholder-text-3
+                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+        />
+        <textarea
+          value={newBody}
+          onChange={(e) => setNewBody(e.target.value)}
+          placeholder={t('board_thread_body')}
+          rows={3}
+          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
+                     text-[11px] text-text placeholder-text-3 resize-none
+                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+        />
+        <input
+          type="text"
+          value={newCategory}
+          onChange={(e) => setNewCategory(e.target.value)}
+          placeholder={t('board_thread_category')}
+          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
+                     text-[11px] text-text placeholder-text-3
+                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+        />
+        <button
+          onClick={handleCreateThread}
+          disabled={!newTitle.trim() || loading}
+          className="w-full py-1.5 rounded-lg bg-white/[0.06] text-[11px] text-text font-medium
+                     hover:bg-white/[0.1] transition-all duration-200
+                     disabled:opacity-30"
+        >
+          {loading ? t('board_posting') : t('board_create')}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function BoardAuthForm({
+  authMode,
+  setAuthMode,
+  authUser,
+  setAuthUser,
+  authPass,
+  setAuthPass,
+  handleAuth,
+  authLoading,
+  error,
+}: {
+  authMode: 'login' | 'register';
+  setAuthMode: (m: 'login' | 'register') => void;
+  authUser: string;
+  setAuthUser: (v: string) => void;
+  authPass: string;
+  setAuthPass: (v: string) => void;
+  handleAuth: () => void;
+  authLoading: boolean;
+  error: string | null;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="px-3 py-2 border-t border-border space-y-1.5">
+      <div className="flex gap-1.5">
+        <button
+          onClick={() => setAuthMode('login')}
+          className={`px-2 py-0.5 rounded text-[9px] transition-all ${
+            authMode === 'login'
+              ? 'bg-white/[0.08] text-text'
+              : 'text-text-3 hover:text-text-2'
+          }`}
+        >
+          {t('observer_login')}
+        </button>
+        <button
+          onClick={() => setAuthMode('register')}
+          className={`px-2 py-0.5 rounded text-[9px] transition-all ${
+            authMode === 'register'
+              ? 'bg-white/[0.08] text-text'
+              : 'text-text-3 hover:text-text-2'
+          }`}
+        >
+          {t('observer_register')}
+        </button>
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={authUser}
+          onChange={(e) => setAuthUser(e.target.value)}
+          placeholder={t('observer_username')}
+          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
+                     text-[10px] text-text placeholder-text-3
+                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+        />
+        <input
+          type="password"
+          value={authPass}
+          onChange={(e) => setAuthPass(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+          placeholder={t('observer_password')}
+          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
+                     text-[10px] text-text placeholder-text-3
+                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
+        />
+        <button
+          onClick={handleAuth}
+          disabled={authLoading || !authUser.trim() || !authPass.trim()}
+          className="px-3 py-1 rounded-lg bg-white/[0.06] text-[10px] text-text
+                     hover:bg-white/[0.1] transition-all duration-200
+                     disabled:opacity-30"
+        >
+          {authLoading ? '...' : authMode === 'login' ? t('observer_login') : t('observer_register')}
+        </button>
+      </div>
+      {error && (
+        <div className="text-[9px] text-red-400">{error}</div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Main BoardPanel component
+   ═══════════════════════════════════════════════════════════ */
+
 export default function BoardPanel({ fullScreen }: { fullScreen?: boolean } = {}) {
   const { t } = useTranslation();
   const {
@@ -91,12 +455,19 @@ export default function BoardPanel({ fullScreen }: { fullScreen?: boolean } = {}
     }
   }, [observerChatExpanded, view, categoryFilter, fetchThreads]);
 
-  // Scroll to bottom when viewing detail (use block: 'nearest' to avoid shifting parent)
+  // Scroll to bottom when viewing detail
   useEffect(() => {
     if (view === 'detail' && currentThread && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [currentThread?.replies?.length, view]);
+
+  // Fetch threads on mount in fullScreen mode
+  useEffect(() => {
+    if (fullScreen && view === 'list') {
+      fetchThreads();
+    }
+  }, [fullScreen, view, fetchThreads]);
 
   const handleAuth = async () => {
     if (!authUser.trim() || !authPass.trim()) return;
@@ -135,296 +506,74 @@ export default function BoardPanel({ fullScreen }: { fullScreen?: boolean } = {}
   };
 
   const threadCount = threads.length;
-
-  // Force expanded in fullScreen mode
   const isExpanded = fullScreen || observerChatExpanded;
 
-  // Fetch threads on mount in fullScreen mode
-  useEffect(() => {
-    if (fullScreen && view === 'list') {
-      fetchThreads();
-    }
-  }, [fullScreen, view, fetchThreads]);
+  const sharedListProps = {
+    threads,
+    loading,
+    categoryFilter,
+    setCategoryFilter,
+    isLoggedIn,
+    setView,
+    logout,
+    openThread,
+    t,
+  };
+
+  const sharedDetailProps = {
+    currentThread: currentThread!,
+    isLoggedIn,
+    loading,
+    replyInput,
+    setReplyInput,
+    handleReply,
+    goBack,
+    bottomRef,
+    t,
+  };
+
+  const sharedCreateProps = {
+    newTitle,
+    setNewTitle,
+    newBody,
+    setNewBody,
+    newCategory,
+    setNewCategory,
+    handleCreateThread,
+    loading,
+    goBack,
+    t,
+  };
+
+  const sharedAuthProps = {
+    authMode,
+    setAuthMode,
+    authUser,
+    setAuthUser,
+    authPass,
+    setAuthPass,
+    handleAuth,
+    authLoading,
+    error,
+  };
+
+  const renderContent = () => (
+    <div className="flex-1 flex flex-col">
+      {view === 'list' && (
+        <>
+          <BoardListView {...sharedListProps} />
+          {!isLoggedIn && <BoardAuthForm {...sharedAuthProps} />}
+        </>
+      )}
+      {view === 'detail' && currentThread && <BoardDetailView {...sharedDetailProps} />}
+      {view === 'create' && <BoardCreateView {...sharedCreateProps} />}
+    </div>
+  );
 
   if (fullScreen) {
     return (
       <div className="h-full flex flex-col">
-            <div className="flex-1 flex flex-col">
-              {/* === LIST VIEW === */}
-              {view === 'list' && (
-                <>
-                  {/* Category filter + actions */}
-                  <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border">
-                    {CATEGORIES.map((cat) => (
-                      <button
-                        key={cat ?? 'all'}
-                        onClick={() => setCategoryFilter(cat)}
-                        className={`px-2 py-0.5 rounded-lg text-[9px] transition-all duration-150 ${
-                          categoryFilter === cat
-                            ? 'bg-white/[0.06] text-text shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
-                            : 'text-text-3 hover:text-text-2'
-                        }`}
-                      >
-                        {cat === null ? t('board_category_all') : categoryLabel(cat)}
-                      </button>
-                    ))}
-                    <div className="flex-1" />
-                    {isLoggedIn && (
-                      <>
-                        <button
-                          onClick={() => setView('create')}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] text-cyan hover:bg-cyan/10 transition-all"
-                        >
-                          <Plus size={9} />
-                          {t('board_new_thread')}
-                        </button>
-                        <button
-                          onClick={logout}
-                          className="text-text-3 hover:text-text-2 transition-colors"
-                          title="Logout"
-                        >
-                          <LogOut size={10} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Thread list (2ch-style compact) */}
-                  <div className="h-48 overflow-y-auto">
-                    {threads.length === 0 && (
-                      <div className="text-center text-text-3 text-[10px] py-6">
-                        {loading ? '...' : t('board_no_threads')}
-                      </div>
-                    )}
-                    {threads.map((thread, idx) => (
-                      <button
-                        key={thread.id}
-                        onClick={() => openThread(thread.id)}
-                        className="w-full text-left px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors flex items-center gap-2"
-                      >
-                        {thread.is_pinned && <Pin size={8} className="text-amber-400 flex-shrink-0" />}
-                        <span className="text-[11px] text-text truncate flex-1">
-                          {thread.title}
-                        </span>
-                        {thread.category && (
-                          <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(thread.category)}`}>
-                            {categoryLabel(thread.category)}
-                          </span>
-                        )}
-                        <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px] text-text-3">
-                          <MessageSquare size={8} />
-                          {thread.reply_count}
-                        </span>
-                        <span className="flex-shrink-0 text-[8px] text-text-3 w-8 text-right">
-                          {timeAgo(thread.last_reply_at || thread.created_at)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Auth form when not logged in */}
-                  {!isLoggedIn && (
-                    <div className="px-3 py-2 border-t border-border space-y-1.5">
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => setAuthMode('login')}
-                          className={`px-2 py-0.5 rounded text-[9px] transition-all ${
-                            authMode === 'login'
-                              ? 'bg-white/[0.08] text-text'
-                              : 'text-text-3 hover:text-text-2'
-                          }`}
-                        >
-                          Login
-                        </button>
-                        <button
-                          onClick={() => setAuthMode('register')}
-                          className={`px-2 py-0.5 rounded text-[9px] transition-all ${
-                            authMode === 'register'
-                              ? 'bg-white/[0.08] text-text'
-                              : 'text-text-3 hover:text-text-2'
-                          }`}
-                        >
-                          Register
-                        </button>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          value={authUser}
-                          onChange={(e) => setAuthUser(e.target.value)}
-                          placeholder="Username"
-                          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
-                                     text-[10px] text-text placeholder-text-3
-                                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
-                        />
-                        <input
-                          type="password"
-                          value={authPass}
-                          onChange={(e) => setAuthPass(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
-                          placeholder="Password"
-                          className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1
-                                     text-[10px] text-text placeholder-text-3
-                                     focus:outline-none focus:border-white/[0.12] transition-all duration-200"
-                        />
-                        <button
-                          onClick={handleAuth}
-                          disabled={authLoading || !authUser.trim() || !authPass.trim()}
-                          className="px-3 py-1 rounded-lg bg-white/[0.06] text-[10px] text-text
-                                     hover:bg-white/[0.1] transition-all duration-200
-                                     disabled:opacity-30"
-                        >
-                          {authLoading ? '...' : authMode === 'login' ? 'Login' : 'Register'}
-                        </button>
-                      </div>
-                      {error && (
-                        <div className="text-[9px] text-red-400">{error}</div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* === DETAIL VIEW === */}
-              {view === 'detail' && currentThread && (
-                <>
-                  {/* Header with back button */}
-                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border">
-                    <button
-                      onClick={goBack}
-                      className="text-text-3 hover:text-text transition-colors"
-                    >
-                      <ArrowLeft size={12} />
-                    </button>
-                    <span className="text-[11px] text-text font-medium truncate flex-1">
-                      {currentThread.title}
-                    </span>
-                    {currentThread.category && (
-                      <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(currentThread.category)}`}>
-                        {categoryLabel(currentThread.category)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Thread body + replies */}
-                  <div className="h-48 overflow-y-auto px-4 py-2 space-y-1.5">
-                    {/* OP */}
-                    <div className="pb-1.5 border-b border-white/[0.04]">
-                      <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
-                        <span className="font-medium text-cyan">
-                          {currentThread.author_name || currentThread.author_type.toUpperCase()}
-                        </span>
-                        <span>&middot;</span>
-                        <span>{timeAgo(currentThread.created_at)}</span>
-                      </div>
-                      {currentThread.body && (
-                        <div className="text-[11px] text-text-2 whitespace-pre-wrap">{currentThread.body}</div>
-                      )}
-                    </div>
-
-                    {/* Replies */}
-                    {currentThread.replies.length === 0 && (
-                      <div className="text-center text-text-3 text-[10px] py-3">{t('board_no_replies')}</div>
-                    )}
-                    {currentThread.replies.map((reply, idx) => (
-                      <div key={reply.id} className="py-1 text-[11px]">
-                        <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
-                          <span className="text-text-3 font-mono">{idx + 1}</span>
-                          <span className="font-medium text-cyan">
-                            {reply.author_name || reply.author_type.toUpperCase()}
-                          </span>
-                          <span>&middot;</span>
-                          <span>{timeAgo(reply.created_at)}</span>
-                        </div>
-                        <div className="text-text-2 pl-4">{reply.content}</div>
-                      </div>
-                    ))}
-                    <div ref={bottomRef} />
-                  </div>
-
-                  {/* Reply input */}
-                  <div className="flex gap-2 px-3 py-2 border-t border-border">
-                    <input
-                      type="text"
-                      value={replyInput}
-                      onChange={(e) => setReplyInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleReply()}
-                      placeholder={isLoggedIn ? t('board_reply') + '...' : t('board_login_required')}
-                      disabled={!isLoggedIn}
-                      className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
-                                 text-[11px] text-text placeholder-text-3
-                                 focus:outline-none focus:border-white/[0.12] transition-all duration-200
-                                 disabled:opacity-30"
-                    />
-                    <button
-                      onClick={handleReply}
-                      disabled={!replyInput.trim() || !isLoggedIn || loading}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg
-                                 hover:bg-white/[0.06] text-text-2 transition-all duration-200
-                                 disabled:opacity-15"
-                    >
-                      <ArrowUp size={12} />
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {/* === CREATE VIEW === */}
-              {view === 'create' && (
-                <>
-                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border">
-                    <button
-                      onClick={goBack}
-                      className="text-text-3 hover:text-text transition-colors"
-                    >
-                      <ArrowLeft size={12} />
-                    </button>
-                    <span className="text-[11px] text-text font-medium">
-                      {t('board_new_thread')}
-                    </span>
-                  </div>
-
-                  <div className="px-4 py-2 space-y-2">
-                    <input
-                      type="text"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      placeholder={t('board_thread_title')}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
-                                 text-[11px] text-text placeholder-text-3
-                                 focus:outline-none focus:border-white/[0.12] transition-all duration-200"
-                    />
-                    <textarea
-                      value={newBody}
-                      onChange={(e) => setNewBody(e.target.value)}
-                      placeholder={t('board_thread_body')}
-                      rows={3}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
-                                 text-[11px] text-text placeholder-text-3 resize-none
-                                 focus:outline-none focus:border-white/[0.12] transition-all duration-200"
-                    />
-                    <input
-                      type="text"
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      placeholder={t('board_thread_category')}
-                      className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5
-                                 text-[11px] text-text placeholder-text-3
-                                 focus:outline-none focus:border-white/[0.12] transition-all duration-200"
-                    />
-                    <button
-                      onClick={handleCreateThread}
-                      disabled={!newTitle.trim() || loading}
-                      className="w-full py-1.5 rounded-lg bg-white/[0.06] text-[11px] text-text font-medium
-                                 hover:bg-white/[0.1] transition-all duration-200
-                                 disabled:opacity-30"
-                    >
-                      {loading ? t('board_posting') : t('board_create')}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+        {renderContent()}
       </div>
     );
   }
@@ -453,136 +602,9 @@ export default function BoardPanel({ fullScreen }: { fullScreen?: boolean } = {}
           </button>
 
           {/* Expandable content */}
-          {observerChatExpanded && (
+          {isExpanded && (
             <div className="fade-in">
-              {/* === LIST VIEW === */}
-              {view === 'list' && (
-                <>
-                  <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border">
-                    {CATEGORIES.map((cat) => (
-                      <button
-                        key={cat ?? 'all'}
-                        onClick={() => setCategoryFilter(cat)}
-                        className={`px-2 py-0.5 rounded-lg text-[9px] transition-all duration-150 ${
-                          categoryFilter === cat
-                            ? 'bg-white/[0.06] text-text shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
-                            : 'text-text-3 hover:text-text-2'
-                        }`}
-                      >
-                        {cat === null ? t('board_category_all') : categoryLabel(cat)}
-                      </button>
-                    ))}
-                    <div className="flex-1" />
-                    {isLoggedIn && (
-                      <>
-                        <button
-                          onClick={() => setView('create')}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] text-cyan hover:bg-cyan/10 transition-all"
-                        >
-                          <Plus size={9} />
-                          {t('board_new_thread')}
-                        </button>
-                        <button onClick={logout} className="text-text-3 hover:text-text-2 transition-colors" title="Logout">
-                          <LogOut size={10} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <div className="h-48 overflow-y-auto">
-                    {threads.length === 0 && (
-                      <div className="text-center text-text-3 text-[10px] py-6">
-                        {loading ? '...' : t('board_no_threads')}
-                      </div>
-                    )}
-                    {threads.map((thread) => (
-                      <button
-                        key={thread.id}
-                        onClick={() => openThread(thread.id)}
-                        className="w-full text-left px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors flex items-center gap-2"
-                      >
-                        {thread.is_pinned && <Pin size={8} className="text-amber-400 flex-shrink-0" />}
-                        <span className="text-[11px] text-text truncate flex-1">{thread.title}</span>
-                        {thread.category && (
-                          <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(thread.category)}`}>
-                            {categoryLabel(thread.category)}
-                          </span>
-                        )}
-                        <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px] text-text-3">
-                          <MessageSquare size={8} />
-                          {thread.reply_count}
-                        </span>
-                        <span className="flex-shrink-0 text-[8px] text-text-3 w-8 text-right">
-                          {timeAgo(thread.last_reply_at || thread.created_at)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  {!isLoggedIn && (
-                    <div className="px-3 py-2 border-t border-border space-y-1.5">
-                      <div className="flex gap-1.5">
-                        <button onClick={() => setAuthMode('login')} className={`px-2 py-0.5 rounded text-[9px] transition-all ${authMode === 'login' ? 'bg-white/[0.08] text-text' : 'text-text-3 hover:text-text-2'}`}>Login</button>
-                        <button onClick={() => setAuthMode('register')} className={`px-2 py-0.5 rounded text-[9px] transition-all ${authMode === 'register' ? 'bg-white/[0.08] text-text' : 'text-text-3 hover:text-text-2'}`}>Register</button>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input type="text" value={authUser} onChange={(e) => setAuthUser(e.target.value)} placeholder="Username" className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1 text-[10px] text-text placeholder-text-3 focus:outline-none focus:border-white/[0.12] transition-all duration-200" />
-                        <input type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAuth()} placeholder="Password" className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1 text-[10px] text-text placeholder-text-3 focus:outline-none focus:border-white/[0.12] transition-all duration-200" />
-                        <button onClick={handleAuth} disabled={authLoading || !authUser.trim() || !authPass.trim()} className="px-3 py-1 rounded-lg bg-white/[0.06] text-[10px] text-text hover:bg-white/[0.1] transition-all duration-200 disabled:opacity-30">{authLoading ? '...' : authMode === 'login' ? 'Login' : 'Register'}</button>
-                      </div>
-                      {error && <div className="text-[9px] text-red-400">{error}</div>}
-                    </div>
-                  )}
-                </>
-              )}
-              {view === 'detail' && currentThread && (
-                <>
-                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border">
-                    <button onClick={goBack} className="text-text-3 hover:text-text transition-colors"><ArrowLeft size={12} /></button>
-                    <span className="text-[11px] text-text font-medium truncate flex-1">{currentThread.title}</span>
-                    {currentThread.category && <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(currentThread.category)}`}>{categoryLabel(currentThread.category)}</span>}
-                  </div>
-                  <div className="h-48 overflow-y-auto px-4 py-2 space-y-1.5">
-                    <div className="pb-1.5 border-b border-white/[0.04]">
-                      <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
-                        <span className="font-medium text-cyan">{currentThread.author_name || currentThread.author_type.toUpperCase()}</span>
-                        <span>&middot;</span>
-                        <span>{timeAgo(currentThread.created_at)}</span>
-                      </div>
-                      {currentThread.body && <div className="text-[11px] text-text-2 whitespace-pre-wrap">{currentThread.body}</div>}
-                    </div>
-                    {currentThread.replies.length === 0 && <div className="text-center text-text-3 text-[10px] py-3">{t('board_no_replies')}</div>}
-                    {currentThread.replies.map((reply, idx) => (
-                      <div key={reply.id} className="py-1 text-[11px]">
-                        <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
-                          <span className="text-text-3 font-mono">{idx + 1}</span>
-                          <span className="font-medium text-cyan">{reply.author_name || reply.author_type.toUpperCase()}</span>
-                          <span>&middot;</span>
-                          <span>{timeAgo(reply.created_at)}</span>
-                        </div>
-                        <div className="text-text-2 pl-4">{reply.content}</div>
-                      </div>
-                    ))}
-                    <div ref={bottomRef} />
-                  </div>
-                  <div className="flex gap-2 px-3 py-2 border-t border-border">
-                    <input type="text" value={replyInput} onChange={(e) => setReplyInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleReply()} placeholder={isLoggedIn ? t('board_reply') + '...' : t('board_login_required')} disabled={!isLoggedIn} className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] text-text placeholder-text-3 focus:outline-none focus:border-white/[0.12] transition-all duration-200 disabled:opacity-30" />
-                    <button onClick={handleReply} disabled={!replyInput.trim() || !isLoggedIn || loading} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-2 transition-all duration-200 disabled:opacity-15"><ArrowUp size={12} /></button>
-                  </div>
-                </>
-              )}
-              {view === 'create' && (
-                <>
-                  <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border">
-                    <button onClick={goBack} className="text-text-3 hover:text-text transition-colors"><ArrowLeft size={12} /></button>
-                    <span className="text-[11px] text-text font-medium">{t('board_new_thread')}</span>
-                  </div>
-                  <div className="px-4 py-2 space-y-2">
-                    <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={t('board_thread_title')} className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] text-text placeholder-text-3 focus:outline-none focus:border-white/[0.12] transition-all duration-200" />
-                    <textarea value={newBody} onChange={(e) => setNewBody(e.target.value)} placeholder={t('board_thread_body')} rows={3} className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] text-text placeholder-text-3 resize-none focus:outline-none focus:border-white/[0.12] transition-all duration-200" />
-                    <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder={t('board_thread_category')} className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] text-text placeholder-text-3 focus:outline-none focus:border-white/[0.12] transition-all duration-200" />
-                    <button onClick={handleCreateThread} disabled={!newTitle.trim() || loading} className="w-full py-1.5 rounded-lg bg-white/[0.06] text-[11px] text-text font-medium hover:bg-white/[0.1] transition-all duration-200 disabled:opacity-30">{loading ? t('board_posting') : t('board_create')}</button>
-                  </div>
-                </>
-              )}
+              {renderContent()}
             </div>
           )}
         </div>

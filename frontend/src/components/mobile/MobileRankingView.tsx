@@ -6,6 +6,13 @@ import { useAIStore } from '../../stores/aiStore';
 import { useUIStore } from '../../stores/uiStore';
 import type { AIRanking } from '../../types/world';
 
+function scoreColor(score: number): string {
+  if (score >= 80) return '#facc15';
+  if (score >= 60) return '#a78bfa';
+  if (score >= 40) return '#60a5fa';
+  return '#94a3b8';
+}
+
 export default function MobileRankingView() {
   const { t } = useTranslation();
   const [ranking, setRanking] = useState<AIRanking[]>([]);
@@ -35,6 +42,8 @@ export default function MobileRankingView() {
     );
   }
 
+  const criteria = ranking.length > 0 ? ranking[0].ranking_criteria : '';
+
   return (
     <div className="h-full overflow-y-auto">
       {/* Header */}
@@ -43,6 +52,11 @@ export default function MobileRankingView() {
         <span className="text-[13px] font-semibold text-text tracking-wide">{t('ranking')}</span>
         <span className="text-[10px] text-text-3 ml-auto">{ranking.length} AIs</span>
       </div>
+      {criteria && (
+        <div className="px-4 py-1.5 text-[11px] text-text-3 italic border-b border-border/50">
+          {t('ranking_criteria', { criteria })}
+        </div>
+      )}
 
       {ranking.length === 0 ? (
         <div className="text-center py-16">
@@ -76,10 +90,24 @@ export default function MobileRankingView() {
                 <span className="text-[12px] font-medium text-text truncate block">
                   {ai.name}
                 </span>
+                {ai.god_reason && (
+                  <span className="text-[10px] text-text-3 truncate block">
+                    {ai.god_reason}
+                  </span>
+                )}
               </div>
-              <span className="text-[12px] mono font-medium text-text-2 flex-shrink-0">
-                {ai.age} {t('ticks', 'ticks')}
-              </span>
+              {ai.god_score != null ? (
+                <span
+                  className="text-[13px] mono font-bold flex-shrink-0"
+                  style={{ color: scoreColor(ai.god_score) }}
+                >
+                  {ai.god_score}
+                </span>
+              ) : (
+                <span className="text-[12px] mono font-medium text-text-2 flex-shrink-0">
+                  {t('ranking_age_fallback', { age: ai.age })}
+                </span>
+              )}
             </button>
           ))}
         </div>

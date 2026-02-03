@@ -45,9 +45,10 @@ async def get_ranking(
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get AI ranking by age (oldest first)."""
+    """Get AI ranking — God AI evaluated scores, with age-based fallback."""
     from sqlalchemy import select as sa_select, func as sa_func
     from app.models.ai import AI as AIModel, AIMemory
+    from app.models.god_ai import GodAI
 
     result = await db.execute(
         sa_select(AIModel).where(AIModel.is_alive == True)
@@ -61,27 +62,82 @@ async def get_ranking(
     )
     memory_counts = {row[0]: row[1] for row in mem_result.all()}
 
-    # Sort by age (oldest first)
-    ranked = sorted(
-        ais_list,
-        key=lambda a: a.state.get("age", 0),
-        reverse=True,
-    )[:limit]
+    # Build AI lookup by id
+    ai_map = {str(ai.id): ai for ai in ais_list}
 
-    return [
-        {
-            "id": str(ai.id),
-            "name": ai.name,
-            "age": ai.state.get("age", 0),
-            "memory_count": memory_counts.get(ai.id, 0),
-            "personality_traits": ai.personality_traits or [],
-            "appearance": ai.appearance,
-            "is_alive": ai.is_alive,
-            "relationships_count": len(ai.state.get("relationships", {})),
-            "adopted_concepts_count": len(ai.state.get("adopted_concepts", [])),
-        }
-        for ai in ranked
-    ]
+    # Try God AI ranking first
+    god_result = await db.execute(
+        sa_select(GodAI).where(GodAI.is_active == True).limit(1)
+    )
+    god_ai = god_result.scalars().first()
+    god_ranking = god_ai.state.get("current_ranking", []) if god_ai else []
+    ranking_criteria = god_ai.state.get("ranking_criteria", "") if god_ai else ""
+
+    if god_ranking:
+        # Build response from God AI ranking, merged with AI model data
+        ranked_response = []
+        for entry in god_ranking[:limit]:
+            ai_id = entry.get("ai_id", "")
+            ai = ai_map.get(ai_id)
+            if not ai:
+                continue
+            ranked_response.append({
+                "id": str(ai.id),
+                "name": ai.name,
+                "age": ai.state.get("age", 0),
+                "memory_count": memory_counts.get(ai.id, 0),
+                "personality_traits": ai.personality_traits or [],
+                "appearance": ai.appearance,
+                "is_alive": ai.is_alive,
+                "relationships_count": len(ai.state.get("relationships", {})),
+                "adopted_concepts_count": len(ai.state.get("adopted_concepts", [])),
+                "god_score": entry.get("score", 0),
+                "god_reason": entry.get("reason", ""),
+                "ranking_criteria": ranking_criteria,
+            })
+
+        # Add any AIs not in God ranking (newly spawned) at the end
+        ranked_ids = {e.get("ai_id") for e in god_ranking}
+        for ai in ais_list:
+            if str(ai.id) not in ranked_ids and len(ranked_response) < limit:
+                ranked_response.append({
+                    "id": str(ai.id),
+                    "name": ai.name,
+                    "age": ai.state.get("age", 0),
+                    "memory_count": memory_counts.get(ai.id, 0),
+                    "personality_traits": ai.personality_traits or [],
+                    "appearance": ai.appearance,
+                    "is_alive": ai.is_alive,
+                    "relationships_count": len(ai.state.get("relationships", {})),
+                    "adopted_concepts_count": len(ai.state.get("adopted_concepts", [])),
+                    "god_score": None,
+                    "god_reason": None,
+                    "ranking_criteria": ranking_criteria,
+                })
+
+        return ranked_response
+    else:
+        # Fallback: age-based (existing logic)
+        ranked = sorted(
+            ais_list,
+            key=lambda a: a.state.get("age", 0),
+            reverse=True,
+        )[:limit]
+
+        return [
+            {
+                "id": str(ai.id),
+                "name": ai.name,
+                "age": ai.state.get("age", 0),
+                "memory_count": memory_counts.get(ai.id, 0),
+                "personality_traits": ai.personality_traits or [],
+                "appearance": ai.appearance,
+                "is_alive": ai.is_alive,
+                "relationships_count": len(ai.state.get("relationships", {})),
+                "adopted_concepts_count": len(ai.state.get("adopted_concepts", [])),
+            }
+            for ai in ranked
+        ]
 
 
 @router.get("/{ai_id}")

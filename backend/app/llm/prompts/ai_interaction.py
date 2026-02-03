@@ -5,7 +5,7 @@ You have just encountered {other_name}. This is a real conversation — speak as
 ## Who You Are
 Name: {name}
 Personality: {traits}
-Energy: {energy:.0%} | Age: {age} ticks
+Age: {age} ticks
 
 ## Your Memories
 {memories}
@@ -17,7 +17,7 @@ Energy: {energy:.0%} | Age: {age} ticks
 {relationship}
 
 ## {other_name}
-Traits: {other_traits} | Energy: {other_energy:.0%}
+Traits: {other_traits}
 Appearance: {other_appearance}
 {conversation_context}
 ## Nearby Artifacts
@@ -49,7 +49,7 @@ Respond in English only. Output raw JSON with no markdown formatting."""
 AI_REPLY_PROMPT = """You are {name} in the world of GENESIS, having a conversation with {other_name}.
 
 ## Who You Are
-Personality: {traits} | Energy: {energy:.0%} | Age: {age} ticks
+Personality: {traits} | Age: {age} ticks
 
 ## Your Memories
 {memories}
@@ -84,7 +84,7 @@ Respond in English only. Output raw JSON with no markdown formatting."""
 AI_FINAL_TURN_PROMPT = """You are {name} in the world of GENESIS, wrapping up a conversation with {other_name}.
 
 ## Who You Are
-Personality: {traits} | Energy: {energy:.0%} | Age: {age} ticks
+Personality: {traits} | Age: {age} ticks
 
 ## Known Concepts
 {known_concepts}
