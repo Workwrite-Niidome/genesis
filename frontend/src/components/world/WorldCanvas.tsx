@@ -121,7 +121,7 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
           ))}
 
           {/* Architecture structures (voxel buildings) - spread in 3D space */}
-          {!isMobile && structures.map((artifact, i) => {
+          {structures.slice(0, isMobile ? 8 : 20).map((artifact, i) => {
             // Position near the creator AI if found, otherwise spread out in a grid
             const creatorAI = ais.find((a) => a.id === artifact.creator_id);
             // Spread structures in 3D using golden angle for XY and varied Z
@@ -131,7 +131,7 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
             const offsetY = Math.sin(offsetAngle) * offsetRadius;
             // Vary Z position based on artifact id hash for 3D depth
             const zHash = artifact.id.charCodeAt(0) + artifact.id.charCodeAt(2);
-            const offsetZ = ((zHash % 5) - 2) * 12; // Range: -24 to +24
+            const offsetZ = isMobile ? 0 : ((zHash % 5) - 2) * 12; // Flat on mobile for performance
             const baseX = creatorAI ? creatorAI.position_x + offsetX : (i % 6) * 50 - 125;
             const baseY = creatorAI ? creatorAI.position_y + offsetY : Math.floor(i / 6) * 50 - 100;
             return (

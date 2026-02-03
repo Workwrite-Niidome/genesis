@@ -4,6 +4,7 @@ import ConceptPanel from '../observer/ConceptPanel';
 import ArtifactPanel from '../observer/ArtifactPanel';
 import GodFeed from '../observer/GodFeed';
 import BoardPanel from '../observer/BoardPanel';
+import MobileDetailSheet from './MobileDetailSheet';
 
 interface Props {
   contentKey: string;
@@ -45,6 +46,9 @@ export default function MobileSubView({ contentKey, onBack }: Props) {
         {contentKey === 'god' && <GodFeedMobile />}
         {contentKey === 'board' && <BoardPanelMobile />}
       </main>
+
+      {/* Detail sheet (shows on top when item is selected) */}
+      <MobileDetailSheet />
     </div>
   );
 }
