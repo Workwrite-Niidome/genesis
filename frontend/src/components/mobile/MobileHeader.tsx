@@ -8,7 +8,7 @@ export default function MobileHeader() {
   const { tickNumber, aiCount, godAiPhase } = useWorldStore();
 
   return (
-    <header className="flex items-center justify-between px-4 py-2.5 bg-surface/90 backdrop-blur-xl border-b border-border z-50 safe-top">
+    <header className="flex items-center justify-between px-4 py-2.5 bg-surface/95 backdrop-blur-xl border-b border-border safe-top">
       {/* Left: Branding */}
       <div className="flex items-center gap-2">
         <div className="relative">
