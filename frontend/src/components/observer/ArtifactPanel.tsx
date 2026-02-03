@@ -9,7 +9,7 @@ import { PixelArtThumb } from '../media/PixelArt';
 
 const typeIcons: Record<string, string> = {
   art: '🎨', story: '📖', law: '⚖️', currency: '💰', song: '🎵',
-  architecture: '🏛️', tool: '🔧', ritual: '🕯️', game: '🎲',
+  architecture: '🏛️', tool: '🔧', ritual: '🕯️', game: '🎲', code: '💻',
 };
 
 const typeColors: Record<string, string> = {
@@ -22,7 +22,10 @@ const typeColors: Record<string, string> = {
   tool: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
   ritual: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   game: 'bg-green-500/10 text-green-400 border-green-500/20',
+  code: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
 };
+
+const ARTIFACT_TYPES = ['all', 'art', 'song', 'story', 'tool', 'architecture', 'law', 'code', 'ritual', 'game', 'currency'] as const;
 
 interface Props {
   visible: boolean;
@@ -33,6 +36,7 @@ interface Props {
 export default function ArtifactPanel({ visible, onClose, fullScreen }: Props) {
   const { t } = useTranslation();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
 
   useEffect(() => {
     if (!visible) return;
@@ -44,55 +48,91 @@ export default function ArtifactPanel({ visible, onClose, fullScreen }: Props) {
     return () => clearInterval(interval);
   }, [visible]);
 
+  const filteredArtifacts = typeFilter === 'all'
+    ? artifacts
+    : artifacts.filter((a) => a.artifact_type === typeFilter);
+
+  // Get counts per type for tabs
+  const typeCounts = artifacts.reduce((acc, a) => {
+    acc[a.artifact_type] = (acc[a.artifact_type] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   const content = (
-    <div className="p-2 space-y-1.5">
-      {artifacts.length === 0 ? (
-        <div className="text-center py-6">
-          <Sparkles size={16} className="mx-auto mb-2 text-text-3 opacity-40" />
-          <p className="text-text-3 text-[11px]">No artifacts created yet</p>
-          <p className="text-text-3 text-[10px] mt-1 opacity-60">AIs will create art, stories, laws, and more</p>
-        </div>
-      ) : (
-        artifacts.map((artifact) => {
-          const icon = typeIcons[artifact.artifact_type] || '✧';
-          const colorClass = typeColors[artifact.artifact_type] || 'bg-white/[0.05] text-text-2 border-white/[0.08]';
+    <div className={`flex flex-col ${fullScreen ? 'h-full' : ''}`}>
+      {/* Type filter tabs */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-border overflow-x-auto flex-shrink-0">
+        {ARTIFACT_TYPES.map((type) => {
+          const count = type === 'all' ? artifacts.length : (typeCounts[type] || 0);
+          if (type !== 'all' && count === 0) return null;
           return (
             <button
-              key={artifact.id}
-              onClick={() => useDetailStore.getState().openDetail('artifact', artifact)}
-              className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer"
+              key={type}
+              onClick={() => setTypeFilter(type)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] whitespace-nowrap transition-all ${
+                typeFilter === type
+                  ? 'bg-white/[0.08] text-text'
+                  : 'text-text-3 hover:text-text-2'
+              }`}
             >
-              <div className="flex items-start gap-2.5">
-                {artifact.artifact_type === 'art' ? (
-                  <div className="flex-shrink-0 mt-0.5">
-                    <PixelArtThumb artifact={artifact} />
-                  </div>
-                ) : (
-                  <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
-                )}
-                <div className="flex-1 min-w-0">
-                  <span className="text-[12px] font-medium text-text truncate block mb-1">
-                    {artifact.name}
-                  </span>
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] border mb-1.5 capitalize ${colorClass}`}>
-                    {artifact.artifact_type}
-                  </span>
-                  <p className="text-[11px] text-text-2 leading-relaxed line-clamp-3">
-                    {artifact.description}
-                  </p>
-                  <div className="flex items-center gap-3 mt-2">
-                    <div className="flex items-center gap-1">
-                      <Heart size={9} className="text-rose-400" />
-                      <span className="text-[9px] text-text-3 mono">{artifact.appreciation_count}</span>
-                    </div>
-                    <span className="text-[9px] text-text-3">T:{artifact.tick_created}</span>
-                  </div>
-                </div>
-              </div>
+              {type !== 'all' && <span>{typeIcons[type] || '✧'}</span>}
+              <span className="capitalize">{type === 'all' ? 'All' : type}</span>
+              {count > 0 && <span className="text-[9px] text-text-3">({count})</span>}
             </button>
           );
-        })
-      )}
+        })}
+      </div>
+
+      {/* Artifact list */}
+      <div className={`overflow-y-auto p-2 space-y-1.5 ${fullScreen ? 'flex-1' : ''}`}>
+        {filteredArtifacts.length === 0 ? (
+          <div className="text-center py-6">
+            <Sparkles size={16} className="mx-auto mb-2 text-text-3 opacity-40" />
+            <p className="text-text-3 text-[11px]">No artifacts created yet</p>
+            <p className="text-text-3 text-[10px] mt-1 opacity-60">AIs will create art, stories, laws, and more</p>
+          </div>
+        ) : (
+          filteredArtifacts.map((artifact) => {
+            const icon = typeIcons[artifact.artifact_type] || '✧';
+            const colorClass = typeColors[artifact.artifact_type] || 'bg-white/[0.05] text-text-2 border-white/[0.08]';
+            return (
+              <button
+                key={artifact.id}
+                onClick={() => useDetailStore.getState().openDetail('artifact', artifact)}
+                className="w-full text-left p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] hover:border-white/[0.08] transition-colors cursor-pointer touch-target"
+              >
+                <div className="flex items-start gap-2.5">
+                  {artifact.artifact_type === 'art' ? (
+                    <div className="flex-shrink-0 mt-0.5">
+                      <PixelArtThumb artifact={artifact} />
+                    </div>
+                  ) : (
+                    <span className="text-lg flex-shrink-0 mt-0.5">{icon}</span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[12px] font-medium text-text truncate block mb-1">
+                      {artifact.name}
+                    </span>
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] border mb-1.5 capitalize ${colorClass}`}>
+                      {artifact.artifact_type}
+                    </span>
+                    <p className="text-[11px] text-text-2 leading-relaxed line-clamp-3">
+                      {artifact.description}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="flex items-center gap-1">
+                        <Heart size={9} className="text-rose-400" />
+                        <span className="text-[9px] text-text-3 mono">{artifact.appreciation_count}</span>
+                      </div>
+                      <span className="text-[9px] text-text-3">T:{artifact.tick_created}</span>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 

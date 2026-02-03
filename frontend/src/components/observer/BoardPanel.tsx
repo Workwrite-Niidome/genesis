@@ -71,6 +71,7 @@ function BoardListView({
   logout,
   openThread,
   t,
+  fullScreen,
 }: {
   threads: any[];
   loading: boolean;
@@ -81,19 +82,20 @@ function BoardListView({
   logout: () => void;
   openThread: (id: string) => void;
   t: (k: string, f?: string) => string;
+  fullScreen?: boolean;
 }) {
   return (
-    <>
+    <div className={`flex flex-col ${fullScreen ? 'flex-1' : ''}`}>
       {/* Category filter + actions */}
-      <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border">
+      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border flex-shrink-0 overflow-x-auto">
         {CATEGORIES.map((cat) => (
           <button
             key={cat ?? 'all'}
             onClick={() => setCategoryFilter(cat)}
-            className={`px-2 py-0.5 rounded-lg text-[9px] transition-all duration-150 ${
+            className={`px-2.5 py-1 rounded-lg text-[10px] transition-all duration-150 whitespace-nowrap touch-target ${
               categoryFilter === cat
-                ? 'bg-white/[0.06] text-text shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
-                : 'text-text-3 hover:text-text-2'
+                ? 'bg-white/[0.08] text-text'
+                : 'text-text-3 active:bg-white/[0.04]'
             }`}
           >
             {cat === null ? t('board_category_all') : categoryLabel(cat)}
@@ -104,26 +106,26 @@ function BoardListView({
           <>
             <button
               onClick={() => setView('create')}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] text-cyan hover:bg-cyan/10 transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] text-cyan active:bg-cyan/10 transition-all touch-target"
             >
-              <Plus size={9} />
+              <Plus size={12} />
               {t('board_new_thread')}
             </button>
             <button
               onClick={logout}
-              className="text-text-3 hover:text-text-2 transition-colors"
+              className="p-2 text-text-3 active:text-text-2 transition-colors touch-target"
               title={t('observer_logout')}
             >
-              <LogOut size={10} />
+              <LogOut size={14} />
             </button>
           </>
         )}
       </div>
 
       {/* Thread list (2ch-style compact) */}
-      <div className="h-48 overflow-y-auto">
+      <div className={`overflow-y-auto ${fullScreen ? 'flex-1' : 'h-48'}`}>
         {threads.length === 0 && (
-          <div className="text-center text-text-3 text-[10px] py-6">
+          <div className="text-center text-text-3 text-[11px] py-8">
             {loading ? '...' : t('board_no_threads')}
           </div>
         )}
@@ -131,28 +133,28 @@ function BoardListView({
           <button
             key={thread.id}
             onClick={() => openThread(thread.id)}
-            className="w-full text-left px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors flex items-center gap-2"
+            className="w-full text-left px-4 py-3 border-b border-white/[0.04] active:bg-white/[0.03] transition-colors flex items-center gap-2 touch-target"
           >
-            {thread.is_pinned && <Pin size={8} className="text-amber-400 flex-shrink-0" />}
-            <span className="text-[11px] text-text truncate flex-1">
+            {thread.is_pinned && <Pin size={10} className="text-amber-400 flex-shrink-0" />}
+            <span className="text-[12px] text-text truncate flex-1">
               {thread.title}
             </span>
             {thread.category && (
-              <span className={`flex-shrink-0 px-1.5 py-0 rounded text-[8px] ${categoryColor(thread.category)}`}>
+              <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[9px] ${categoryColor(thread.category)}`}>
                 {categoryLabel(thread.category)}
               </span>
             )}
-            <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px] text-text-3">
-              <MessageSquare size={8} />
+            <span className="flex-shrink-0 flex items-center gap-1 text-[10px] text-text-3">
+              <MessageSquare size={10} />
               {thread.reply_count}
             </span>
-            <span className="flex-shrink-0 text-[8px] text-text-3 w-8 text-right">
+            <span className="flex-shrink-0 text-[10px] text-text-3 w-10 text-right">
               {timeAgo(thread.last_reply_at || thread.created_at)}
             </span>
           </button>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -166,6 +168,7 @@ function BoardDetailView({
   goBack,
   bottomRef,
   t,
+  fullScreen,
 }: {
   currentThread: any;
   isLoggedIn: boolean;
@@ -176,6 +179,7 @@ function BoardDetailView({
   goBack: () => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   t: (k: string, f?: string) => string;
+  fullScreen?: boolean;
 }) {
   return (
     <>
@@ -195,7 +199,7 @@ function BoardDetailView({
       </div>
 
       {/* Thread body + replies */}
-      <div className="h-48 overflow-y-auto px-4 py-2 space-y-1.5">
+      <div className={`overflow-y-auto px-4 py-2 space-y-1.5 ${fullScreen ? 'flex-1' : 'h-48'}`}>
         {/* OP */}
         <div className="pb-1.5 border-b border-white/[0.04]">
           <div className="flex items-center gap-1.5 text-[9px] text-text-3 mb-0.5">
@@ -518,6 +522,7 @@ export default function BoardPanel({ fullScreen }: { fullScreen?: boolean } = {}
     logout,
     openThread,
     t,
+    fullScreen,
   };
 
   const sharedDetailProps = {
@@ -530,6 +535,7 @@ export default function BoardPanel({ fullScreen }: { fullScreen?: boolean } = {}
     goBack,
     bottomRef,
     t,
+    fullScreen,
   };
 
   const sharedCreateProps = {
