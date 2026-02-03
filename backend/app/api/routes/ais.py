@@ -65,9 +65,9 @@ async def get_ranking(
     # Build AI lookup by id
     ai_map = {str(ai.id): ai for ai in ais_list}
 
-    # Try God AI ranking first
+    # Try God AI ranking first (get most recently updated active God AI)
     god_result = await db.execute(
-        sa_select(GodAI).where(GodAI.is_active == True).limit(1)
+        sa_select(GodAI).where(GodAI.is_active == True).order_by(GodAI.updated_at.desc()).limit(1)
     )
     god_ai = god_result.scalars().first()
     god_ranking = god_ai.state.get("current_ranking", []) if god_ai else []
