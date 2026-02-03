@@ -131,7 +131,7 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
             const offsetY = Math.sin(offsetAngle) * offsetRadius;
             // Vary Z position based on artifact id hash for 3D depth
             const zHash = artifact.id.charCodeAt(0) + artifact.id.charCodeAt(2);
-            const offsetZ = isMobile ? 0 : ((zHash % 5) - 2) * 12; // Flat on mobile for performance
+            const offsetZ = ((zHash % 5) - 2) * 15; // Range: -30 to +30
             const baseX = creatorAI ? creatorAI.position_x + offsetX : (i % 6) * 50 - 125;
             const baseY = creatorAI ? creatorAI.position_y + offsetY : Math.floor(i / 6) * 50 - 100;
             return (

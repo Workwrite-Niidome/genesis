@@ -32,6 +32,9 @@ export default function AIEntity({ ai }: Props) {
   const size = (ai.appearance?.size || 10) * 0.25;
   const hash = ai.id.charCodeAt(0) + ai.id.charCodeAt(1);
   const speed = 0.5 + (hash % 10) * 0.05;
+  // Calculate Z position from AI id hash for 3D depth distribution
+  const zHash = ai.id.charCodeAt(2) + ai.id.charCodeAt(4);
+  const positionZ = ((zHash % 7) - 3) * 25; // Range: -75 to +75
 
   useFrame(({ clock, camera }) => {
     if (!meshRef.current) return;
@@ -108,7 +111,7 @@ export default function AIEntity({ ai }: Props) {
   }, [geometryArgs]);
 
   return (
-    <group position={[ai.position_x, ai.position_y, 0]}>
+    <group position={[ai.position_x, ai.position_y, positionZ]}>
       {/* Outer halo glow (near + mid only) */}
       {lod !== 'far' && (
         <mesh ref={haloRef}>
