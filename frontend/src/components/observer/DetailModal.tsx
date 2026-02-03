@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import DraggablePanel from '../ui/DraggablePanel';
 import { useDetailStore, type DetailItemType } from '../../stores/detailStore';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   ThoughtDetail,
   EventDetail,
@@ -72,7 +73,10 @@ const panelConfig: Record<
 export default function DetailModal() {
   const { t } = useTranslation();
   const { itemType, itemData, closeDetail } = useDetailStore();
+  const isMobile = useIsMobile();
 
+  // On mobile, MobileDetailSheet handles this
+  if (isMobile) return null;
   if (!itemType || !itemData) return null;
 
   const config = panelConfig[itemType];

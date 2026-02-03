@@ -7,8 +7,8 @@ import MobileFeedView from './MobileFeedView';
 import MobileArchiveView from './MobileArchiveView';
 import MobileMoreView from './MobileMoreView';
 import MobileSubView from './MobileSubView';
-import DetailModal from '../observer/DetailModal';
-import DeployPanel from '../observer/DeployPanel';
+import MobileDetailSheet from './MobileDetailSheet';
+import MobileDeploySheet from './MobileDeploySheet';
 
 export default function MobileLayout() {
   const { mobileActiveTab, mobilePanelContent, setMobilePanelContent } = useUIStore();
@@ -47,9 +47,9 @@ export default function MobileLayout() {
         <MobileTabBar />
       </nav>
 
-      {/* Modals */}
-      <DetailModal />
-      <DeployPanel />
+      {/* Mobile fullscreen sheets */}
+      <MobileDetailSheet />
+      <MobileDeploySheet />
     </div>
   );
 }
