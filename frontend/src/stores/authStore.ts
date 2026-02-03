@@ -26,6 +26,8 @@ export function getAdminAuthHeader(): string | null {
   return cred ? `Basic ${cred}` : null;
 }
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export const useAuthStore = create<AuthStore>((set) => ({
   isAuthenticated: !!getStoredCredentials(),
   error: null,
@@ -35,7 +37,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ loading: true, error: null });
     const encoded = btoa(`${username}:${password}`);
     try {
-      const res = await fetch('/api/god/state', {
+      const res = await fetch(`${API_BASE}/api/god/state`, {
         headers: { Authorization: `Basic ${encoded}` },
       });
       if (res.ok) {
