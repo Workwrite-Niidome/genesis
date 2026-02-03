@@ -21,16 +21,20 @@ export default function AdminView() {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-bg overflow-hidden">
+    <div className="h-screen w-screen bg-bg overflow-hidden">
       {/* Film grain / noise */}
       <div className="noise-overlay" />
 
-      <AdminHeader
-        onMenuToggle={isMobile ? () => setMobileSidebarOpen(!mobileSidebarOpen) : undefined}
-        isMobile={isMobile}
-      />
+      {/* Fixed Header */}
+      <div className="fixed top-0 left-0 right-0 z-50">
+        <AdminHeader
+          onMenuToggle={isMobile ? () => setMobileSidebarOpen(!mobileSidebarOpen) : undefined}
+          isMobile={isMobile}
+        />
+      </div>
 
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* Main content with padding for fixed header/timeline */}
+      <div className="h-full pt-11 pb-9 flex overflow-hidden relative">
         {/* Canvas */}
         <div className="flex-1 relative">
           <WorldCanvas showGenesis={true} />
@@ -62,10 +66,10 @@ export default function AdminView() {
         {isMobile && mobileSidebarOpen && (
           <>
             <div
-              className="fixed inset-0 bg-black/60 z-50"
+              className="fixed inset-0 bg-black/60 z-[60]"
               onClick={() => setMobileSidebarOpen(false)}
             />
-            <div className="fixed top-0 right-0 bottom-0 w-[300px] z-50 bg-surface border-l border-border shadow-[−8px_0_40px_rgba(0,0,0,0.5)] fade-in">
+            <div className="fixed top-0 right-0 bottom-0 w-[300px] z-[60] bg-surface border-l border-border shadow-[−8px_0_40px_rgba(0,0,0,0.5)] fade-in">
               <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                 <span className="text-[12px] font-semibold text-text tracking-wider">PANELS</span>
                 <button
@@ -83,7 +87,10 @@ export default function AdminView() {
         )}
       </div>
 
-      <TimelineBar />
+      {/* Fixed Timeline Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-50">
+        <TimelineBar />
+      </div>
     </div>
   );
 }
