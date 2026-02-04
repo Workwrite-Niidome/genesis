@@ -185,6 +185,8 @@ export function EventDetail({ data, t }: { data: any; t: TFn }) {
     const isInteractionEvent = data.event_type === 'interaction' || data.event_type === 'group_gathering';
     if (!isInteractionEvent) return;
 
+    // Clear previous interaction to prevent showing stale data
+    setInteraction(null);
     setLoadingInteraction(true);
     if (interactionId) {
       // Fetch by exact ID
@@ -207,7 +209,7 @@ export function EventDetail({ data, t }: { data: any; t: TFn }) {
         setLoadingInteraction(false);
       }).catch(() => setLoadingInteraction(false));
     }
-  }, [data.event_type, data.tick_number, data.metadata_?.interaction_id, data.data?.interaction_id]);
+  }, [data.id, data.event_type, data.tick_number, data.metadata_?.interaction_id, data.data?.interaction_id]);
 
   const cfg = eventColors[data.event_type] || { color: 'text-text-3', icon: '·' };
   const label = t(`event_type_${data.event_type}`, data.event_type);
