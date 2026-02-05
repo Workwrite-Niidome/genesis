@@ -6,13 +6,21 @@
  * - AvatarSystem (entities)
  * - CameraController (navigation)
  * - BuildingTool (construction)
- * - Lighting and environment
+ * - Lighting, environment, post-processing & atmospheric effects
+ *
+ * Visual style: Twilight/dusk atmosphere inspired by 超かぐや姫 (Super Kaguya-hime)
  */
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
 import { BuildingTool, type BuildMode } from './BuildingTool';
+import { WaterPlane } from './WaterPlane';
+import { ParticleSystem } from './ParticleSystem';
 import type {
   EntityV3, Voxel, VoxelUpdate, StructureInfo,
   ActionProposal, SocketEntityPosition,
@@ -41,11 +49,18 @@ export class WorldScene {
   private camera: THREE.PerspectiveCamera;
   private clock: THREE.Clock;
 
+  // Post-processing
+  private composer: EffectComposer;
+
   // Subsystems
   voxelRenderer: VoxelRenderer;
   avatarSystem: AvatarSystem;
   cameraController: CameraController;
   buildingTool: BuildingTool;
+
+  // Atmospheric effects
+  private waterPlane: WaterPlane;
+  private particleSystem: ParticleSystem;
 
   // State
   private animationFrameId: number | null = null;
@@ -74,12 +89,19 @@ export class WorldScene {
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Cinematic tone mapping (ACESFilmic for rich color grading)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.2;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0a0f);
-    this.scene.fog = new THREE.FogExp2(0x0a0a0f, 0.003);
+    // No flat background color -- the sky dome provides the backdrop
+    this.scene.background = null;
+
+    // Atmospheric fog: deep indigo-purple tint for depth and mystery
+    // Color matches the sky horizon for seamless blending
+    const fogColor = new THREE.Color(0x1a0a2e);
+    this.scene.fog = new THREE.FogExp2(fogColor, 0.01);
 
     this.camera = new THREE.PerspectiveCamera(
       60,
@@ -90,9 +112,29 @@ export class WorldScene {
 
     this.clock = new THREE.Clock();
 
-    // Setup lighting
+    // Setup lighting, sky dome, environment
     this.setupLighting();
+    this.setupSkyDome();
     this.setupEnvironment();
+
+    // Post-processing pipeline
+    this.composer = new EffectComposer(this.renderer);
+
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+
+    // UnrealBloomPass: emissive voxels and lights bloom beautifully
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
+      0.8,  // strength
+      0.4,  // radius
+      0.6,  // threshold -- only bright/emissive objects bloom
+    );
+    this.composer.addPass(bloomPass);
+
+    // OutputPass: final output with tone mapping applied
+    const outputPass = new OutputPass();
+    this.composer.addPass(outputPass);
 
     // Initialize subsystems
     this.voxelRenderer = new VoxelRenderer(this.scene);
@@ -101,6 +143,10 @@ export class WorldScene {
     this.cameraController = new CameraController(this.camera);
     this.cameraController.attach(canvas);
     this.buildingTool = new BuildingTool(this.scene, this.camera, this.voxelRenderer);
+
+    // Atmospheric effects: reflective water + ethereal particles
+    this.waterPlane = new WaterPlane(this.scene);
+    this.particleSystem = new ParticleSystem(this.scene);
 
     if (onProposal) {
       this.buildingTool.setProposalCallback(onProposal);
@@ -128,16 +174,16 @@ export class WorldScene {
   // ---- Scene Setup ----
 
   private setupLighting(): void {
-    // Ambient light (dim, to see in the void)
-    const ambient = new THREE.AmbientLight(0x1a1a2e, 0.4);
+    // Ambient light: subtle blue-purple moonlight tint
+    const ambient = new THREE.AmbientLight(0x2a1a4e, 0.5);
     this.scene.add(ambient);
 
-    // Hemisphere light (sky/ground color)
-    const hemi = new THREE.HemisphereLight(0x2d1b69, 0x0a0a0f, 0.3);
+    // Hemisphere light: deep blue sky / warm amber ground for natural ambient
+    const hemi = new THREE.HemisphereLight(0x1a1a5e, 0xcc8844, 0.4);
     this.scene.add(hemi);
 
-    // Directional light (sun-like)
-    const directional = new THREE.DirectionalLight(0xffeedd, 0.8);
+    // Directional light: warm sunset/twilight tone (the "last light" in the sky)
+    const directional = new THREE.DirectionalLight(0xffd4a0, 0.9);
     directional.position.set(50, 100, 30);
     directional.castShadow = true;
     directional.shadow.mapSize.width = 2048;
@@ -150,14 +196,80 @@ export class WorldScene {
     directional.shadow.camera.bottom = -100;
     this.scene.add(directional);
 
-    // Point lights for atmosphere (purple and cyan theme from v2)
-    const purpleLight = new THREE.PointLight(0x7b2ff7, 0.5, 200);
+    // Point lights for atmosphere (purple and cyan theme -- Kaguya-hime feel)
+    const purpleLight = new THREE.PointLight(0x7b2ff7, 0.6, 250);
     purpleLight.position.set(-30, 20, -30);
     this.scene.add(purpleLight);
 
-    const cyanLight = new THREE.PointLight(0x00d4ff, 0.5, 200);
+    const cyanLight = new THREE.PointLight(0x00d4ff, 0.6, 250);
     cyanLight.position.set(30, 15, 30);
     this.scene.add(cyanLight);
+
+    // Additional soft pink/magenta fill from opposite side (anime glow feel)
+    const pinkLight = new THREE.PointLight(0xff69b4, 0.3, 300);
+    pinkLight.position.set(0, 40, -50);
+    this.scene.add(pinkLight);
+  }
+
+  /**
+   * Create a sky dome with a twilight/dusk gradient shader.
+   * Deep navy/indigo at zenith transitioning to warm purple/pink at horizon.
+   * Inspired by the ethereal skies in 超かぐや姫.
+   */
+  private setupSkyDome(): void {
+    const skyGeo = new THREE.SphereGeometry(800, 32, 32);
+
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor:    { value: new THREE.Color(0x050520) },  // Deep navy zenith
+        midColor:    { value: new THREE.Color(0x2d1b69) },  // Rich indigo/purple mid-sky
+        horizonColor:{ value: new THREE.Color(0x6b2a6b) },  // Warm purple-magenta at horizon
+        bottomColor: { value: new THREE.Color(0x1a0a2e) },  // Dark purple below horizon (matches fog)
+        offset:      { value: 20.0 },
+        exponent:    { value: 0.6 },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 topColor;
+        uniform vec3 midColor;
+        uniform vec3 horizonColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          // Normalized height: 0 at horizon, 1 at zenith, negative below
+          float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;
+
+          if (h < 0.0) {
+            // Below horizon: blend from horizon color to dark bottom
+            float t = clamp(-h * 4.0, 0.0, 1.0);
+            gl_FragColor = vec4(mix(horizonColor, bottomColor, t), 1.0);
+          } else if (h < 0.3) {
+            // Horizon to mid-sky: warm purple/pink to rich indigo
+            float t = pow(h / 0.3, exponent);
+            gl_FragColor = vec4(mix(horizonColor, midColor, t), 1.0);
+          } else {
+            // Mid-sky to zenith: indigo to deep navy
+            float t = pow((h - 0.3) / 0.7, exponent);
+            gl_FragColor = vec4(mix(midColor, topColor, t), 1.0);
+          }
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    this.scene.add(sky);
   }
 
   private setupEnvironment(): void {
@@ -499,8 +611,14 @@ export class WorldScene {
       this.buildingTool.updateGhost(this.mouseNDC);
     }
 
-    // Render
-    this.renderer.render(this.scene, this.camera);
+    // Update atmospheric effects
+    const elapsed = this.clock.elapsedTime;
+    this.waterPlane.update(elapsed);
+    this.waterPlane.setCameraPosition(this.camera.position);
+    this.particleSystem.update(elapsed);
+
+    // Render through post-processing pipeline (bloom + tone mapping)
+    this.composer.render();
   };
 
   // ---- Event Handlers ----
@@ -572,6 +690,7 @@ export class WorldScene {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
   };
 
   // ---- Cleanup ----
@@ -593,6 +712,8 @@ export class WorldScene {
     this.avatarSystem.dispose();
     this.cameraController.dispose();
     this.buildingTool.dispose();
+    this.waterPlane.dispose();
+    this.particleSystem.dispose();
 
     // Dispose all sign sprites
     for (const [_id, sprite] of this.signSprites) {
@@ -602,6 +723,7 @@ export class WorldScene {
     }
     this.signSprites.clear();
 
+    this.composer.dispose();
     this.renderer.dispose();
   }
 }
