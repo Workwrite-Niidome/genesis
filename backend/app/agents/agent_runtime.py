@@ -59,7 +59,10 @@ _NEED_ACCUMULATION: dict[str, float] = {
     "safety": 0.2,
     "expression": 0.5,
     "understanding": 0.4,
-    "energy": -0.3,  # Energy slowly drains
+    "energy": 0.0,  # Energy drain is handled by tick_engine_v3 (passive drain).
+                     # Setting to 0 here prevents double-drain that caused
+                     # mass extinction. Recovery comes from rest actions and
+                     # passive regen in the tick engine.
 }
 
 # Personality axis to need mapping for accumulation scaling
@@ -79,20 +82,22 @@ CONVERSATION_COOLDOWN = 20
 # Social need threshold for triggering conversation
 SOCIAL_NEED_THRESHOLD = 60.0
 
-# Energy drain per action
+# Energy cost per action (reduced to prevent energy exhaustion death spiral).
+# Old values caused entities to burn through 100 energy in ~50-80 ticks.
+# New values allow ~500+ ticks of active behavior before needing rest.
 _ACTION_ENERGY_COST: dict[str, float] = {
-    "move_to": 1.0,
-    "explore": 1.5,
-    "approach_entity": 0.8,
-    "flee": 2.0,
-    "place_voxel": 2.5,
-    "destroy_voxel": 2.0,
-    "speak": 0.5,
-    "rest": -15.0,  # Negative = restores energy
-    "observe": 0.3,
-    "challenge": 3.0,
-    "claim_territory": 4.0,
-    "create_art": 3.5,
+    "move_to": 0.3,
+    "explore": 0.5,
+    "approach_entity": 0.2,
+    "flee": 0.8,
+    "place_voxel": 1.0,
+    "destroy_voxel": 0.8,
+    "speak": 0.2,
+    "rest": -20.0,  # Negative = restores energy (increased from -15)
+    "observe": 0.1,
+    "challenge": 1.5,
+    "claim_territory": 2.0,
+    "create_art": 1.5,
 }
 
 # Memory importance thresholds

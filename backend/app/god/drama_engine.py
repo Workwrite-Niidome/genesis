@@ -46,7 +46,7 @@ CRISIS_TYPES = [
         "name": "resource_drought",
         "description": "A mysterious energy drain affects all entities",
         "effect": "drain_energy",
-        "severity": 0.3,  # 30% energy drain
+        "severity": 0.1,  # 10% energy drain (reduced from 30% to prevent mass death)
     },
     {
         "name": "spatial_anomaly",
@@ -194,7 +194,8 @@ class DramaEngine:
                 needs = state.get("needs", {})
                 energy = needs.get("energy", 50.0)
                 drain = energy * severity
-                needs["energy"] = max(0.0, energy - drain)
+                # Floor at 10.0 energy to prevent crisis from directly killing entities
+                needs["energy"] = max(10.0, energy - drain)
                 state["needs"] = needs
                 entity.state = state
                 affected.append(entity.name)

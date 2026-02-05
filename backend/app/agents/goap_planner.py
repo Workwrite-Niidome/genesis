@@ -236,9 +236,10 @@ class GOAPPlanner:
         behavior_mode = entity_state.get("behavior_mode", "normal")
         energy = entity_state.get("energy", 100.0)
 
-        # If energy is critically low, override everything with rest
-        if energy < 10.0:
-            logger.debug("Energy critically low (%.1f), forcing rest.", energy)
+        # If energy is low, override everything with rest.
+        # Raised threshold from 10 to 25 so entities rest before it's too late.
+        if energy < 25.0:
+            logger.debug("Energy low (%.1f), forcing rest.", energy)
             return [{"action": "rest", "params": {}, "reason": "energy_critical"}]
 
         # Select goal

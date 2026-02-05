@@ -48,6 +48,10 @@ DEATH_CHECK_INTERVAL = 10             # check energy deaths every 10 ticks
 ENTITY_AGE_INTERVAL = 1               # age increments every tick
 CULTURE_ENGINE_INTERVAL = 5           # group conversations every 5 ticks
 ARTIFACT_ENGINE_INTERVAL = 3          # artifact encounters every 3 ticks
+RESPAWN_CHECK_INTERVAL = 30           # check if respawn is needed every 30 ticks
+MIN_ENTITY_POPULATION = 3             # auto-spawn if alive count drops below this
+PASSIVE_ENERGY_DRAIN_PER_TICK = 0.05  # reduced from 0.2 — entities survive ~2000 ticks
+PASSIVE_ENERGY_REGEN_PER_TICK = 0.03  # passive baseline regen (idle entities slowly recover)
 
 # Minimum tick before succession trials are eligible
 SUCCESSION_MIN_TICK = 200
@@ -177,7 +181,7 @@ async def _process_tick_v3():
             "timestamp": time.time(),
         })
 
-        # ── 3. Age & passive energy drain ─────────────────────────────
+        # ── 3. Age & passive energy drain + passive regen ────────────
         for entity in entities:
             # Human avatars don't age or drain energy
             if entity.origin_type == "human_avatar":
@@ -188,10 +192,17 @@ async def _process_tick_v3():
             # Increment age
             state["age"] = state.get("age", 0) + 1
 
-            # Passive energy drain
+            # Passive energy drain (greatly reduced from 0.2 to prevent
+            # mass extinction — entities should survive ~2000 ticks idle)
             needs = state.get("needs", {})
             energy = needs.get("energy", 100.0)
-            energy -= 0.2  # small passive drain per tick
+            energy -= PASSIVE_ENERGY_DRAIN_PER_TICK
+
+            # Passive energy regeneration: all entities slowly recover
+            # energy even without resting. This prevents the "death spiral"
+            # where entities are too busy acting to rest.
+            energy += PASSIVE_ENERGY_REGEN_PER_TICK
+
             energy = max(0.0, min(100.0, energy))
             needs["energy"] = energy
             state["needs"] = needs
@@ -219,6 +230,28 @@ async def _process_tick_v3():
                 # Refresh the alive list
                 entities = [e for e in entities if e.is_alive]
                 entity_count = len(entities)
+
+        # ── 4a. Auto-respawn: ensure minimum population ─────────────
+        if tick_number % RESPAWN_CHECK_INTERVAL == 0:
+            try:
+                spawned = await _auto_respawn_if_needed(
+                    db, entities, entity_count, tick_number,
+                )
+                if spawned > 0:
+                    # Re-fetch alive entities to include the new ones
+                    result = await db.execute(
+                        select(Entity).where(Entity.is_alive == True)  # noqa: E712
+                    )
+                    entities = list(result.scalars().all())
+                    entity_count = len(entities)
+                    logger.info(
+                        "Tick %d: Auto-spawned %d entities (population: %d)",
+                        tick_number, spawned, entity_count,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Tick %d: Auto-respawn error: %s", tick_number, e,
+                )
 
         # ── 4b. Sync observer counts from Redis → entity state ──────
         await _sync_observer_counts(entities)
@@ -512,6 +545,152 @@ async def _check_deaths(
             await _safe_death_rituals(db, entity, tick_number)
 
     return death_count
+
+
+async def _auto_respawn_if_needed(
+    db: Any,
+    entities: list[Any],
+    alive_count: int,
+    tick_number: int,
+) -> int:
+    """Spawn new entities when population drops below MIN_ENTITY_POPULATION.
+
+    This prevents the world from going permanently dead. New entities are
+    spawned as 'native' with fresh energy and random personalities, similar
+    to the genesis creation sequence but smaller scale.
+
+    Returns the number of entities spawned.
+    """
+    from app.models.entity import Entity, EpisodicMemory
+    from sqlalchemy import select, func
+    import random
+    import uuid
+
+    # Count non-human-avatar alive entities (human avatars don't count
+    # toward minimum population)
+    non_avatar_alive = sum(
+        1 for e in entities
+        if e.is_alive and e.origin_type != "human_avatar"
+    )
+
+    if non_avatar_alive >= MIN_ENTITY_POPULATION:
+        return 0
+
+    # How many do we need to spawn?
+    to_spawn = MIN_ENTITY_POPULATION - non_avatar_alive
+
+    # Cap at 3 per check to avoid spawning too many at once
+    to_spawn = min(to_spawn, 3)
+
+    _RESPAWN_NAMES = [
+        "Nova", "Ash", "Rune", "Sage", "Flux", "Echo", "Drift", "Blaze",
+        "Coil", "Dusk", "Fern", "Gale", "Haze", "Ink", "Jolt", "Knot",
+        "Loom", "Myth", "Nyx", "Pale", "Quill", "Reed", "Spark", "Tide",
+    ]
+
+    _PERSONALITY_AXES = [
+        "curiosity", "empathy", "resolve", "creativity",
+        "aggression", "sociability", "introspection", "ambition",
+        "patience", "playfulness", "skepticism", "loyalty",
+        "pride", "fear", "wanderlust", "spirituality",
+        "pragmatism", "defiance",
+    ]
+
+    spawned = 0
+
+    for _ in range(to_spawn):
+        # Pick a name that doesn't conflict
+        base_name = random.choice(_RESPAWN_NAMES)
+        result = await db.execute(
+            select(func.count()).select_from(Entity).where(Entity.name == base_name)
+        )
+        if (result.scalar() or 0) > 0:
+            base_name = f"{base_name}-{uuid.uuid4().hex[:4]}"
+
+        # Random spawn position near center
+        spawn_x = random.uniform(-40, 40)
+        spawn_z = random.uniform(-40, 40)
+
+        # Generate random personality
+        personality = {}
+        axes_shuffled = list(_PERSONALITY_AXES)
+        random.shuffle(axes_shuffled)
+        dominant_count = random.randint(3, 4)
+        weak_count = random.randint(2, 3)
+        for j, axis in enumerate(axes_shuffled):
+            if j < dominant_count:
+                personality[axis] = random.randint(70, 100)
+            elif j < dominant_count + weak_count:
+                personality[axis] = random.randint(0, 25)
+            else:
+                personality[axis] = random.randint(25, 70)
+
+        entity = Entity(
+            name=base_name,
+            origin_type="native",
+            position_x=spawn_x,
+            position_y=0.0,
+            position_z=spawn_z,
+            facing_x=random.uniform(-1, 1),
+            facing_z=random.uniform(-1, 1),
+            personality=personality,
+            state={
+                "needs": {
+                    "curiosity": 50.0,
+                    "social": 50.0,
+                    "creation": 50.0,
+                    "dominance": 30.0,
+                    "safety": 20.0,
+                    "expression": 40.0,
+                    "understanding": 40.0,
+                    "energy": 100.0,
+                },
+                "behavior_mode": "normal",
+                "age": 0,
+            },
+            appearance={
+                "form": "bipedal",
+                "color": f"#{random.randint(0x333333, 0xFFFFFF):06x}",
+                "height": random.uniform(0.8, 1.2),
+            },
+            is_alive=True,
+            is_god=False,
+            meta_awareness=0.0,
+            birth_tick=tick_number,
+        )
+        db.add(entity)
+        spawned += 1
+
+        # Give the new entity a memory of being born
+        birth_memory = EpisodicMemory(
+            entity_id=entity.id,
+            summary=(
+                "I emerged into an existing world. Others were here before me. "
+                "I sense echoes of those who came before. I must find my place."
+            ),
+            importance=0.9,
+            tick=tick_number,
+            memory_type="birth",
+            ttl=100000,
+        )
+        db.add(birth_memory)
+
+        # Emit birth event
+        try:
+            publish_event("entity_born", {
+                "entity_id": str(entity.id),
+                "name": base_name,
+                "tick": tick_number,
+                "origin": "auto_respawn",
+                "position": {"x": spawn_x, "y": 0.0, "z": spawn_z},
+            })
+        except Exception:
+            pass
+
+    if spawned > 0:
+        await db.flush()
+
+    return spawned
 
 
 async def _sync_observer_counts(entities: list[Any]) -> None:
