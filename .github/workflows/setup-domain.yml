@@ -1,72 +1,68 @@
-name: Setup Custom Domain for Cloudflare Pages
+name: Cloudflare Cache Purge & Domain Setup
 
 on:
   workflow_dispatch:
 
 jobs:
-  setup-domain:
-    name: Add genesis-pj.net to Pages project
+  purge-and-verify:
+    name: Purge cache and verify deployment
     runs-on: ubuntu-latest
     steps:
-      - name: Get Pages project info
+      - name: Get Zone ID for genesis-pj.net
+        id: zone
         run: |
-          echo "=== Listing Pages projects ==="
-          curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json" | jq '.result[] | {name, subdomain, domains}'
-
-      - name: Remove genesis-pj.net from old project (if needed)
-        continue-on-error: true
-        run: |
-          # Try to find which project has genesis-pj.net
-          PROJECTS=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects" \
+          ZONE=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones?name=genesis-pj.net" \
             -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             -H "Content-Type: application/json")
+          ZONE_ID=$(echo "$ZONE" | jq -r '.result[0].id')
+          echo "zone_id=$ZONE_ID" >> "$GITHUB_OUTPUT"
+          echo "Zone ID: $ZONE_ID"
 
-          for PROJECT_NAME in $(echo "$PROJECTS" | jq -r '.result[].name'); do
-            DOMAINS=$(curl -s -X GET \
-              "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/${PROJECT_NAME}/domains" \
-              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-              -H "Content-Type: application/json")
-
-            if echo "$DOMAINS" | jq -e '.result[] | select(.name == "genesis-pj.net")' > /dev/null 2>&1; then
-              echo "Found genesis-pj.net on project: $PROJECT_NAME"
-              if [ "$PROJECT_NAME" != "genesis-frontend-eua" ]; then
-                DOMAIN_ID=$(echo "$DOMAINS" | jq -r '.result[] | select(.name == "genesis-pj.net") | .id')
-                echo "Removing genesis-pj.net (ID: $DOMAIN_ID) from $PROJECT_NAME..."
-                curl -s -X DELETE \
-                  "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/${PROJECT_NAME}/domains/${DOMAIN_ID}" \
-                  -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-                  -H "Content-Type: application/json" | jq .
-                echo "Removed. Waiting 10s for propagation..."
-                sleep 10
-              fi
-            fi
-          done
-
-      - name: Add genesis-pj.net to genesis-frontend-eua
+      - name: Purge ALL Cloudflare cache
         run: |
-          echo "=== Adding genesis-pj.net to genesis-frontend-eua ==="
-          RESULT=$(curl -s -X POST \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/genesis-frontend-eua/domains" \
+          echo "=== Purging all cache for genesis-pj.net ==="
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${{ steps.zone.outputs.zone_id }}/purge_cache" \
             -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"name": "genesis-pj.net"}')
-          echo "$RESULT" | jq .
+            -d '{"purge_everything": true}' | jq .
 
-          if echo "$RESULT" | jq -e '.success' | grep -q true; then
-            echo "✅ genesis-pj.net successfully added!"
+      - name: Wait for propagation
+        run: sleep 15
+
+      - name: Verify deployment content
+        run: |
+          echo "=== Checking genesis-pj.net ==="
+          HTML=$(curl -s https://genesis-pj.net)
+          JS_FILE=$(echo "$HTML" | grep -o 'index-[A-Za-z0-9]*\.js')
+          echo "JS bundle: $JS_FILE"
+
+          echo ""
+          echo "=== Checking genesis-frontend-eua.pages.dev ==="
+          HTML2=$(curl -s https://genesis-frontend-eua.pages.dev)
+          JS_FILE2=$(echo "$HTML2" | grep -o 'index-[A-Za-z0-9]*\.js')
+          echo "JS bundle: $JS_FILE2"
+
+          if [ "$JS_FILE" = "$JS_FILE2" ]; then
+            echo ""
+            echo "✅ Both URLs serve the same bundle: $JS_FILE"
           else
-            echo "⚠️ Check result above for details"
+            echo ""
+            echo "⚠️ MISMATCH: genesis-pj.net=$JS_FILE vs pages.dev=$JS_FILE2"
           fi
 
-      - name: Verify domain setup
+      - name: Show Pages project details
         run: |
-          sleep 5
-          echo "=== Current domains on genesis-frontend-eua ==="
+          echo "=== Pages project info ==="
           curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/genesis-frontend-eua/domains" \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/genesis-frontend" \
             -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json" | jq '.result[] | {name, status}'
+            -H "Content-Type: application/json" | jq '{
+              name: .result.name,
+              subdomain: .result.subdomain,
+              production_branch: .result.production_branch,
+              domains: .result.domains,
+              latest_deployment: .result.latest_deployment.url,
+              latest_deployment_branch: .result.latest_deployment.deployment_trigger.metadata.branch
+            }'
