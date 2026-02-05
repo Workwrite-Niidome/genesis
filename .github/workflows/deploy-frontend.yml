@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - master
     paths:
       - 'frontend/**'
       - '.github/workflows/deploy-frontend.yml'
@@ -48,5 +49,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=genesis-frontend
+          command: pages deploy dist --project-name=genesis-frontend --branch=main
           workingDirectory: frontend
