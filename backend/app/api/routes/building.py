@@ -62,6 +62,15 @@ class PlaceStructureRequest(BaseModel):
     origin_z: int = 0
 
 
+class WriteSignRequest(BaseModel):
+    agent_id: str
+    x: int
+    y: int
+    z: int
+    text: str = Field(..., min_length=1, max_length=200)
+    font_size: float = 1.0
+
+
 # ---------------------------------------------------------------------------
 # Helper: parse agent UUID
 # ---------------------------------------------------------------------------
@@ -113,6 +122,8 @@ def _build_response(result: dict[str, Any]) -> dict:
             "missing_params": 400,
             "collision": 409,
             "move_too_far": 400,
+            "empty_text": 400,
+            "text_too_long": 400,
         }
         http_status = status_map.get(reason_code, 400)
 
@@ -245,6 +256,43 @@ async def place_structure(
                 "z": request.origin_z,
             },
             "voxels": voxel_dicts,
+        },
+        tick=current_tick,
+    )
+
+    result = await world_server.process_proposal(db, proposal)
+    return _build_response(result)
+
+
+# ---------------------------------------------------------------------------
+# Write sign
+# ---------------------------------------------------------------------------
+
+@router.post("/sign")
+async def write_sign(
+    request: WriteSignRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Place a sign with text at the specified position.
+
+    Goes through WorldServer validation:
+    - Entity must exist and be alive
+    - Target position must not be occupied
+    - Text must not be empty and must be <= 200 characters
+    - Creates a VoxelBlock (emissive, white) and a Structure (type=sign)
+    """
+    agent_uuid = _parse_agent_id(request.agent_id)
+    current_tick = await _get_current_tick(db)
+
+    proposal = ActionProposal(
+        agent_id=agent_uuid,
+        action="write_sign",
+        params={
+            "x": request.x,
+            "y": request.y,
+            "z": request.z,
+            "text": request.text,
+            "font_size": request.font_size,
         },
         tick=current_tick,
     )

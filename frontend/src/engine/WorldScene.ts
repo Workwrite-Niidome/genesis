@@ -14,10 +14,18 @@ import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
 import { BuildingTool, type BuildMode } from './BuildingTool';
 import type {
-  EntityV3, Voxel, VoxelUpdate,
+  EntityV3, Voxel, VoxelUpdate, StructureInfo,
   ActionProposal, SocketEntityPosition,
   SocketSpeechEvent,
 } from '../types/v3';
+
+/** Data needed to render a sign in the world. */
+export interface SignData {
+  id: string;
+  text: string;
+  fontSize: number;
+  position: { x: number; y: number; z: number };
+}
 
 export interface WorldSceneOptions {
   canvas: HTMLCanvasElement;
@@ -44,6 +52,9 @@ export class WorldScene {
   private mouseNDC = new THREE.Vector2();
   private raycaster = new THREE.Raycaster();
   private onEntityClick: ((entityId: string) => void) | null = null;
+
+  // Sign rendering
+  private signSprites: Map<string, THREE.Sprite> = new Map();
 
   constructor(options: WorldSceneOptions) {
     const { canvas, labelContainer, onProposal, onEntityClick } = options;
@@ -241,6 +252,57 @@ export class WorldScene {
   }
 
   /**
+   * Load structures and render any signs among them.
+   */
+  loadStructures(structures: StructureInfo[]): void {
+    for (const structure of structures) {
+      if (structure.structureType === 'sign') {
+        const props = structure.properties || {};
+        const text = props.text || '';
+        const fontSize = props.font_size ?? 1.0;
+        if (text) {
+          this.addSign({
+            id: structure.id,
+            text,
+            fontSize,
+            position: {
+              x: (structure.bounds.min.x + structure.bounds.max.x) / 2,
+              y: (structure.bounds.min.y + structure.bounds.max.y) / 2 + 1.5,
+              z: (structure.bounds.min.z + structure.bounds.max.z) / 2,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Add a single sign sprite to the scene.
+   */
+  addSign(sign: SignData): void {
+    // Remove existing sign at the same ID if present
+    this.removeSign(sign.id);
+
+    const sprite = this.createSignSprite(sign.text, sign.fontSize);
+    sprite.position.set(sign.position.x, sign.position.y, sign.position.z);
+    this.scene.add(sprite);
+    this.signSprites.set(sign.id, sprite);
+  }
+
+  /**
+   * Remove a sign sprite from the scene.
+   */
+  removeSign(signId: string): void {
+    const existing = this.signSprites.get(signId);
+    if (existing) {
+      this.scene.remove(existing);
+      existing.material.map?.dispose();
+      (existing.material as THREE.SpriteMaterial).dispose();
+      this.signSprites.delete(signId);
+    }
+  }
+
+  /**
    * Set camera mode.
    */
   setCameraMode(mode: CameraMode): void {
@@ -280,6 +342,108 @@ export class WorldScene {
    */
   setPlayerEntityId(entityId: string): void {
     this.buildingTool.setEntityId(entityId);
+  }
+
+  // ---- Sign Rendering ----
+
+  /**
+   * Create a text sprite for a sign using a canvas texture.
+   */
+  private createSignSprite(text: string, fontSize: number): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+
+    // Measure and configure the canvas
+    const baseFontSize = Math.round(32 * fontSize);
+    const font = `bold ${baseFontSize}px monospace`;
+    ctx.font = font;
+
+    const padding = 20;
+    const maxWidth = 512;
+
+    // Word-wrap the text to fit within maxWidth
+    const lines = this.wrapText(ctx, text, maxWidth - padding * 2);
+    const lineHeight = baseFontSize * 1.3;
+
+    const textWidth = Math.min(
+      maxWidth,
+      Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2
+    );
+    const textHeight = lines.length * lineHeight + padding * 2;
+
+    // Resize canvas to power-of-two friendly dimensions
+    canvas.width = Math.min(512, Math.pow(2, Math.ceil(Math.log2(textWidth))));
+    canvas.height = Math.min(256, Math.pow(2, Math.ceil(Math.log2(textHeight))));
+
+    // Background (dark translucent panel)
+    ctx.fillStyle = 'rgba(10, 10, 20, 0.85)';
+    ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 8);
+    ctx.fill();
+
+    // Border (subtle glow)
+    ctx.strokeStyle = 'rgba(123, 47, 247, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 8);
+    ctx.stroke();
+
+    // Text
+    ctx.font = font;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    const startY = (canvas.height - lines.length * lineHeight) / 2;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], canvas.width / 2, startY + i * lineHeight);
+    }
+
+    // Create sprite material from the canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    });
+
+    const sprite = new THREE.Sprite(spriteMaterial);
+
+    // Scale the sprite to world units (roughly 1 unit per 64 pixels)
+    const aspect = canvas.width / canvas.height;
+    const spriteHeight = 1.5 * fontSize;
+    sprite.scale.set(spriteHeight * aspect, spriteHeight, 1);
+
+    return sprite;
+  }
+
+  /**
+   * Word-wrap text to fit within a maximum pixel width.
+   */
+  private wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    return lines.length > 0 ? lines : [''];
   }
 
   // ---- Animation Loop ----
@@ -352,6 +516,15 @@ export class WorldScene {
     this.avatarSystem.dispose();
     this.cameraController.dispose();
     this.buildingTool.dispose();
+
+    // Dispose all sign sprites
+    for (const [id, sprite] of this.signSprites) {
+      this.scene.remove(sprite);
+      sprite.material.map?.dispose();
+      (sprite.material as THREE.SpriteMaterial).dispose();
+    }
+    this.signSprites.clear();
+
     this.renderer.dispose();
   }
 }

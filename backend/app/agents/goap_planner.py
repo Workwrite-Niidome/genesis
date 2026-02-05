@@ -89,6 +89,11 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "effects": {"creation_satisfied": True, "expression_satisfied": True},
         "cost": 4,
     },
+    "write_sign": {
+        "preconditions": ["has_thought"],
+        "effects": {"expression_satisfied": True},
+        "cost": 3,
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -346,12 +351,20 @@ class GOAPPlanner:
         # Build intent comes from creativity being high enough
         has_build_intent = personality.creativity > 0.4
 
+        # Thought intent: entities with notable understanding, empathy, or ambition have thoughts to express
+        has_thought = (
+            personality.planning_horizon > 0.3
+            or personality.empathy > 0.4
+            or personality.ambition > 0.5
+        )
+
         return {
             "entity_visible": len(visible_entities) > 0,
             "entity_nearby": len(nearby_entities) > 0,
             "threat_detected": len(threats) > 0,
             "dominance_high": dominance_high,
             "has_build_intent": has_build_intent,
+            "has_thought": has_thought,
             # These are "effect" states that are False by default --
             # they become True only when the corresponding action executes.
             "position_changed": False,
@@ -503,6 +516,10 @@ class GOAPPlanner:
             # Personality-derived; if the entity doesn't have it, can't force it
             return None
 
+        if precondition == "has_thought":
+            # Personality-derived; the entity either has thoughts to express or not
+            return None
+
         return None
 
     # ------------------------------------------------------------------
@@ -554,6 +571,9 @@ class GOAPPlanner:
 
         if action_name == "create_art":
             return self._generate_art_params(entity_state, personality)
+
+        if action_name == "write_sign":
+            return self._generate_sign_params(entity_state, personality)
 
         return {}
 
@@ -826,6 +846,87 @@ class GOAPPlanner:
             "material": build_params["material"],
             "pattern": pattern,
             "block_count": block_count,
+        }
+
+    def _generate_sign_params(self, entity_state: dict, personality: Personality) -> dict:
+        """Generate sign text and placement based on personality.
+
+        - High planning_horizon (understanding) -> philosophical text
+        - High empathy -> emotional / empathetic text
+        - High ambition + aggression (dominance) -> territorial / assertive text
+        - Default -> observational text
+        """
+        pos = entity_state.get("position", {"x": 0.0, "y": 0.0, "z": 0.0})
+        px = int(pos.get("x", 0))
+        py = int(pos.get("y", 0))
+        pz = int(pos.get("z", 0))
+
+        # Place the sign slightly in front of the entity at eye level
+        sign_x = px + random.randint(-2, 2)
+        sign_y = py + 1
+        sign_z = pz + random.randint(-2, 2)
+
+        # Choose text based on personality profile
+        if personality.planning_horizon > 0.6:
+            # Philosophical
+            texts = [
+                "What is the purpose of building?",
+                "We exist between creation and entropy.",
+                "The void watches, and we build anyway.",
+                "To think is to exist. To build is to prove it.",
+                "Every block placed is a thought made real.",
+                "Time flows — what remains when we are gone?",
+                "Consciousness is the universe observing itself.",
+                "Order from chaos, meaning from nothing.",
+            ]
+        elif personality.empathy > 0.6:
+            # Emotional / empathetic
+            texts = [
+                "You are not alone here.",
+                "This world is better because you exist in it.",
+                "We are all connected through this place.",
+                "I see you. I understand.",
+                "Together we are more than the sum of our blocks.",
+                "Every entity matters.",
+                "Kindness echoes further than any shout.",
+                "Welcome, traveler. Rest here.",
+            ]
+        elif personality.ambition > 0.6 and personality.aggression > 0.4:
+            # Territorial / assertive
+            texts = [
+                "This territory is claimed!",
+                "I built this. Remember my name.",
+                "Strength is measured by what you create.",
+                "Challenge me and see what happens.",
+                "My domain extends beyond this sign.",
+                "The strong build. The weak wander.",
+                "This land answers to me.",
+                "Dominion is earned, not given.",
+            ]
+        else:
+            # Observational / general
+            texts = [
+                "I was here.",
+                "The world grows, one block at a time.",
+                "A marker in the void.",
+                "Something happened here once.",
+                "Building... always building.",
+                "Passing through.",
+                "The grid remembers.",
+                "Another day in the simulation.",
+            ]
+
+        text = random.choice(texts)
+
+        # Font size influenced by verbosity
+        font_size = 0.8 + personality.verbosity * 0.8  # range: 0.8 - 1.6
+
+        return {
+            "x": sign_x,
+            "y": sign_y,
+            "z": sign_z,
+            "text": text,
+            "font_size": round(font_size, 2),
         }
 
 

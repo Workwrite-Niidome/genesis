@@ -6,7 +6,7 @@ celery_app = Celery(
     "genesis",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.core.tick_engine"],
+    include=["app.core.tick_engine_v3"],
 )
 
 celery_app.conf.update(

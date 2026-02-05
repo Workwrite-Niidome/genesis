@@ -11,7 +11,7 @@ through the same validation pipeline:
   6. Return result dict for broadcasting
 
 Supported actions:
-  move, place_voxel, destroy_voxel, place_structure, speak, claim_zone
+  move, place_voxel, destroy_voxel, place_structure, speak, claim_zone, write_sign
 """
 from __future__ import annotations
 
@@ -44,12 +44,16 @@ MAX_STRUCTURE_VOXELS = 512
 MAX_SPEAK_VOLUME = 100.0
 DEFAULT_SPEAK_VOLUME = 10.0
 
+# Sign text limits
+MAX_SIGN_TEXT_LENGTH = 200
+DEFAULT_SIGN_FONT_SIZE = 1.0
+
 
 @dataclass
 class ActionProposal:
     """An entity wants to do something in the world."""
     agent_id: uuid.UUID
-    action: str          # move, place_voxel, destroy_voxel, place_structure, speak, claim_zone
+    action: str          # move, place_voxel, destroy_voxel, place_structure, speak, claim_zone, write_sign
     params: dict = field(default_factory=dict)
     tick: int = 0
 
@@ -492,6 +496,87 @@ class WorldServer:
             importance=0.6,
         )
 
+    async def _handle_write_sign(
+        self, db: AsyncSession, entity: Entity, proposal: ActionProposal
+    ) -> dict[str, Any]:
+        """Place a sign with text at the specified position.
+
+        Creates a VoxelBlock (emissive, white) and a Structure with
+        structure_type="sign" holding the text in its properties.
+        """
+        params = proposal.params
+
+        # Parse position -------------------------------------------------------
+        try:
+            x = int(params["x"])
+            y = int(params["y"])
+            z = int(params["z"])
+        except (KeyError, TypeError, ValueError):
+            return self._reject("missing_params", "write_sign requires x, y, z")
+
+        # Validate text --------------------------------------------------------
+        text = str(params.get("text", "")).strip()
+        if not text:
+            return self._reject("empty_text", "Sign text must not be empty")
+
+        if len(text) > MAX_SIGN_TEXT_LENGTH:
+            return self._reject(
+                "text_too_long",
+                f"Sign text length {len(text)} exceeds max {MAX_SIGN_TEXT_LENGTH}",
+            )
+
+        font_size = float(params.get("font_size", DEFAULT_SIGN_FONT_SIZE))
+
+        # Check position not already occupied ----------------------------------
+        existing = await voxel_engine.get_block(db, x, y, z)
+        if existing is not None:
+            return self._reject(
+                "position_occupied",
+                f"A block already exists at ({x}, {y}, {z})",
+            )
+
+        # Place the emissive voxel block for the sign --------------------------
+        block = await voxel_engine.place_block(
+            db,
+            x=x, y=y, z=z,
+            color="#FFFFFF",
+            material="emissive",
+            has_collision=True,
+            placed_by=entity.id,
+            tick=proposal.tick,
+        )
+
+        # Create the sign structure --------------------------------------------
+        structure = Structure(
+            name=text[:50],  # Use truncated text as the structure name
+            owner_id=entity.id,
+            structure_type="sign",
+            min_x=x, min_y=y, min_z=z,
+            max_x=x, max_y=y, max_z=z,
+            properties={"text": text, "font_size": font_size},
+            created_tick=proposal.tick,
+        )
+        db.add(structure)
+        await db.flush()
+
+        # Link the voxel block to the structure
+        block.structure_id = structure.id
+        db.add(block)
+        await db.flush()
+
+        return self._accept(
+            position=(float(x), float(y), float(z)),
+            data={
+                "structure_id": str(structure.id),
+                "block_id": block.id,
+                "x": x, "y": y, "z": z,
+                "text": text,
+                "font_size": font_size,
+                "placed_by": str(entity.id),
+            },
+            importance=0.5,
+        )
+
     # ------------------------------------------------------------------
     # Handler dispatch table
     # ------------------------------------------------------------------
@@ -503,6 +588,7 @@ class WorldServer:
         "place_structure": _handle_place_structure,
         "speak": _handle_speak,
         "claim_zone": _handle_claim_zone,
+        "write_sign": _handle_write_sign,
     }
 
     # ------------------------------------------------------------------

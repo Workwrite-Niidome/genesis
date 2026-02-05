@@ -42,6 +42,7 @@ export interface StructureInfo {
     min: Vector3;
     max: Vector3;
   };
+  properties?: Record<string, any>;
 }
 
 export interface ZoneInfo {

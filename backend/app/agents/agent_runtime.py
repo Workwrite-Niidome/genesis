@@ -34,6 +34,7 @@ from app.agents.personality import Personality
 from app.agents.memory import MemoryManager, memory_manager
 from app.agents.relationships import RelationshipManager, relationship_manager
 from app.world.voxel_engine import VoxelEngine, voxel_engine
+from app.agents.conversation import ConversationManager, conversation_manager
 from app.world.event_log import EventLog, event_log
 
 logger = logging.getLogger(__name__)
@@ -225,7 +226,7 @@ class AgentRuntime:
                     nearby[0].get("id"), all_entities
                 )
                 if other_entity is not None:
-                    conversation_result = await self._run_conversation(
+                    conversation_result = await conversation_manager.run_conversation(
                         db, entity, other_entity, tick_number
                     )
                     # Record conversation tick
@@ -854,138 +855,8 @@ class AgentRuntime:
 
         return True
 
-    async def _run_conversation(
-        self,
-        db: AsyncSession,
-        entity: Any,
-        other_entity: Any,
-        tick_number: int,
-    ) -> dict | None:
-        """Run an LLM-powered conversation between two entities.
-
-        This is the ONLY place where LLM is invoked during a tick.
-        The conversation is stored as episodic memory for both entities.
-
-        Returns a dict with conversation details, or None on failure.
-        """
-        try:
-            from app.llm.ollama_client import ollama_client
-        except ImportError:
-            logger.warning("LLM client not available; skipping conversation.")
-            return None
-
-        entity_personality = Personality.from_dict(entity.personality or {})
-        other_personality = Personality.from_dict(other_entity.personality or {})
-
-        # Build conversation prompt
-        entity_desc = entity_personality.describe()
-        other_desc = other_personality.describe()
-
-        # Get memory context for both entities
-        entity_memories = await self._memory.summarize_for_prompt(
-            db, entity.id, limit=5
-        )
-        other_memories = await self._memory.summarize_for_prompt(
-            db, other_entity.id, limit=5
-        )
-
-        # Check meta-awareness for conversation flavor
-        awareness_hint = self._meta.get_awareness_hint(entity.meta_awareness)
-        awareness_context = ""
-        if awareness_hint and self._meta.should_inject_hint(entity.meta_awareness):
-            awareness_context = (
-                f"\n{entity.name} has a strange feeling: \"{awareness_hint}\". "
-                "This may subtly influence their words."
-            )
-
-        prompt = (
-            f"You are simulating a brief conversation in GENESIS, a virtual world.\n"
-            f"\n"
-            f"== {entity.name} ==\n"
-            f"Personality: {entity_desc}\n"
-            f"Memories:\n{entity_memories}\n"
-            f"{awareness_context}\n"
-            f"\n"
-            f"== {other_entity.name} ==\n"
-            f"Personality: {other_desc}\n"
-            f"Memories:\n{other_memories}\n"
-            f"\n"
-            f"Generate a short exchange (2-4 lines total) between {entity.name} "
-            f"and {other_entity.name}. Each line should reflect their personality. "
-            f"Keep it concise and natural. Format:\n"
-            f"{entity.name}: ...\n"
-            f"{other_entity.name}: ...\n"
-        )
-
-        try:
-            response = await ollama_client.generate(prompt, format_json=False, num_predict=200)
-            conversation_text = response if isinstance(response, str) else str(response)
-        except Exception as e:
-            logger.error("Conversation LLM call failed: %s", e)
-            return None
-
-        # Store as episodic memory for both entities
-        summary = f"Conversation with {other_entity.name}: {conversation_text[:200]}"
-        other_summary = f"Conversation with {entity.name}: {conversation_text[:200]}"
-
-        location = (entity.position_x, entity.position_y, entity.position_z)
-
-        await self._memory.add_episodic(
-            db=db,
-            entity_id=entity.id,
-            summary=summary,
-            importance=_EVENT_IMPORTANCE["conversation"],
-            tick=tick_number,
-            related_entity_ids=[other_entity.id],
-            location=location,
-            memory_type="conversation",
-        )
-
-        await self._memory.add_episodic(
-            db=db,
-            entity_id=other_entity.id,
-            summary=other_summary,
-            importance=_EVENT_IMPORTANCE["conversation"],
-            tick=tick_number,
-            related_entity_ids=[entity.id],
-            location=location,
-            memory_type="conversation",
-        )
-
-        # Satisfy social need for both
-        if entity.state:
-            s = dict(entity.state)
-            s.setdefault("needs", {})["social"] = max(
-                0, s.get("needs", {}).get("social", 50) - 30.0
-            )
-            s.setdefault("needs", {})["expression"] = max(
-                0, s.get("needs", {}).get("expression", 50) - 20.0
-            )
-            entity.state = s
-
-        # Log event
-        await self._event_log.append(
-            db=db,
-            tick=tick_number,
-            actor_id=entity.id,
-            event_type="conversation",
-            action="speak",
-            params={"other_id": str(other_entity.id), "other_name": other_entity.name},
-            result="accepted",
-            reason="social_need",
-            position=location,
-            importance=_EVENT_IMPORTANCE["conversation"],
-        )
-
-        return {
-            "with": other_entity.name,
-            "with_id": str(other_entity.id),
-            "text": conversation_text[:500],
-            "tick": tick_number,
-        }
-
     # ==================================================================
-    # 8. Memory
+    # 8. Memory (conversation is now handled by ConversationManager)
     # ==================================================================
 
     async def _update_memory(
