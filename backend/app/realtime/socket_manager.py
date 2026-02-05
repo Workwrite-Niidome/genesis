@@ -47,6 +47,9 @@ KNOWN_EVENT_TYPES = frozenset({
     # Building / voxel events
     "building_event",
 
+    # Code execution events
+    "code_executed",
+
     # Observer events
     "observer_count",
     "observer_focus",

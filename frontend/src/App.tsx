@@ -11,6 +11,7 @@ import AuthCallback from './pages/AuthCallback';
 import { WorldViewV3 } from './components/world/WorldViewV3';
 
 const PlayView = lazy(() => import('./components/world/PlayView'));
+const ArchivePage = lazy(() => import('./pages/ArchivePage'));
 
 function App() {
   const fetchState = useWorldStore((s) => s.fetchState);
@@ -58,6 +59,15 @@ function App() {
           </div>
         }>
           <PlayView />
+        </Suspense>
+      } />
+      <Route path="/archive" element={
+        <Suspense fallback={
+          <div className="w-screen h-screen bg-gray-900 flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        }>
+          <ArchivePage />
         </Suspense>
       } />
     </Routes>

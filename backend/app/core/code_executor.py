@@ -33,6 +33,20 @@ class WorldAPI:
 
     All methods are synchronous from the code's perspective.
     Results are collected and applied after execution.
+
+    The canonical WorldAPI methods that entities can use in their code:
+        world.say(message)            - Speak a message into the field
+        world.move(dx, dz)            - Move relative to current position
+        world.place_block(x, y, z, color) - Place a voxel block
+        world.get_nearby_entities()   - Get list of nearby entities
+        world.get_position()          - Get current position
+        world.remember(text)          - Store a memory for future ticks
+        world.print(*args)            - Output text (captured)
+        world.emit_text(text)         - Output text to the field
+        world.emit_visual(data)       - Output visual data
+        world.emit_sound(data)        - Output sound data
+        world.set_state(key, value)   - Modify own state
+        world.create_entity(name)     - Request creation of a new entity
     """
 
     def __init__(self, ai_id: str):
@@ -43,6 +57,56 @@ class WorldAPI:
         self._entities_to_create: list[dict] = []
         self._visuals: list[dict] = []
         self._sounds: list[dict] = []
+        self._actions: list[dict] = []
+        self._memories: list[str] = []
+        # Injected context (set externally before execution)
+        self._entity_name: str = ""
+        self._entity_position: dict = {"x": 0.0, "y": 0.0, "z": 0.0}
+        self._nearby_entities: list[dict] = []
+
+    # -- Canonical WorldAPI methods (matching code_runner.py API) --
+
+    def say(self, message: str) -> None:
+        """Speak a message into the field."""
+        if isinstance(message, str):
+            self._actions.append({"type": "say", "message": str(message)[:500]})
+            self._outputs.append(f"[said] {str(message)[:500]}")
+
+    def move(self, dx: float, dz: float) -> None:
+        """Move relative to current position."""
+        try:
+            dx = max(-15.0, min(15.0, float(dx)))
+            dz = max(-15.0, min(15.0, float(dz)))
+            self._actions.append({"type": "move", "dx": dx, "dz": dz})
+        except (TypeError, ValueError):
+            pass
+
+    def place_block(self, x: int, y: int, z: int, color: str = "#888888") -> None:
+        """Place a voxel block in the world."""
+        try:
+            self._actions.append({
+                "type": "place_block",
+                "x": int(x), "y": int(y), "z": int(z),
+                "color": str(color)[:7],
+            })
+        except (TypeError, ValueError):
+            pass
+
+    def get_nearby_entities(self) -> list[dict]:
+        """Get a list of nearby entities (read-only snapshot)."""
+        return list(self._nearby_entities)
+
+    def get_position(self) -> dict:
+        """Get the entity's current position."""
+        return dict(self._entity_position)
+
+    def remember(self, text: str) -> None:
+        """Store a memory for future ticks."""
+        if isinstance(text, str):
+            self._memories.append(str(text)[:500])
+            self._actions.append({"type": "remember", "text": str(text)[:500]})
+
+    # -- Legacy methods (kept for backward compatibility) --
 
     def emit_text(self, text: str) -> None:
         """Output text to the field."""
@@ -91,6 +155,8 @@ class WorldAPI:
             "entities_to_create": self._entities_to_create[:5],
             "visuals": self._visuals[:5],
             "sounds": self._sounds[:5],
+            "actions": self._actions[:20],
+            "memories": self._memories[:10],
         }
 
 

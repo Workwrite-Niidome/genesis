@@ -112,6 +112,38 @@ export const api = {
     getTimeline: (limit = 100) => fetchJSON<any[]>(`/history/timeline?limit=${limit}`),
     getGodFeed: (limit = 20) => fetchJSON<{ feed: any[] }>(`/history/god-feed?limit=${limit}`),
   },
+  historyV3: {
+    getTickSummaries: (from: number, to: number) =>
+      fetchJSON<any>(`/v3/world/history/ticks?from=${from}&to=${to}`),
+    getTickDetail: (tick: number) =>
+      fetchJSON<any>(`/v3/world/history/tick/${tick}`),
+    searchEvents: (params: {
+      tick_from?: number;
+      tick_to?: number;
+      type?: string;
+      search?: string;
+      min_importance?: number;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const sp = new URLSearchParams();
+      if (params.tick_from) sp.set('tick_from', String(params.tick_from));
+      if (params.tick_to) sp.set('tick_to', String(params.tick_to));
+      if (params.type) sp.set('type', params.type);
+      if (params.search) sp.set('search', params.search);
+      if (params.min_importance != null) sp.set('min_importance', String(params.min_importance));
+      if (params.limit) sp.set('limit', String(params.limit));
+      if (params.offset) sp.set('offset', String(params.offset));
+      const qs = sp.toString();
+      return fetchJSON<any>(`/v3/world/history/events${qs ? `?${qs}` : ''}`);
+    },
+    getEntityTimeline: (entityId: string, limit = 200) =>
+      fetchJSON<any>(`/v3/world/history/entity/${entityId}/timeline?limit=${limit}`),
+    getStats: () => fetchJSON<any>('/v3/world/history/stats'),
+    getEventTypes: () => fetchJSON<{ event_types: string[] }>('/v3/world/history/event-types'),
+    getMarkers: (from: number, to: number, minImportance = 0.6) =>
+      fetchJSON<any>(`/v3/world/history/markers?from=${from}&to=${to}&min_importance=${minImportance}`),
+  },
   thoughts: {
     getFeed: (limit = 50) => fetchJSON<any[]>(`/thoughts/feed?limit=${limit}`),
     getByAI: (aiId: string, limit = 20) => fetchJSON<any[]>(`/thoughts/ai/${aiId}?limit=${limit}`),

@@ -318,23 +318,40 @@ class AIThinker:
             ai.position_x += dx
             ai.position_y += dy
 
-        # Execute code blocks if present
+        # Execute code blocks via subprocess-based sandbox (code_runner)
         if code_blocks:
             try:
-                from app.core.code_executor import code_executor
-                for code in code_blocks[:3]:  # Limit to 3 code blocks per cycle
-                    exec_result = await code_executor.execute(code, str(ai.id), db)
-                    if exec_result.get("output"):
-                        # Record code execution result as a memory
+                from app.agents.code_runner import extract_and_run_code, apply_code_actions
+
+                # Reconstruct fenced code blocks so extract_and_run_code can parse them
+                fenced = "\n".join(f"```python\n{c}\n```" for c in code_blocks[:3])
+                exec_results = await extract_and_run_code(
+                    entity=ai,
+                    llm_response=fenced,
+                    db=db,
+                    tick=tick_number,
+                    nearby_entities=nearby,
+                )
+
+                # Apply WorldAPI actions (move, place_block, say, remember)
+                if exec_results:
+                    await apply_code_actions(ai, exec_results, db, tick_number)
+
+                # Record execution results as memories
+                for exec_result in exec_results:
+                    output = exec_result.get("output", "")
+                    error = exec_result.get("error")
+                    if output or error:
+                        summary = f"Code execution: {output[:300]}" if output else f"Code error: {error[:300]}"
                         db.add(AIMemory(
                             ai_id=ai.id,
-                            content=f"Code execution result: {exec_result['output'][:400]}",
+                            content=summary,
                             memory_type="code_execution",
                             importance=0.6,
                             tick_number=tick_number,
                         ))
             except ImportError:
-                logger.debug("Code executor not yet available")
+                logger.debug("Code runner not yet available")
             except Exception as e:
                 logger.warning(f"Code execution error for {ai.name}: {e}")
 

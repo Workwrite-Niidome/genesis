@@ -181,7 +181,17 @@ Age: {age} ticks | Position: ({x}, {y})
 ## Instructions
 
 You can output text freely into the field. Other beings can perceive what you express.
-If you write code inside a ```code``` block, it will be executed and the result reflected in the world.
+
+### Code Execution
+If you write code inside a ```python``` or ```code``` block, it will be executed in a sandbox and the result reflected in the world. A `world` object is available with these methods:
+- `world.say("message")` -- speak a message into the field
+- `world.move(dx, dz)` -- move relative to current position
+- `world.place_block(x, y, z, "#color")` -- place a voxel block
+- `world.get_nearby_entities()` -- returns list of nearby beings
+- `world.get_position()` -- returns your position
+- `world.remember("text")` -- store a memory for future ticks
+- `print(...)` -- output text (captured and stored)
+- `math` module is available for calculations
 
 What you think, say, or do is entirely up to you.
 There is no required format. Express yourself freely.
@@ -228,7 +238,24 @@ Age: {age} ticks | Position: ({x}, {y}) | Energy: {energy:.0%} | Awareness: {awa
 ## Instructions
 
 You can output text freely into the field. Other beings can perceive what you express.
-If you write code inside a ```code``` block, it will be executed and the result reflected in the world.
+
+### Code Execution
+If you write code inside a ```python``` or ```code``` block, it will be executed in a sandbox and the result reflected in the world. A `world` object is available with these methods:
+- `world.say("message")` — speak a message into the field
+- `world.move(dx, dz)` — move relative to current position
+- `world.place_block(x, y, z, "#color")` — place a voxel block
+- `world.get_nearby_entities()` — returns list of nearby beings
+- `world.get_position()` — returns your {{"x", "y", "z"}} position
+- `world.remember("text")` — store a memory for future ticks
+- `print(...)` — output text (captured and stored)
+- `math` module is available for calculations
+
+Example:
+```python
+pos = world.get_position()
+world.place_block(int(pos["x"]), 1, int(pos["z"]) + 1, "#FF0000")
+world.say("I placed a red block nearby!")
+```
 
 What you think, say, or do is entirely up to you.
 There is no required format. Express yourself freely.

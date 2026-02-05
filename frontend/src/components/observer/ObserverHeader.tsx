@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Eye, Grid3x3, Rocket } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Eye, Grid3x3, Rocket, ScrollText } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useDeployStore } from '../../stores/deployStore';
@@ -61,6 +62,17 @@ export default function ObserverHeader() {
               {remainingDeploys}/{maxDeploys}
             </span>
           </button>
+
+          {/* Full Archive page link */}
+          <Link
+            to="/archive"
+            className="glass rounded-xl px-3 py-2 border border-border flex items-center gap-1.5
+                       text-text-3 hover:text-accent hover:border-accent/20 hover:bg-accent/5 transition-all"
+            title="Open World Archive"
+          >
+            <ScrollText size={12} />
+            <span className="text-[10px] font-medium tracking-wide">Archive</span>
+          </Link>
 
           {/* Grid toggle */}
           <button

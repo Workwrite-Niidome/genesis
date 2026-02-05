@@ -26,9 +26,9 @@ def parse_free_text(response: str) -> dict:
 
     text = response.strip()
 
-    # Extract code blocks
+    # Extract code blocks (python, code, javascript, js)
     code_blocks = []
-    code_pattern = re.compile(r'```(?:code|python)?\s*\n(.*?)```', re.DOTALL)
+    code_pattern = re.compile(r'```(?:code|python|javascript|js)?\s*\n(.*?)```', re.DOTALL)
     for match in code_pattern.finditer(text):
         code_blocks.append(match.group(1).strip())
 

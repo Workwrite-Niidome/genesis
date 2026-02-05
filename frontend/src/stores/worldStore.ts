@@ -3,6 +3,8 @@ import { api } from '../services/api';
 
 interface WorldStoreState {
   tickNumber: number;
+  maxTick: number;
+  seekTick: number | null;  // null = live (follow latest), number = viewing past tick
   aiCount: number;
   conceptCount: number;
   isRunning: boolean;
@@ -23,10 +25,13 @@ interface WorldStoreState {
   setTimeSpeed: (speed: number) => void;
   setPaused: (paused: boolean) => void;
   setTickNumber: (tick: number) => void;
+  seekToTick: (tick: number | null) => void;
 }
 
 export const useWorldStore = create<WorldStoreState>((set) => ({
   tickNumber: 0,
+  maxTick: 0,
+  seekTick: null,
   aiCount: 0,
   conceptCount: 0,
   isRunning: false,
@@ -39,15 +44,17 @@ export const useWorldStore = create<WorldStoreState>((set) => ({
   fetchState: async () => {
     try {
       const data = await api.world.getState();
+      const tick = data.tick_number ?? data.tick ?? 0;
       set({
-        tickNumber: data.tick_number,
-        aiCount: data.ai_count,
-        conceptCount: data.concept_count,
-        isRunning: data.is_running,
-        timeSpeed: data.time_speed,
-        isPaused: data.is_paused,
-        godAiActive: data.god_ai_active,
-        godAiPhase: data.god_ai_phase,
+        tickNumber: tick,
+        maxTick: Math.max(tick, useWorldStore.getState().maxTick),
+        aiCount: data.ai_count ?? data.alive_entity_count ?? 0,
+        conceptCount: data.concept_count ?? 0,
+        isRunning: data.is_running ?? true,
+        timeSpeed: data.time_speed ?? 1.0,
+        isPaused: data.is_paused ?? false,
+        godAiActive: data.god_ai_active ?? false,
+        godAiPhase: data.god_ai_phase ?? 'unknown',
       });
     } catch (e) {
       console.error('Failed to fetch world state:', e);
@@ -75,5 +82,6 @@ export const useWorldStore = create<WorldStoreState>((set) => ({
       console.error('Failed to set pause:', e)
     );
   },
-  setTickNumber: (tick: number) => set({ tickNumber: tick }),
+  setTickNumber: (tick: number) => set({ tickNumber: tick, maxTick: Math.max(tick, useWorldStore.getState().maxTick) }),
+  seekToTick: (tick: number | null) => set({ seekTick: tick }),
 }));

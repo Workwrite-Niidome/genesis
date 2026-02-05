@@ -254,6 +254,65 @@ class AgentRuntime:
                         )
                         state["last_conversation_ticks"][str(other_entity.id)] = tick_number
 
+        # 8b. Execute code blocks from conversation responses
+        code_execution_results = []
+        if conversation_result and conversation_result.get("turns"):
+            try:
+                from app.agents.code_runner import extract_and_run_code, apply_code_actions
+
+                # Check all conversation turns from this entity for code blocks
+                for turn in conversation_result["turns"]:
+                    if turn.get("speaker_id") == str(entity_id):
+                        turn_text = turn.get("text", "")
+                        if "```" in turn_text:
+                            visible = perception.get("entities", [])
+                            nearby_objs = [
+                                self._find_entity_by_id(e.get("id"), all_entities)
+                                for e in visible
+                            ]
+                            nearby_objs = [e for e in nearby_objs if e is not None]
+
+                            results = await extract_and_run_code(
+                                entity=entity,
+                                llm_response=turn_text,
+                                db=db,
+                                tick=tick_number,
+                                nearby_entities=nearby_objs,
+                            )
+                            if results:
+                                code_execution_results.extend(results)
+                                await apply_code_actions(
+                                    entity, results, db, tick_number,
+                                )
+            except ImportError:
+                logger.debug("Code runner not available for agent runtime")
+            except Exception as e:
+                logger.warning(
+                    "Code execution in conversation failed for %s: %s",
+                    entity.name, e,
+                )
+
+        # 8c. Store code execution results in entity memory
+        if code_execution_results:
+            for exec_result in code_execution_results:
+                output = exec_result.get("output", "")
+                error = exec_result.get("error")
+                if output or error:
+                    summary_text = (
+                        f"Executed code ({exec_result.get('language', 'python')}): "
+                        f"{output[:300]}" if output
+                        else f"Code error: {error[:300]}"
+                    )
+                    await self._memory.add_episodic(
+                        db=db,
+                        entity_id=entity_id,
+                        summary=summary_text,
+                        importance=0.6,
+                        tick=tick_number,
+                        location=(entity.position_x, entity.position_y, entity.position_z),
+                        memory_type="code_execution",
+                    )
+
         # 9. Update memory with significant events
         await self._update_memory(db, entity, plan, perception, tick_number)
 
@@ -297,6 +356,14 @@ class AgentRuntime:
             "actions_taken": actions_taken,
             "conversation": conversation_result,
             "conflict": conflict_result,
+            "code_executions": [
+                {
+                    "language": r.get("language"),
+                    "success": r.get("success"),
+                    "output": r.get("output", "")[:200],
+                }
+                for r in code_execution_results
+            ] if code_execution_results else [],
             "needs": dict(needs),
             "behavior_mode": behavior_mode,
             "goal": goal_name,
