@@ -2,7 +2,7 @@
  * GENESIS v3 VoxelRenderer
  *
  * High-performance voxel rendering using Three.js InstancedMesh.
- * Each unique color+material combo gets its own InstancedMesh for batching.
+ * Uses MeshLambertMaterial to avoid texture unit limits.
  */
 import * as THREE from 'three';
 import type { Voxel, VoxelUpdate } from '../types/v3';
@@ -10,26 +10,10 @@ import type { Voxel, VoxelUpdate } from '../types/v3';
 const VOXEL_SIZE = 1.0;
 const MAX_INSTANCES_PER_BATCH = 65536;
 
-// Material presets
-// Material presets with emissive intensity for better visibility
-const MATERIAL_CONFIG: Record<string, {
-  opacity: number;
-  transparent: boolean;
-  emissive: boolean;
-  emissiveIntensity: number;
-  roughness: number;
-  metalness: number;
-}> = {
-  solid: { opacity: 1.0, transparent: false, emissive: true, emissiveIntensity: 0.15, roughness: 0.6, metalness: 0.1 },
-  glass: { opacity: 0.5, transparent: true, emissive: true, emissiveIntensity: 0.1, roughness: 0.1, metalness: 0.2 },
-  emissive: { opacity: 1.0, transparent: false, emissive: true, emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.2 },
-  liquid: { opacity: 0.7, transparent: true, emissive: true, emissiveIntensity: 0.2, roughness: 0.2, metalness: 0.3 },
-};
-
 interface VoxelBatch {
   key: string;
   mesh: THREE.InstancedMesh;
-  material: THREE.MeshStandardMaterial;
+  material: THREE.MeshLambertMaterial;
   positions: Map<string, number>;  // "x,y,z" → instance index
   count: number;
   dirty: boolean;
@@ -59,17 +43,15 @@ export class VoxelRenderer {
     let batch = this.batches.get(key);
     if (batch) return batch;
 
-    const config = MATERIAL_CONFIG[materialType] || MATERIAL_CONFIG.solid;
     const colorObj = new THREE.Color(color);
 
-    const material = new THREE.MeshStandardMaterial({
+    // MeshLambertMaterial - シンプルで軽量、テクスチャユニットを消費しない
+    const material = new THREE.MeshLambertMaterial({
       color: colorObj,
-      roughness: config.roughness,
-      metalness: config.metalness,
-      transparent: config.transparent,
-      opacity: config.opacity,
-      emissive: config.emissive ? colorObj : new THREE.Color(0x000000),
-      emissiveIntensity: config.emissiveIntensity,
+      transparent: materialType === 'glass' || materialType === 'liquid',
+      opacity: materialType === 'glass' ? 0.5 : materialType === 'liquid' ? 0.7 : 1.0,
+      emissive: materialType === 'emissive' ? colorObj : new THREE.Color(0x000000),
+      emissiveIntensity: materialType === 'emissive' ? 0.8 : 0.1,
     });
 
     const mesh = new THREE.InstancedMesh(this.geometry, material, MAX_INSTANCES_PER_BATCH);
@@ -193,6 +175,7 @@ export class VoxelRenderer {
     for (const voxel of voxels) {
       this.placeVoxel(voxel);
     }
+    console.log(`[VoxelRenderer] Loaded ${voxels.length} voxels in ${this.batches.size} batches`);
   }
 
   /**
