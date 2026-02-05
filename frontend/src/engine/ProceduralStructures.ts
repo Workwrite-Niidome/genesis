@@ -654,6 +654,12 @@ export class ProceduralStructures {
     this.generate();
 
     this.scene.add(this.rootGroup);
+
+    // Debug: log structure info
+    console.log('[ProceduralStructures] Added to scene. Children:', this.rootGroup.children.length);
+    this.rootGroup.children.forEach((child, i) => {
+      console.log(`  [${i}] ${child.name} at`, child.position.toArray());
+    });
   }
 
   private generate(): void {

@@ -207,6 +207,15 @@ export class WorldScene {
     // Procedural Japanese-themed 3D structures (torii, lanterns, shrines, paths, trees)
     this.proceduralStructures = new ProceduralStructures(this.scene);
 
+    // DEBUG: Add a simple red cube at origin to verify rendering works
+    const debugCube = new THREE.Mesh(
+      new THREE.BoxGeometry(5, 5, 5),
+      new THREE.MeshStandardMaterial({ color: 0xff0000 })
+    );
+    debugCube.position.set(0, 2.5, 0);
+    this.scene.add(debugCube);
+    console.log('[DEBUG] Added red cube at origin');
+
     // Asset loading system: tries to load HDRI skybox and GLTF models from /assets/
     // Falls back gracefully to procedural sky dome and structures if no assets exist
     this.assetLoader = new AssetLoader();
