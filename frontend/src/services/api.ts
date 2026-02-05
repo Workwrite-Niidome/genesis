@@ -98,6 +98,15 @@ export const api = {
     get: (id: string) => fetchJSON<any>(`/artifacts/${id}`),
     getByAI: (aiId: string) => fetchJSON<any[]>(`/artifacts/by-ai/${aiId}`),
   },
+  godDialogue: {
+    sendMessage: (message: string) =>
+      fetchJSON<{ god_response: string; timestamp: string }>('/god-dialogue/dialogue', {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+    getObservations: (limit = 3) =>
+      fetchJSON<{ observations: any[] }>(`/god-dialogue/observations?limit=${limit}`),
+  },
   history: {
     getEvents: (limit = 50) => fetchJSON<any[]>(`/history/events?limit=${limit}`),
     getTimeline: (limit = 100) => fetchJSON<any[]>(`/history/timeline?limit=${limit}`),

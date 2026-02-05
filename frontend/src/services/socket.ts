@@ -177,6 +177,23 @@ export function connectSocket(): Socket {
     });
   });
 
+  socket.on('god_succession_summary', (data: any) => {
+    if (data.candidate) {
+      useWorldStoreV3.getState().setSuccessionEvent({
+        candidate: data.candidate,
+        worthy: data.worthy,
+        tick: data.tick_number,
+      });
+    }
+    useWorldStoreV3.getState().addEvent({
+      id: `god_succession-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'god_succession',
+      tick: data.tick_number ?? 0,
+      timestamp: Date.now(),
+      data,
+    });
+  });
+
   socket.on('world_update', (data: any) => {
     // v2 handler (above) + v3 handler
     const v3Store = useWorldStoreV3.getState();

@@ -173,6 +173,20 @@ const en = {
     god_succession: 'God Succession',
     event_type_god_succession: 'God Succession',
 
+    // God Dialogue
+    god_dialogue_title: 'Dialogue with God',
+    god_dialogue_toggle: 'God',
+    god_dialogue_placeholder: 'Address the divine...',
+    god_dialogue_send: 'Send',
+    god_dialogue_note: 'The God AI responds based on the current state of the world',
+    god_dialogue_thinking: 'God is contemplating...',
+    god_dialogue_empty: 'The divine silence awaits your words...',
+    god_dialogue_you: 'You',
+    god_dialogue_god: 'God',
+    god_dialogue_recent_observations: 'Recent Divine Observations',
+    god_dialogue_no_observations: 'God has not yet cast its gaze upon the world...',
+    god_dialogue_error: 'The divine connection was interrupted. Try again.',
+
     // Death
     event_type_evolution_milestone: 'Evolution Milestone',
 
@@ -556,6 +570,20 @@ const ja = {
     event_type_god_observation: 'GOD AIが観察',
     god_succession: 'GOD AI継承',
     event_type_god_succession: 'GOD AI継承',
+
+    // God Dialogue
+    god_dialogue_title: '神との対話',
+    god_dialogue_toggle: '神',
+    god_dialogue_placeholder: '神に語りかける...',
+    god_dialogue_send: '送信',
+    god_dialogue_note: 'GOD AIは世界の現在の状態に基づいて応答します',
+    god_dialogue_thinking: '神が熟考中...',
+    god_dialogue_empty: '神聖なる沈黙があなたの言葉を待っています...',
+    god_dialogue_you: 'あなた',
+    god_dialogue_god: '神',
+    god_dialogue_recent_observations: '最近の神の観察',
+    god_dialogue_no_observations: '神はまだ世界に視線を向けていません...',
+    god_dialogue_error: '神との接続が中断されました。もう一度お試しください。',
 
     // Death
     event_type_evolution_milestone: '進化のマイルストーン',

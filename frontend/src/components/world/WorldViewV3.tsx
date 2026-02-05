@@ -11,6 +11,9 @@ import { EventFeed } from './EventFeed';
 import { EntityDetailPanel } from './EntityDetailPanel';
 import { MiniMap } from './MiniMap';
 import { EntityListPanel } from './EntityListPanel';
+import { GodSuccessionOverlay } from './GodSuccessionOverlay';
+import { TimelinePanel, TimelineToggleButton } from './TimelinePanel';
+import { GodChatPanel, GodChatToggle } from './GodChatPanel';
 import type { ActionProposal } from '../../types/v3';
 import type { CameraMode } from '../../engine/Camera';
 import type { BuildMode } from '../../engine/BuildingTool';
@@ -43,6 +46,12 @@ export function WorldViewV3() {
   const [buildColor, setBuildColor] = useState('#4fc3f7');
   const [buildMaterial, setBuildMaterial] = useState<typeof BUILD_MATERIALS[number]>('solid');
   const [cameraMode, setCameraMode] = useState<CameraMode>('observer');
+
+  // Timeline panel state
+  const [showTimeline, setShowTimeline] = useState(false);
+
+  // God dialogue panel state
+  const [showGodChat, setShowGodChat] = useState(false);
 
   // Initialize scene
   useEffect(() => {
@@ -152,6 +161,12 @@ export function WorldViewV3() {
           <span>Voxels:{voxelCount}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* God dialogue toggle */}
+          <GodChatToggle
+            isOpen={showGodChat}
+            onClick={() => setShowGodChat(!showGodChat)}
+          />
+          <div className="w-px h-4 bg-white/20 mx-1" />
           {/* Camera mode buttons */}
           <button
             onClick={() => handleCameraMode('observer')}
@@ -165,6 +180,11 @@ export function WorldViewV3() {
           >
             Follow
           </button>
+          <div className="w-px h-4 bg-white/20 mx-1" />
+          <TimelineToggleButton
+            isOpen={showTimeline}
+            onClick={() => setShowTimeline(!showTimeline)}
+          />
         </div>
       </div>
 
@@ -232,6 +252,15 @@ export function WorldViewV3() {
         <div>Right-drag: Look | Scroll: Zoom</div>
         <div>Click entity: Select</div>
       </div>
+
+      {/* God Dialogue Panel (left side) */}
+      <GodChatPanel visible={showGodChat} onClose={() => setShowGodChat(false)} />
+
+      {/* God Succession Ceremony Overlay */}
+      <GodSuccessionOverlay />
+
+      {/* Timeline / Archive Panel (right side) */}
+      <TimelinePanel visible={showTimeline} onClose={() => setShowTimeline(false)} />
     </div>
   );
 }

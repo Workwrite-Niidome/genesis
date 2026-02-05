@@ -24,6 +24,44 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Public router for observer-facing God dialogue (no admin auth required)
+public_router = APIRouter()
+
+
+class ObserverGodMessageRequest(BaseModel):
+    message: str
+
+
+@public_router.post("/dialogue")
+async def observer_dialogue_with_god(
+    request: ObserverGodMessageRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint: Observers can address the God AI directly.
+
+    The God AI will respond based on the current state of the world.
+    Observer messages are treated as prayers/addresses from mortals.
+    """
+    result = await god_ai_manager.send_message(db, request.message)
+    return {
+        "god_response": result["god_response"],
+        "timestamp": result["timestamp"],
+    }
+
+
+@public_router.get("/observations")
+async def get_recent_god_observations(
+    limit: int = Query(3, le=10),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint: Get recent God AI observations for context."""
+    feed = await god_ai_manager.get_god_feed(db, limit=limit)
+    observations = [
+        entry for entry in (feed or [])
+        if entry.get("role") == "god_observation"
+    ][:limit]
+    return {"observations": observations}
+
 
 @router.get("/state")
 async def get_god_state(db: AsyncSession = Depends(get_db)):

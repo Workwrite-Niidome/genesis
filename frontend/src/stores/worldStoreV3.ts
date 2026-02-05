@@ -5,18 +5,26 @@
  */
 import { create } from 'zustand';
 import { getSocket } from '../services/socket';
+import { api } from '../services/api';
 import type {
   EntityV3, Voxel, VoxelUpdate, WorldStateV3,
   SocketEntityPosition, SocketSpeechEvent,
 } from '../types/v3';
+import type { SagaChapter } from '../types/world';
 
 // ── Real-time event feed types ──────────────────────────────
 export interface WorldEvent {
   id: string;
-  type: 'conflict' | 'speech' | 'death' | 'god_crisis' | 'god_observation';
+  type: 'conflict' | 'speech' | 'death' | 'god_crisis' | 'god_observation' | 'god_succession';
   tick: number;
   timestamp: number;
   data: any;
+}
+
+export interface SuccessionEvent {
+  candidate: string;
+  worthy: boolean;
+  tick: number;
 }
 
 interface WorldStoreV3State {
@@ -43,6 +51,23 @@ interface WorldStoreV3State {
   // Real-time event feed (last 50)
   recentEvents: WorldEvent[];
 
+  // God succession ceremony
+  successionEvent: SuccessionEvent | null;
+
+  // Timeline / Archive data
+  sagas: SagaChapter[];
+  timelineEvents: Array<{
+    id: string;
+    event_type: string;
+    importance: number;
+    title: string;
+    description?: string;
+    tick_number: number;
+    created_at: string;
+    metadata_?: Record<string, any>;
+  }>;
+  timelineLoading: boolean;
+
   // Actions
   setWorldState: (state: Partial<WorldStateV3>) => void;
   updateTick: (data: { tickNumber: number; entityCount: number; voxelCount: number }) => void;
@@ -61,8 +86,15 @@ interface WorldStoreV3State {
 
   addEvent: (event: WorldEvent) => void;
 
+  setSuccessionEvent: (event: SuccessionEvent) => void;
+  clearSuccessionEvent: () => void;
+
   setPaused: (paused: boolean) => void;
   setTimeSpeed: (speed: number) => void;
+
+  // Timeline / Archive actions
+  fetchSagas: () => Promise<void>;
+  fetchTimeline: (page?: number) => Promise<void>;
 }
 
 export const useWorldStoreV3 = create<WorldStoreV3State>((set, get) => ({
@@ -82,6 +114,10 @@ export const useWorldStoreV3 = create<WorldStoreV3State>((set, get) => ({
   pendingVoxelUpdates: [],
   recentSpeech: [],
   recentEvents: [],
+  successionEvent: null,
+  sagas: [],
+  timelineEvents: [],
+  timelineLoading: false,
 
   // Actions
   setWorldState: (state) => set((prev) => ({
@@ -182,6 +218,40 @@ export const useWorldStoreV3 = create<WorldStoreV3State>((set, get) => ({
     recentEvents: [...prev.recentEvents.slice(-49), event],
   })),
 
+  setSuccessionEvent: (event) => set({ successionEvent: event }),
+  clearSuccessionEvent: () => set({ successionEvent: null }),
+
   setPaused: (paused) => set({ isPaused: paused }),
   setTimeSpeed: (speed) => set({ timeSpeed: speed }),
+
+  // Timeline / Archive actions
+  fetchSagas: async () => {
+    try {
+      const data = await api.saga.getChapters(50);
+      set({ sagas: Array.isArray(data) ? data : [] });
+    } catch {
+      set({ sagas: [] });
+    }
+  },
+
+  fetchTimeline: async (page = 1) => {
+    set({ timelineLoading: true });
+    try {
+      const limit = page * 50;
+      const data = await api.history.getTimeline(limit);
+      const normalized = (data || []).map((raw: any) => ({
+        id: raw.id,
+        event_type: raw.event_type || raw.type || 'unknown',
+        importance: raw.importance ?? 0.5,
+        title: raw.title || '',
+        description: raw.description,
+        tick_number: raw.tick_number ?? 0,
+        created_at: raw.created_at || raw.timestamp || '',
+        metadata_: raw.metadata_ || {},
+      }));
+      set({ timelineEvents: normalized, timelineLoading: false });
+    } catch {
+      set({ timelineEvents: [], timelineLoading: false });
+    }
+  },
 }));
