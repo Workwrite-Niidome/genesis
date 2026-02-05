@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # Translation
     DEEPL_API_KEY: Optional[str] = None
 
+    # Asset Generation
+    BLOCKADE_LABS_API_KEY: str = ""
+    MESHY_API_KEY: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
