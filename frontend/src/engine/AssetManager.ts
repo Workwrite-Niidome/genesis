@@ -245,7 +245,10 @@ export class AssetManager {
       this.scene.environment = null;
     }
 
-    this.skyboxTexture = null;
+    if (this.skyboxTexture) {
+      this.skyboxTexture.dispose();
+      this.skyboxTexture = null;
+    }
     this.skyboxApplied = false;
 
     console.log('[AssetManager] Disposed');
