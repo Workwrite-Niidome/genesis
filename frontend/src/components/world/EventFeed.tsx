@@ -3,9 +3,10 @@
  *
  * Displays conflict, speech, death, god_crisis, and god_observation events
  * as they stream in via Socket.IO, stored in worldStoreV3.recentEvents.
+ * Click an event to expand its full details.
  */
-import { useEffect, useRef } from 'react';
-import { Swords, MessageCircle, Skull, Zap, Eye, Crown } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Swords, MessageCircle, Skull, Zap, Eye, Crown, ChevronDown } from 'lucide-react';
 import { useWorldStoreV3 } from '../../stores/worldStoreV3';
 import type { WorldEvent } from '../../stores/worldStoreV3';
 
@@ -88,15 +89,72 @@ function summarise(event: WorldEvent): string {
   }
 }
 
+/** Extract full detail text from event data for expanded view. */
+function getDetailText(event: WorldEvent): string | null {
+  const d = event.data;
+  const parts: string[] = [];
+
+  switch (event.type) {
+    case 'conflict': {
+      if (d.winner) parts.push(`Winner: ${d.winner}`);
+      if (d.loser) parts.push(`Loser: ${d.loser}`);
+      if (d.type) parts.push(`Type: ${d.type}`);
+      if (d.description) parts.push(d.description);
+      if (d.damage !== undefined) parts.push(`Damage: ${d.damage}`);
+      break;
+    }
+    case 'speech': {
+      const name = d.entityName ?? d.name ?? 'Entity';
+      const text = d.text ?? '';
+      parts.push(`${name} says:`);
+      parts.push(text);
+      if (d.emotion) parts.push(`Emotion: ${d.emotion}`);
+      break;
+    }
+    case 'death': {
+      const name = d.name ?? d.entityName ?? 'An entity';
+      parts.push(`${name} has died`);
+      if (d.cause) parts.push(`Cause: ${d.cause}`);
+      if (d.age !== undefined) parts.push(`Age: ${d.age} ticks`);
+      break;
+    }
+    case 'god_crisis': {
+      if (d.crisis_name) parts.push(d.crisis_name);
+      if (d.description) parts.push(d.description);
+      if (d.severity) parts.push(`Severity: ${d.severity}`);
+      break;
+    }
+    case 'god_observation': {
+      const content = d.content ?? d.excerpt ?? '';
+      if (content) parts.push(content);
+      break;
+    }
+    case 'god_succession': {
+      if (d.old_god) parts.push(`Previous God: ${d.old_god}`);
+      if (d.new_god) parts.push(`New God: ${d.new_god}`);
+      if (d.reason) parts.push(`Reason: ${d.reason}`);
+      break;
+    }
+    default: {
+      const json = JSON.stringify(d, null, 2);
+      if (json !== '{}') parts.push(json);
+    }
+  }
+
+  const detail = parts.join('\n');
+  return detail.length > 0 ? detail : null;
+}
+
 // ── Component ───────────────────────────────────────────────
 export function EventFeed() {
   const recentEvents = useWorldStoreV3((s) => s.recentEvents);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Auto-scroll to bottom when new events arrive
+  // Auto-scroll to top (newest first)
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTop = 0;
     }
   }, [recentEvents.length]);
 
@@ -129,21 +187,38 @@ export function EventFeed() {
           recentEvents
             .slice()
             .reverse()
-            .map((event) => <EventItem key={event.id} event={event} />)
+            .map((event) => (
+              <EventItem
+                key={event.id}
+                event={event}
+                isExpanded={expandedId === event.id}
+                onToggle={() => setExpandedId(expandedId === event.id ? null : event.id)}
+              />
+            ))
         )}
       </div>
     </div>
   );
 }
 
-function EventItem({ event }: { event: WorldEvent }) {
+function EventItem({
+  event,
+  isExpanded,
+  onToggle,
+}: {
+  event: WorldEvent;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   const cfg = eventConfig[event.type];
   const Icon = cfg.icon;
   const text = summarise(event);
+  const detail = isExpanded ? getDetailText(event) : null;
 
   return (
-    <div
-      className={`p-2 rounded-lg ${cfg.bg} border ${cfg.border} transition-colors hover:bg-white/[0.04]`}
+    <button
+      onClick={onToggle}
+      className={`w-full text-left p-2 rounded-lg ${cfg.bg} border ${cfg.border} transition-colors hover:bg-white/[0.04]`}
     >
       <div className="flex items-center gap-1.5 mb-0.5">
         <Icon size={11} className={cfg.color} />
@@ -151,14 +226,23 @@ function EventItem({ event }: { event: WorldEvent }) {
           {cfg.label}
         </span>
         {event.tick > 0 && (
-          <span className="text-[8px] font-mono text-white/30 ml-auto">
+          <span className="text-[8px] font-mono text-white/30 ml-auto mr-1">
             T:{event.tick}
           </span>
         )}
+        <ChevronDown
+          size={10}
+          className={`text-white/20 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+        />
       </div>
-      <p className="text-[10px] text-white/70 leading-relaxed line-clamp-2">
+      <p className={`text-[10px] text-white/70 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
         {text}
       </p>
-    </div>
+      {isExpanded && detail && (
+        <pre className="mt-1.5 pt-1.5 border-t border-white/[0.06] text-[10px] text-white/50 leading-relaxed whitespace-pre-wrap break-words font-sans">
+          {detail}
+        </pre>
+      )}
+    </button>
   );
 }

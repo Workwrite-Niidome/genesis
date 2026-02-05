@@ -123,10 +123,10 @@ function DesktopWorldViewV3() {
       <MiniMap onPanTo={scene.handleMiniMapPan} />
 
       {/* Controls hint */}
-      <div className="absolute bottom-16 right-4 text-white/30 text-xs font-mono z-10">
-        <div>WASD: Move | Space/C: Up/Down</div>
-        <div>Right-drag: Look | Scroll: Zoom</div>
-        <div>Click entity: Select | B: Build</div>
+      <div className="absolute bottom-16 right-4 text-white/40 text-xs font-mono z-10 bg-black/40 rounded-lg px-3 py-2 backdrop-blur-sm border border-white/[0.06]">
+        <div>Drag: Look around | Scroll: Zoom</div>
+        <div>WASD: Move | Space/C: Up/Down | Shift: Sprint</div>
+        <div>Click entity: Select | B: Build mode</div>
       </div>
 
       {/* God Dialogue Panel (left side) */}

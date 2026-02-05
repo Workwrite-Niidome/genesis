@@ -42,6 +42,9 @@ export class CameraController {
   private isPointerLocked = false;
   private canvas: HTMLCanvasElement | null = null;
 
+  // Mouse drag state (for left-click drag rotation in observer mode)
+  private isLeftDragging = false;
+
   // Touch state
   private touchPrevPos: { x: number; y: number } | null = null;
   private lastPinchDist: number | null = null;
@@ -59,6 +62,8 @@ export class CameraController {
     this.canvas = canvas;
 
     canvas.addEventListener('click', this.onCanvasClick);
+    canvas.addEventListener('mousedown', this.onMouseDown);
+    document.addEventListener('mouseup', this.onMouseUp);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('keydown', this.onKeyDown);
@@ -77,11 +82,13 @@ export class CameraController {
   detach(): void {
     if (this.canvas) {
       this.canvas.removeEventListener('click', this.onCanvasClick);
+      this.canvas.removeEventListener('mousedown', this.onMouseDown);
       this.canvas.removeEventListener('wheel', this.onWheel);
       this.canvas.removeEventListener('touchstart', this.onTouchStart);
       this.canvas.removeEventListener('touchmove', this.onTouchMove);
       this.canvas.removeEventListener('touchend', this.onTouchEnd);
     }
+    document.removeEventListener('mouseup', this.onMouseUp);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('keydown', this.onKeyDown);
@@ -205,14 +212,24 @@ export class CameraController {
     this.isPointerLocked = document.pointerLockElement === this.canvas;
   };
 
+  private onMouseDown = (e: MouseEvent): void => {
+    if (e.button === 0) this.isLeftDragging = true; // left button
+  };
+
+  private onMouseUp = (e: MouseEvent): void => {
+    if (e.button === 0) this.isLeftDragging = false;
+  };
+
   private onMouseMove = (e: MouseEvent): void => {
-    // In observer mode, always allow rotation with right-mouse or pointer lock
-    if (this.mode === 'observer' || this.isPointerLocked) {
-      if (this.isPointerLocked || (e.buttons & 2)) {
-        this.yaw -= e.movementX * MOUSE_SENSITIVITY;
-        this.pitch -= e.movementY * MOUSE_SENSITIVITY;
-        this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
-      }
+    // Allow rotation with: left-drag, right-drag, or pointer lock
+    const canRotate =
+      this.isPointerLocked ||
+      (this.mode === 'observer' && (this.isLeftDragging || !!(e.buttons & 2)));
+
+    if (canRotate) {
+      this.yaw -= e.movementX * MOUSE_SENSITIVITY;
+      this.pitch -= e.movementY * MOUSE_SENSITIVITY;
+      this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
     }
   };
 
