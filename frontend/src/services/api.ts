@@ -226,6 +226,24 @@ export const api = {
     getChapter: (eraNumber: number) => fetchJSON<any>(`/saga/chapters/${eraNumber}`),
     getLatest: () => fetchJSON<any>('/saga/latest'),
   },
+  assets: {
+    generateSkybox: (prompt: string) =>
+      fetchJSONAdmin<{ url: string }>('/assets/generate/skybox', {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
+      }),
+    generateModel: (prompt: string, type: string) =>
+      fetchJSONAdmin<{ url: string }>('/assets/generate/model', {
+        method: 'POST',
+        body: JSON.stringify({ prompt, type }),
+      }),
+    generateAll: () =>
+      fetchJSONAdmin<any>('/assets/generate/all', {
+        method: 'POST',
+      }),
+    list: () =>
+      fetchJSON<{ skyboxes: string[]; models: string[]; textures: string[] }>('/assets/list'),
+  },
   deploy: {
     getTraits: () => fetchJSON<{ traits: string[] }>('/deploy/traits'),
     getProviders: () => fetchJSON<{ providers: any[] }>('/deploy/providers'),
