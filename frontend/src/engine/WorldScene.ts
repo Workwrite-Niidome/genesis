@@ -1,8 +1,8 @@
 /**
  * GENESIS v3 WorldScene
  *
- * Minimal, reliable 3D scene.
- * Step 1: Just render a cube. Make sure it works.
+ * シンプルで信頼性の高い3Dシーン。
+ * 美しいボクセルワールドを確実にレンダリングする。
  */
 import * as THREE from 'three';
 import { VoxelRenderer } from './VoxelRenderer';
@@ -54,24 +54,29 @@ export class WorldScene {
     const { canvas, labelContainer, onProposal, onEntityClick } = options;
     this.canvas = canvas;
 
-    console.log('[WorldScene] Initializing...');
+    console.log('[WorldScene] 初期化開始...');
 
-    // === Renderer (WebGL only - simple and reliable) ===
+    // === Renderer ===
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
+      alpha: false,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-    this.renderer.setClearColor(0x1a1a2e);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    console.log('[WorldScene] Renderer created');
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
     // === Scene ===
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1a1a2e);
+
+    // 深い夜空のグラデーション背景
+    this.scene.background = new THREE.Color(0x0a0a1a);
+
+    // 霧で遠景をフェード（雰囲気向上）
+    this.scene.fog = new THREE.Fog(0x0a0a1a, 80, 200);
 
     // === Camera ===
     this.camera = new THREE.PerspectiveCamera(
@@ -80,7 +85,7 @@ export class WorldScene {
       0.1,
       500,
     );
-    this.camera.position.set(0, 15, 40);
+    this.camera.position.set(0, 20, 50);
     this.camera.lookAt(0, 0, 0);
 
     this.clock = new THREE.Clock();
@@ -88,19 +93,8 @@ export class WorldScene {
     // === Lighting ===
     this.setupLighting();
 
-    // === Ground plane (simple reference) ===
-    const groundGeo = new THREE.PlaneGeometry(200, 200);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2a3a,
-      roughness: 0.9,
-    });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.5;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-
-    console.log('[WorldScene] Ground added');
+    // === Ground ===
+    this.createGround();
 
     // === Subsystems ===
     this.voxelRenderer = new VoxelRenderer(this.scene);
@@ -115,9 +109,7 @@ export class WorldScene {
     }
     this.onEntityClick = onEntityClick || null;
 
-    console.log('[WorldScene] Subsystems initialized');
-
-    // === Load initial template ===
+    // === Load template ===
     this.loadInitialTemplate();
 
     // === Events ===
@@ -131,54 +123,95 @@ export class WorldScene {
     this.resizeObserver = new ResizeObserver(() => this.onResize());
     this.resizeObserver.observe(canvas);
 
-    // === Start render loop ===
+    // === Start ===
     this.animate();
 
-    console.log('[WorldScene] Initialization complete');
+    console.log('[WorldScene] 初期化完了');
   }
 
   private setupLighting(): void {
-    // Ambient - make sure everything is visible
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    // 環境光 - 全体を柔らかく照らす
+    const ambient = new THREE.AmbientLight(0x4466aa, 0.4);
     this.scene.add(ambient);
 
-    // Hemisphere
-    const hemi = new THREE.HemisphereLight(0x8888ff, 0x444422, 0.5);
+    // 半球光 - 空と地面の色差
+    const hemi = new THREE.HemisphereLight(0x6688cc, 0x223344, 0.6);
     this.scene.add(hemi);
 
-    // Main directional light
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(30, 50, 30);
+    // メインの太陽光
+    const sun = new THREE.DirectionalLight(0xffeedd, 1.2);
+    sun.position.set(50, 80, 30);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 2048;
     sun.shadow.mapSize.height = 2048;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 150;
-    sun.shadow.camera.left = -50;
-    sun.shadow.camera.right = 50;
-    sun.shadow.camera.top = 50;
-    sun.shadow.camera.bottom = -50;
+    sun.shadow.camera.far = 200;
+    sun.shadow.camera.left = -60;
+    sun.shadow.camera.right = 60;
+    sun.shadow.camera.top = 60;
+    sun.shadow.camera.bottom = -60;
+    sun.shadow.bias = -0.0005;
     this.scene.add(sun);
 
-    console.log('[WorldScene] Lighting setup complete');
+    // 補助光（影を柔らかく）
+    const fill = new THREE.DirectionalLight(0x8899bb, 0.3);
+    fill.position.set(-30, 40, -20);
+    this.scene.add(fill);
+
+    // リムライト（輪郭を際立たせる）
+    const rim = new THREE.DirectionalLight(0xaaddff, 0.2);
+    rim.position.set(0, 10, -50);
+    this.scene.add(rim);
+  }
+
+  private createGround(): void {
+    // グリッド状の地面
+    const groundSize = 200;
+    const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, 40, 40);
+
+    // 頂点に微妙な高低差を付ける
+    const positions = groundGeo.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const z = positions.getY(i);
+      const noise = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 0.3;
+      positions.setZ(i, noise);
+    }
+    groundGeo.computeVertexNormals();
+
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1a2e,
+      roughness: 0.95,
+      metalness: 0.05,
+    });
+
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.5;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // 地面のグリッドライン
+    const gridHelper = new THREE.GridHelper(groundSize, 40, 0x2a2a4a, 0x1a1a3a);
+    gridHelper.position.y = -0.48;
+    this.scene.add(gridHelper);
   }
 
   private loadInitialTemplate(): void {
-    console.log('[WorldScene] Loading initial template...');
+    console.log('[WorldScene] テンプレート読み込み中...');
 
     const voxels = VoxelTemplates.generateInitialWorld();
-    console.log('[WorldScene] Generated', voxels.length, 'voxels');
+    console.log('[WorldScene] ボクセル生成数:', voxels.length);
 
     this.voxelRenderer.loadWorld(voxels);
     this.templateLoaded = true;
 
-    console.log('[WorldScene] Template loaded, voxel count:', this.voxelRenderer.getVoxelCount());
+    console.log('[WorldScene] テンプレート読み込み完了, 総ボクセル数:', this.voxelRenderer.getVoxelCount());
   }
 
   // === Public API ===
 
   async ready(): Promise<void> {
-    // No async init needed for WebGL
     return Promise.resolve();
   }
 
@@ -187,12 +220,10 @@ export class WorldScene {
   }
 
   loadVoxels(voxels: Voxel[]): void {
-    // Only load if we have voxels from server (override template)
     if (voxels.length > 0) {
-      console.log('[WorldScene] Loading', voxels.length, 'voxels from server');
+      console.log('[WorldScene] サーバーから', voxels.length, 'ボクセルを読み込み');
       this.voxelRenderer.loadWorld(voxels);
     } else if (!this.templateLoaded) {
-      // Fallback to template if not already loaded
       this.loadInitialTemplate();
     }
   }
@@ -242,7 +273,7 @@ export class WorldScene {
   }
 
   loadStructures(_structures: StructureInfo[]): void {
-    // TODO
+    // TODO: 構造物のロード
   }
 
   setCameraMode(mode: CameraMode): void {
@@ -301,8 +332,9 @@ export class WorldScene {
   // === Event Handlers ===
 
   private onMouseMove = (e: MouseEvent): void => {
-    this.mouseNDC.x = (e.clientX / this.canvas.clientWidth) * 2 - 1;
-    this.mouseNDC.y = -(e.clientY / this.canvas.clientHeight) * 2 + 1;
+    const rect = this.canvas.getBoundingClientRect();
+    this.mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   };
 
   private onClick = (): void => {

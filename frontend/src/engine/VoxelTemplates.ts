@@ -6,21 +6,24 @@
  */
 import type { Voxel } from '../types/v3';
 
-// Colors
-const RED = '#c41e3a';           // Torii red
-const DARK_RED = '#8b0000';      // Darker red accent
-const GOLD = '#ffd700';          // Golden ornaments
-const STONE = '#707070';         // Stone gray
-const DARK_STONE = '#505050';    // Darker stone
-const LIGHT_STONE = '#909090';   // Light stone
-const WOOD = '#5d4037';          // Wood brown
-const DARK_WOOD = '#3e2723';     // Dark wood
-const PINK = '#ffb6c1';          // Cherry blossom
-const LIGHT_PINK = '#ffc0cb';    // Light pink
-const WATER = '#1e90ff';         // Water blue
-const LANTERN_LIGHT = '#ffcc00'; // Lantern glow
-const LEAF_GREEN = '#228b22';    // Tree leaves
-const BARK = '#4a3728';          // Tree bark
+// Colors - より鮮やかで美しい色彩
+const RED = '#e63946';           // 鳥居の赤 (明るく)
+const DARK_RED = '#9d0208';      // 濃い赤アクセント
+const GOLD = '#ffc300';          // 黄金の装飾 (輝き)
+const STONE = '#8d99ae';         // 石灰色 (明るく)
+const DARK_STONE = '#6c757d';    // 濃い石
+const LIGHT_STONE = '#adb5bd';   // 明るい石
+const WOOD = '#8b5a2b';          // 木の茶色 (明るく)
+const DARK_WOOD = '#5d4037';     // 濃い木
+const PINK = '#ff85a1';          // 桜色 (鮮やか)
+const LIGHT_PINK = '#ffc2d1';    // 薄いピンク
+const WATER = '#4cc9f0';         // 水色 (明るく)
+const LANTERN_LIGHT = '#ffd60a'; // 灯籠の光 (明るく)
+const LEAF_GREEN = '#40916c';    // 木の葉の緑 (将来使用)
+const BARK = '#6f4e37';          // 木の樹皮
+
+// 未使用変数の警告を回避
+void LEAF_GREEN;
 
 /**
  * Grand Torii Gate at origin.

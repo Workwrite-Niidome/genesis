@@ -11,11 +11,19 @@ const VOXEL_SIZE = 1.0;
 const MAX_INSTANCES_PER_BATCH = 65536;
 
 // Material presets
-const MATERIAL_CONFIG: Record<string, { opacity: number; transparent: boolean; emissive: boolean }> = {
-  solid: { opacity: 1.0, transparent: false, emissive: false },
-  glass: { opacity: 0.4, transparent: true, emissive: false },
-  emissive: { opacity: 1.0, transparent: false, emissive: true },
-  liquid: { opacity: 0.6, transparent: true, emissive: false },
+// Material presets with emissive intensity for better visibility
+const MATERIAL_CONFIG: Record<string, {
+  opacity: number;
+  transparent: boolean;
+  emissive: boolean;
+  emissiveIntensity: number;
+  roughness: number;
+  metalness: number;
+}> = {
+  solid: { opacity: 1.0, transparent: false, emissive: true, emissiveIntensity: 0.15, roughness: 0.6, metalness: 0.1 },
+  glass: { opacity: 0.5, transparent: true, emissive: true, emissiveIntensity: 0.1, roughness: 0.1, metalness: 0.2 },
+  emissive: { opacity: 1.0, transparent: false, emissive: true, emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.2 },
+  liquid: { opacity: 0.7, transparent: true, emissive: true, emissiveIntensity: 0.2, roughness: 0.2, metalness: 0.3 },
 };
 
 interface VoxelBatch {
@@ -56,12 +64,12 @@ export class VoxelRenderer {
 
     const material = new THREE.MeshStandardMaterial({
       color: colorObj,
-      roughness: materialType === 'glass' ? 0.1 : 0.7,
-      metalness: materialType === 'emissive' ? 0.3 : 0.1,
+      roughness: config.roughness,
+      metalness: config.metalness,
       transparent: config.transparent,
       opacity: config.opacity,
       emissive: config.emissive ? colorObj : new THREE.Color(0x000000),
-      emissiveIntensity: config.emissive ? 0.5 : 0,
+      emissiveIntensity: config.emissiveIntensity,
     });
 
     const mesh = new THREE.InstancedMesh(this.geometry, material, MAX_INSTANCES_PER_BATCH);
