@@ -219,3 +219,9 @@ export function disconnectSocket(): void {
 export function getSocket(): Socket | null {
   return socket;
 }
+
+export function sendBuildProposal(proposal: any): void {
+  if (socket?.connected) {
+    socket.emit('build_proposal', proposal);
+  }
+}

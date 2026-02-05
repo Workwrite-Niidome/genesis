@@ -7,6 +7,7 @@ import { connectSocket, disconnectSocket } from './services/socket';
 import ObserverView from './pages/ObserverView';
 import AdminView from './pages/AdminView';
 import AgentDashboard from './pages/AgentDashboard';
+import AuthCallback from './pages/AuthCallback';
 import { WorldViewV3 } from './components/world/WorldViewV3';
 
 const PlayView = lazy(() => import('./components/world/PlayView'));
@@ -44,6 +45,7 @@ function App() {
       <Route path="/" element={<ObserverView />} />
       <Route path="/admin" element={<AdminView />} />
       <Route path="/agents" element={<AgentDashboard />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/v3" element={
         <div className="w-screen h-screen">
           <WorldViewV3 />

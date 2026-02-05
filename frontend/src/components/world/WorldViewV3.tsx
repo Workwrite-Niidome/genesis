@@ -60,9 +60,39 @@ export function WorldViewV3() {
     const worldScene = new WorldScene({
       canvas: canvasRef.current,
       labelContainer: labelContainerRef.current,
-      onProposal: (proposal: ActionProposal) => {
-        // TODO: Send proposal to server via WebSocket
-        console.log('Action proposal:', proposal);
+      onProposal: async (proposal: ActionProposal) => {
+        try {
+          const API_BASE = import.meta.env.VITE_API_URL
+            ? `${import.meta.env.VITE_API_URL}/api`
+            : '/api';
+          const token = localStorage.getItem('genesis_user_token');
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
+          if (proposal.action === 'place_voxel') {
+            await fetch(`${API_BASE}/v3/building/place`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                entity_id: proposal.agent_id,
+                position: proposal.params.position,
+                color: proposal.params.color || '#888888',
+                material: proposal.params.material || 'solid',
+              }),
+            });
+          } else if (proposal.action === 'destroy_voxel') {
+            await fetch(`${API_BASE}/v3/building/destroy`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                entity_id: proposal.agent_id,
+                position: proposal.params.position,
+              }),
+            });
+          }
+        } catch (err) {
+          console.warn('Building action failed:', err);
+        }
       },
       onEntityClick: (entityId: string) => {
         selectEntity(entityId);
