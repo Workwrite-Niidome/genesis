@@ -644,7 +644,6 @@ export class ProceduralStructures {
   private scene: THREE.Scene;
   private rootGroup: THREE.Group;
   private materials: Materials;
-  private lights: THREE.PointLight[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
