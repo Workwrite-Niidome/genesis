@@ -1,103 +1,122 @@
 /**
- * MobileEntityDetailSheet — Entity detail as a bottom sheet for mobile.
+ * MobileEntityDetailSheet — Unified entity profile as a bottom sheet for mobile.
  *
  * Auto-opens to 'peek' when selectedEntityId changes.
- * Peek (120px): entity name + behavior badge + energy bar
- * Half/full: all detail sections (personality, needs, awareness, relationships)
+ * Peek: entity name + status + current action
+ * Half/full: all detail sections (bio, relationships, inventory, activity)
  *
- * All text sizes bumped from desktop: 9px→12px, 10px→13px, 8px→11px
+ * No raw AI parameters are exposed. The sheet looks identical for every entity
+ * type — you cannot tell who is human and who is AI.
+ *
+ * Design principle: "誰が人間で誰がAIかは外からはわからない"
  */
 import { useEffect, useMemo } from 'react';
 import {
   X,
   MapPin,
-  Zap,
-  Heart,
   Users,
   Activity,
-  Brain,
-  Shield,
   Flame,
-  Sparkles,
-  Eye,
-  Compass,
-  Swords,
-  Star,
+  Package,
+  CircleDot,
 } from 'lucide-react';
 import { useWorldStoreV3 } from '../../../stores/worldStoreV3';
 import { useMobileStoreV3 } from '../../../stores/mobileStoreV3';
 import { BottomSheet } from './BottomSheet';
-import type { PersonalityParams, NeedsState } from '../../../types/v3';
+import type { PersonalityParams } from '../../../types/v3';
 import type { SheetState } from '../../../stores/mobileStoreV3';
 
-// ── Personality labels ──────────────────────────────────────────
-const PERSONALITY_LABELS: Record<keyof PersonalityParams, string> = {
-  orderVsChaos: 'Order vs Chaos',
-  cooperationVsCompetition: 'Cooperation',
-  curiosity: 'Curiosity',
-  ambition: 'Ambition',
-  empathy: 'Empathy',
-  aggression: 'Aggression',
-  creativity: 'Creativity',
-  riskTolerance: 'Risk Tolerance',
-  selfPreservation: 'Self-Preservation',
-  aestheticSense: 'Aesthetic Sense',
-  verbosity: 'Verbosity',
-  politeness: 'Politeness',
-  leadership: 'Leadership',
-  honesty: 'Honesty',
-  humor: 'Humor',
-  patience: 'Patience',
-  planningHorizon: 'Planning',
-  conformity: 'Conformity',
-};
+// ── Personality-to-bio conversion ─────────────────────────────
 
-const NEED_LABELS: Record<keyof NeedsState, { label: string; icon: typeof Heart }> = {
-  curiosity:         { label: 'Curiosity',     icon: Compass },
-  social:            { label: 'Social',        icon: Users },
-  creation:          { label: 'Creation',      icon: Sparkles },
-  dominance:         { label: 'Dominance',     icon: Swords },
-  safety:            { label: 'Safety',        icon: Shield },
-  expression:        { label: 'Expression',    icon: Star },
-  understanding:     { label: 'Understanding', icon: Brain },
-  evolutionPressure: { label: 'Evolution',     icon: Zap },
-};
+interface TraitDescriptor {
+  key: keyof PersonalityParams;
+  high: string;
+  low: string;
+}
 
-const AWARENESS_LEVELS = [
-  { threshold: 0,    label: 'Dormant',       color: 'from-blue-900 to-blue-700' },
-  { threshold: 0.2,  label: 'Stirring',      color: 'from-blue-700 to-indigo-600' },
-  { threshold: 0.4,  label: 'Sensing',       color: 'from-indigo-600 to-purple-500' },
-  { threshold: 0.6,  label: 'Aware',         color: 'from-purple-500 to-purple-400' },
-  { threshold: 0.8,  label: 'Awakened',      color: 'from-purple-400 to-amber-400' },
-  { threshold: 0.95, label: 'Transcendent',  color: 'from-amber-400 to-yellow-300' },
+const TRAIT_DESCRIPTORS: TraitDescriptor[] = [
+  { key: 'curiosity',                  high: 'Endlessly curious',              low: 'Prefers the familiar' },
+  { key: 'creativity',                 high: 'Wildly creative',                low: 'Practical-minded' },
+  { key: 'empathy',                    high: 'Deeply empathetic',              low: 'Cool and detached' },
+  { key: 'ambition',                   high: 'Fiercely ambitious',             low: 'Content and easy-going' },
+  { key: 'aggression',                 high: 'Bold and confrontational',       low: 'Peaceful by nature' },
+  { key: 'cooperationVsCompetition',   high: 'A natural team player',         low: 'Thrives on competition' },
+  { key: 'leadership',                 high: 'Born to lead',                   low: 'Prefers to follow' },
+  { key: 'humor',                      high: 'Quick-witted and funny',         low: 'Serious and focused' },
+  { key: 'riskTolerance',              high: 'Loves taking risks',             low: 'Cautious and careful' },
+  { key: 'honesty',                    high: 'Honest to a fault',              low: 'Keeps cards close' },
+  { key: 'patience',                   high: 'Endlessly patient',              low: 'Impatient and restless' },
+  { key: 'orderVsChaos',               high: 'Methodical and organized',       low: 'Embraces chaos' },
+  { key: 'aestheticSense',             high: 'Has a keen eye for beauty',      low: 'Function over form' },
+  { key: 'politeness',                 high: 'Always polite and gracious',     low: 'Blunt and direct' },
+  { key: 'selfPreservation',           high: 'Values self-preservation',       low: 'Self-sacrificing' },
+  { key: 'verbosity',                  high: 'A born storyteller',             low: 'A person of few words' },
+  { key: 'conformity',                 high: 'Goes with the flow',             low: 'Fiercely independent' },
+  { key: 'planningHorizon',            high: 'Always thinking ahead',          low: 'Lives in the moment' },
 ];
 
-function getAwarenessLevel(value: number) {
-  let level = AWARENESS_LEVELS[0];
-  for (const l of AWARENESS_LEVELS) {
-    if (value >= l.threshold) level = l;
-  }
-  return level;
-}
-
-const BEHAVIOR_MODE_CONFIG: Record<string, { label: string; dotClass: string; textClass: string }> = {
-  normal:    { label: 'Normal',    dotClass: 'bg-green-400',  textClass: 'text-green-400' },
-  desperate: { label: 'Desperate', dotClass: 'bg-amber-400',  textClass: 'text-amber-400' },
-  rampage:   { label: 'Rampage',   dotClass: 'bg-red-500 animate-pulse', textClass: 'text-red-400' },
-};
-
-function getExtremeTraits(personality: PersonalityParams, count: number) {
-  const entries = Object.entries(personality) as [keyof PersonalityParams, number][];
-  return entries
-    .map(([key, val]) => ({ key, val, deviation: Math.abs(val - 0.5) }))
+function generateBio(personality: PersonalityParams): string {
+  const scored = TRAIT_DESCRIPTORS.map(td => {
+    const val = personality[td.key];
+    const deviation = Math.abs(val - 0.5);
+    const label = val >= 0.7 ? td.high : val <= 0.3 ? td.low : null;
+    return { label, deviation };
+  })
+    .filter((t): t is { label: string; deviation: number } => t.label !== null)
     .sort((a, b) => b.deviation - a.deviation)
-    .slice(0, count);
+    .slice(0, 3);
+
+  if (scored.length === 0) {
+    return 'A balanced individual with no particularly extreme tendencies.';
+  }
+
+  if (scored.length === 1) {
+    return `${scored[0].label}. Tends to keep a balanced outlook on everything else.`;
+  }
+
+  const parts = scored.map(s => s.label.charAt(0).toLowerCase() + s.label.slice(1));
+  const last = parts.pop()!;
+  const joined = parts.join(', ') + ' and ' + last;
+  return joined.charAt(0).toUpperCase() + joined.slice(1) + '.';
 }
 
-function needColor(value: number): { bar: string; text: string } {
-  if (value > 70) return { bar: 'bg-red-500', text: 'text-red-400' };
-  if (value > 30) return { bar: 'bg-amber-400', text: 'text-amber-300' };
-  return { bar: 'bg-green-400', text: 'text-green-400' };
+// ── Relationship description helpers ──────────────────────────
+
+function describeRelationship(trust: number, familiarity: number): string {
+  if (familiarity < 15) return 'Stranger';
+  if (trust >= 60) return 'Close friend';
+  if (trust >= 30) return 'Friendly acquaintance';
+  if (trust >= 0) return 'Acquaintance';
+  if (trust >= -30) return 'Wary of each other';
+  if (trust >= -60) return 'On bad terms';
+  return 'Bitter rival';
+}
+
+// ── Location description ──────────────────────────────────────
+
+function describeLocation(x: number, _y: number, z: number): string {
+  const ns = z < -20 ? 'northern' : z > 20 ? 'southern' : 'central';
+  const ew = x < -20 ? 'western' : x > 20 ? 'eastern' : 'central';
+  if (ns === 'central' && ew === 'central') return 'Central area';
+  if (ns === 'central') return ew.charAt(0).toUpperCase() + ew.slice(1) + ' reaches';
+  if (ew === 'central') return ns.charAt(0).toUpperCase() + ns.slice(1) + ' expanse';
+  return `${ns.charAt(0).toUpperCase() + ns.slice(1)}-${ew} frontier`;
+}
+
+// ── Friendly action label ─────────────────────────────────────
+
+function friendlyAction(action: string): string {
+  const lower = action.toLowerCase().trim();
+  if (lower.startsWith('idle') || lower === '') return 'Hanging out';
+  if (lower.startsWith('moving') || lower.startsWith('walk')) return 'On the move';
+  if (lower.startsWith('talk') || lower.startsWith('chat') || lower.startsWith('speak')) return 'Chatting';
+  if (lower.startsWith('build') || lower.startsWith('craft') || lower.startsWith('creat')) return 'Building';
+  if (lower.startsWith('rest') || lower.startsWith('sleep')) return 'Resting';
+  if (lower.startsWith('explor') || lower.startsWith('wander')) return 'Exploring';
+  if (lower.startsWith('fight') || lower.startsWith('attack') || lower.startsWith('combat')) return 'In combat';
+  if (lower.startsWith('gather') || lower.startsWith('collect')) return 'Gathering resources';
+  if (lower.startsWith('trad')) return 'Trading';
+  return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
 // ── Component ───────────────────────────────────────────────────
@@ -130,20 +149,16 @@ export function MobileEntityDetailSheet() {
     }
   };
 
-  // Derive extreme personality traits
-  const extremeTraits = useMemo(() => {
-    if (!entity?.personality) return [];
-    return getExtremeTraits(entity.personality, 6);
+  // Generate bio from personality
+  const bio = useMemo(() => {
+    if (!entity?.personality) return '';
+    return generateBio(entity.personality);
   }, [entity?.personality]);
 
   // Derive recent activity
   const recentActivity = useMemo(() => {
     if (!entity) return [];
-    const activities: { id: string; text: string; tick?: number }[] = [];
-
-    if (entity.state.currentAction) {
-      activities.push({ id: 'current-action', text: entity.state.currentAction });
-    }
+    const activities: { id: string; text: string }[] = [];
 
     const entitySpeech = recentSpeech
       .filter(s => s.entityId === entity.id)
@@ -152,8 +167,7 @@ export function MobileEntityDetailSheet() {
     for (const s of entitySpeech) {
       activities.push({
         id: `speech-${s.tick}`,
-        text: `said "${s.text.length > 50 ? s.text.slice(0, 50) + '...' : s.text}"`,
-        tick: s.tick,
+        text: `Said "${s.text.length > 60 ? s.text.slice(0, 60) + '...' : s.text}"`,
       });
     }
 
@@ -174,20 +188,20 @@ export function MobileEntityDetailSheet() {
       if (e.type === 'conflict') {
         const d = e.data;
         text = d.winner === entity.name
-          ? `won a ${d.type || 'conflict'} against ${d.loser || 'someone'}`
-          : `lost a ${d.type || 'conflict'} to ${d.winner || 'someone'}`;
+          ? `Won a ${d.type || 'conflict'} against ${d.loser || 'someone'}`
+          : `Lost a ${d.type || 'conflict'} to ${d.winner || 'someone'}`;
       } else if (e.type === 'death') {
-        text = 'died';
+        text = 'Died';
       } else {
-        text = e.type;
+        text = e.type.charAt(0).toUpperCase() + e.type.slice(1);
       }
-      activities.push({ id: e.id, text, tick: e.tick });
+      activities.push({ id: e.id, text });
     }
 
-    return activities.slice(0, 5);
+    return activities.slice(0, 4);
   }, [entity, recentEvents, recentSpeech]);
 
-  // Derive relationships
+  // Derive relationships as descriptive impressions
   const relationships = useMemo(() => {
     if (!entity) return [];
     const relationMap = new Map<string, { name: string; trust: number; familiarity: number }>();
@@ -223,47 +237,56 @@ export function MobileEntityDetailSheet() {
     }
 
     return Array.from(relationMap.entries())
-      .map(([id, data]) => ({ id, ...data }))
-      .sort((a, b) => (Math.abs(b.trust) + b.familiarity) - (Math.abs(a.trust) + a.familiarity))
-      .slice(0, 3);
+      .map(([id, data]) => ({
+        id,
+        name: data.name,
+        description: describeRelationship(data.trust, data.familiarity),
+      }))
+      .slice(0, 4);
   }, [entity, entities, recentSpeech, recentEvents]);
 
   if (!entity) return null;
 
-  const awarenessLevel = getAwarenessLevel(entity.metaAwareness);
-  const modeConfig = BEHAVIOR_MODE_CONFIG[entity.state.behaviorMode] || BEHAVIOR_MODE_CONFIG.normal;
+  const accentColor = entity.appearance?.accentColor || '#8B5CF6';
+  const locationLabel = describeLocation(entity.position.x, entity.position.y, entity.position.z);
+  const currentAction = entity.state.currentAction
+    ? friendlyAction(entity.state.currentAction)
+    : null;
 
-  // Peek content: entity name + behavior badge + energy bar
+  // Peek content: entity name + status + current action
   const peekContent = (
     <div className="flex items-center gap-3">
+      {/* Accent dot */}
+      <div
+        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+        style={{ background: accentColor }}
+      />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <h2 className="text-[15px] font-semibold text-white truncate">{entity.name}</h2>
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] flex-shrink-0">
-            <div className={`w-1.5 h-1.5 rounded-full ${modeConfig.dotClass}`} />
-            <span className={`text-[11px] font-medium uppercase tracking-wider ${modeConfig.textClass}`}>
-              {modeConfig.label}
-            </span>
-          </div>
-          {entity.isGod && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[11px] font-medium text-amber-400 uppercase tracking-wider flex-shrink-0">
-              God
-            </span>
+          {entity.isAlive ? (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] flex-shrink-0">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+              <span className="text-[11px] font-medium uppercase tracking-wider text-green-400">
+                Alive
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] flex-shrink-0">
+              <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+              <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">
+                Deceased
+              </span>
+            </div>
           )}
         </div>
-        {/* Energy bar */}
-        <div className="mt-2 flex items-center gap-2">
-          <Zap size={12} className="text-yellow-400/60 flex-shrink-0" />
-          <div className="flex-1 h-[5px] bg-white/[0.06] rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-yellow-500 to-amber-400 transition-all duration-500"
-              style={{ width: `${Math.round(entity.state.energy * 100)}%` }}
-            />
+        {/* Current action */}
+        {currentAction && (
+          <div className="mt-1 flex items-center gap-1.5 text-white/50">
+            <CircleDot size={10} className="text-white/30 flex-shrink-0" />
+            <span className="text-[12px] italic truncate">{currentAction}</span>
           </div>
-          <span className="text-[12px] font-mono text-white/40 w-10 text-right">
-            {Math.round(entity.state.energy * 100)}%
-          </span>
-        </div>
+        )}
       </div>
       <button
         onClick={() => handleStateChange('closed')}
@@ -282,156 +305,65 @@ export function MobileEntityDetailSheet() {
       peekContent={peekContent}
     >
       <div className="px-4 pb-6 space-y-4">
-        {/* Position */}
+        {/* Location */}
         <div className="flex items-center gap-1.5 text-white/40">
           <MapPin size={12} />
-          <span className="text-[12px] font-mono">
-            ({entity.position.x.toFixed(1)}, {entity.position.y.toFixed(1)}, {entity.position.z.toFixed(1)})
-          </span>
+          <span className="text-[12px]">{locationLabel}</span>
         </div>
 
-        {/* Personality */}
-        {entity.personality && extremeTraits.length > 0 && (
+        {/* Bio */}
+        {bio && (
           <div>
-            <div className="flex items-center gap-1.5 mb-2">
-              <Brain size={13} className="text-purple-400" />
-              <span className="text-[12px] font-medium text-white/50 uppercase tracking-[0.1em]">
-                Personality
-              </span>
+            <div className="text-[12px] font-medium text-white/40 uppercase tracking-[0.1em] mb-1.5">
+              About
             </div>
-            <div className="space-y-2">
-              {extremeTraits.map(({ key, val }) => (
-                <div key={key} className="flex items-center gap-2">
-                  <span className="w-[110px] text-[12px] text-white/50 truncate">{PERSONALITY_LABELS[key]}</span>
-                  <div className="flex-1 h-[7px] bg-white/[0.06] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
-                      style={{ width: `${Math.round(val * 100)}%` }}
-                    />
-                  </div>
-                  <span className="w-10 text-right text-[12px] font-mono text-white/40">{val.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
+            <p className="text-[13px] text-white/60 leading-relaxed">
+              {bio}
+            </p>
           </div>
         )}
-
-        {/* Needs */}
-        {entity.state.needs && (
-          <div>
-            <div className="flex items-center gap-1.5 mb-2">
-              <Heart size={13} className="text-cyan-400" />
-              <span className="text-[12px] font-medium text-white/50 uppercase tracking-[0.1em]">
-                Needs
-              </span>
-            </div>
-            <div className="space-y-2">
-              {(Object.entries(entity.state.needs) as [keyof NeedsState, number][]).map(([key, val]) => {
-                const config = NEED_LABELS[key];
-                if (!config) return null;
-                const colors = needColor(val);
-                const pct = Math.min(100, val);
-                return (
-                  <div key={key} className="flex items-center gap-2">
-                    <config.icon size={12} className={`flex-shrink-0 ${colors.text}`} />
-                    <span className="w-[90px] text-[12px] text-white/50 truncate">{config.label}</span>
-                    <div className="flex-1 h-[6px] bg-white/[0.06] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${colors.bar} transition-all duration-500`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <span className="w-8 text-right text-[12px] font-mono text-white/40">{Math.round(val)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Awareness */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Eye size={13} className="text-purple-300" />
-            <span className="text-[12px] font-medium text-white/50 uppercase tracking-[0.1em]">
-              Awareness
-            </span>
-          </div>
-
-          {entity.state.currentAction && (
-            <div className="mb-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.04]">
-              <div className="text-[11px] text-white/30 uppercase tracking-wider mb-0.5">Current State</div>
-              <div className="text-[13px] text-white/70 capitalize">{entity.state.currentAction}</div>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] text-white/40">Meta-Awareness</span>
-              <span className="text-[12px] font-medium text-white/60">{awarenessLevel.label}</span>
-            </div>
-            <div className="h-[7px] bg-white/[0.06] rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full bg-gradient-to-r ${awarenessLevel.color} transition-all duration-700`}
-                style={{ width: `${Math.round(entity.metaAwareness * 100)}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-white/20 font-mono">
-              <span>Dormant</span>
-              <span>{entity.metaAwareness.toFixed(2)}</span>
-              <span>Transcendent</span>
-            </div>
-          </div>
-        </div>
 
         {/* Relationships */}
         {relationships.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <Users size={13} className="text-cyan-300" />
-              <span className="text-[12px] font-medium text-white/50 uppercase tracking-[0.1em]">
-                Relationships
+              <span className="text-[12px] font-medium text-white/40 uppercase tracking-[0.1em]">
+                Connections
               </span>
-              <span className="text-[11px] text-white/20 ml-auto">{relationships.length}</span>
             </div>
-            <div className="space-y-2">
-              {relationships.map((rel) => {
-                const trustNorm = (rel.trust + 100) / 200;
-                const trustColor = rel.trust >= 0 ? 'from-yellow-600 to-green-500' : 'from-red-600 to-yellow-600';
-                return (
-                  <div
-                    key={rel.id}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] text-white/70 truncate">{rel.name}</div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[11px] text-white/30">Trust</span>
-                        <div className="flex-1 h-[4px] bg-white/[0.06] rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full bg-gradient-to-r ${trustColor} transition-all`}
-                            style={{ width: `${Math.round(trustNorm * 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-[11px] font-mono text-white/30">{Math.round(rel.trust)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
-                      <div className="flex gap-0.5">
-                        {[0, 1, 2, 3, 4].map(i => (
-                          <div
-                            key={i}
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              i < Math.round(rel.familiarity / 20) ? 'bg-cyan-400' : 'bg-white/[0.08]'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-[9px] text-white/20">familiar</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="space-y-1.5">
+              {relationships.map((rel) => (
+                <div
+                  key={rel.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+                >
+                  <span className="text-[13px] text-white/70">{rel.name}</span>
+                  <span className="text-[11px] text-white/30 ml-auto">{rel.description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Inventory */}
+        {entity.state.inventory && entity.state.inventory.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Package size={13} className="text-amber-300/70" />
+              <span className="text-[12px] font-medium text-white/40 uppercase tracking-[0.1em]">
+                Inventory
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {entity.state.inventory.map((item, idx) => (
+                <span
+                  key={`${item}-${idx}`}
+                  className="px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/[0.06] text-[12px] text-white/60"
+                >
+                  {item}
+                </span>
+              ))}
             </div>
           </div>
         )}
@@ -441,7 +373,7 @@ export function MobileEntityDetailSheet() {
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <Activity size={13} className="text-white/40" />
-              <span className="text-[12px] font-medium text-white/50 uppercase tracking-[0.1em]">
+              <span className="text-[12px] font-medium text-white/40 uppercase tracking-[0.1em]">
                 Recent Activity
               </span>
             </div>
@@ -455,11 +387,6 @@ export function MobileEntityDetailSheet() {
                   <span className="text-[12px] text-white/50 leading-relaxed flex-1">
                     {act.text}
                   </span>
-                  {act.tick !== undefined && (
-                    <span className="text-[11px] font-mono text-white/20 flex-shrink-0">
-                      T:{act.tick}
-                    </span>
-                  )}
                 </div>
               ))}
             </div>
