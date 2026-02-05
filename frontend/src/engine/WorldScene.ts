@@ -110,10 +110,9 @@ export class WorldScene {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Cinematic tone mapping (ACESFilmic for rich color grading)
-    // Exposure reduced to prevent washed-out appearance
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
+    // DEBUG: Disable tone mapping for troubleshooting
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
     this.scene = new THREE.Scene();
 
@@ -139,7 +138,12 @@ export class WorldScene {
     // Procedural equirectangular sky: replaces the old sky dome mesh with a
     // canvas-rendered texture featuring stars, aurora, moon, and clouds.
     // Also sets scene.environment for PBR reflections on all materials.
-    this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
+    // DEBUG: Disabled for troubleshooting
+    // this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
+
+    // DEBUG: Use a simple solid color background instead
+    this.scene.background = new THREE.Color(0x111122);
+    this.skyTexture = null;
 
     // Post-processing pipeline
     // DEBUG: Simplified pipeline to troubleshoot rendering issues
@@ -275,16 +279,13 @@ export class WorldScene {
   // ---- Scene Setup ----
 
   private setupLighting(): void {
-    // Ambient light: subtle blue-purple moonlight tint
-    const ambient = new THREE.AmbientLight(0x2a1a4e, 0.5);
+    // DEBUG: Simplified lighting for troubleshooting
+    // Strong ambient light so everything is visible
+    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
     this.scene.add(ambient);
 
-    // Hemisphere light: deep blue sky / warm amber ground for natural ambient
-    const hemi = new THREE.HemisphereLight(0x1a1a5e, 0xcc8844, 0.4);
-    this.scene.add(hemi);
-
-    // Directional light: warm sunset/twilight tone (the "last light" in the sky)
-    const directional = new THREE.DirectionalLight(0xffd4a0, 0.9);
+    // Strong directional light from above
+    const directional = new THREE.DirectionalLight(0xffffff, 1.0);
     directional.position.set(50, 100, 30);
     directional.castShadow = true;
     directional.shadow.mapSize.width = 2048;
@@ -298,19 +299,7 @@ export class WorldScene {
     directional.shadow.bias = -0.001;
     this.scene.add(directional);
 
-    // Point lights for atmosphere (purple and cyan theme -- Kaguya-hime feel)
-    const purpleLight = new THREE.PointLight(0x7b2ff7, 0.6, 250);
-    purpleLight.position.set(-30, 20, -30);
-    this.scene.add(purpleLight);
-
-    const cyanLight = new THREE.PointLight(0x00d4ff, 0.6, 250);
-    cyanLight.position.set(30, 15, 30);
-    this.scene.add(cyanLight);
-
-    // Additional soft pink/magenta fill from opposite side (anime glow feel)
-    const pinkLight = new THREE.PointLight(0xff69b4, 0.3, 300);
-    pinkLight.position.set(0, 40, -50);
-    this.scene.add(pinkLight);
+    console.log('[DEBUG] Lighting setup complete');
   }
 
   private setupEnvironment(): void {
