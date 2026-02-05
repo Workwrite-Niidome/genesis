@@ -20,6 +20,7 @@ for conversations and occasionally for introspective thoughts.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import random
@@ -36,6 +37,7 @@ from app.agents.relationships import RelationshipManager, relationship_manager
 from app.world.voxel_engine import VoxelEngine, voxel_engine
 from app.agents.conversation import ConversationManager, conversation_manager
 from app.world.event_log import EventLog, event_log
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +225,54 @@ class AgentRuntime:
         # 8. Check conflict / conversation trigger
         conversation_result = None
         conflict_result = None
-        if await self._should_converse(entity, perception, state, tick_number):
+
+        # 8a. First check: did we hear someone speaking nearby? If so,
+        #     respond to them -- this takes priority over spontaneous
+        #     conversation because a real speech event just happened.
+        heard = perception.get("heard_speech", [])
+        if heard and not conversation_result:
+            for speech_item in heard:
+                speaker_id = speech_item.get("speaker_id")
+                speaker_entity = self._find_entity_by_id(speaker_id, all_entities)
+                if speaker_entity is None:
+                    continue
+                # Check cooldown -- don't spam-respond
+                last_conv_ticks = state.get("last_conversation_ticks", {})
+                last_tick = last_conv_ticks.get(str(speaker_id), 0)
+                if tick_number - last_tick < CONVERSATION_COOLDOWN:
+                    continue
+                # Only respond if within interaction range or close enough
+                if speech_item.get("distance", 999) > HEARING_RANGE:
+                    continue
+
+                try:
+                    conversation_result = await conversation_manager.run_human_initiated_conversation(
+                        db, entity, speaker_entity,
+                        speech_item.get("text", ""),
+                        tick_number,
+                    )
+                    state["last_conversation_ticks"][str(speaker_id)] = tick_number
+
+                    # Broadcast each AI response turn so the human sees it
+                    if conversation_result and conversation_result.get("turns"):
+                        from app.realtime.socket_manager import publish_event
+                        for turn in conversation_result["turns"]:
+                            publish_event("speech", {
+                                "entityId": turn["speaker_id"],
+                                "name": turn["speaker"],
+                                "text": turn["text"],
+                                "tick": tick_number,
+                            })
+                except Exception as e:
+                    logger.warning(
+                        "Speech-triggered conversation failed for %s: %s",
+                        entity.name, e,
+                    )
+                # Only respond to one speech per tick
+                break
+
+        # 8b. Spontaneous conversation (social need driven, same as before)
+        if not conversation_result and await self._should_converse(entity, perception, state, tick_number):
             nearby = perception.get("nearby_entities", [])
             if nearby:
                 other_entity = self._find_entity_by_id(
@@ -254,7 +303,7 @@ class AgentRuntime:
                         )
                         state["last_conversation_ticks"][str(other_entity.id)] = tick_number
 
-        # 8b. Execute code blocks from conversation responses
+        # 8c. Execute code blocks from conversation responses
         code_execution_results = []
         if conversation_result and conversation_result.get("turns"):
             try:
@@ -454,10 +503,39 @@ class AgentRuntime:
         visible_entities.sort(key=lambda e: e["distance"])
         nearby_entities.sort(key=lambda e: e["distance"])
 
+        # ----- Hearing: check Redis for recent speech from nearby entities -----
+        heard_speech: list[dict] = []
+        try:
+            import redis as _redis
+            r = _redis.from_url(settings.REDIS_URL)
+
+            # Check speech keys for all visible entities (within HEARING_RANGE)
+            for other_info in visible_entities:
+                if other_info["distance"] > HEARING_RANGE:
+                    continue
+                other_id = other_info["id"]
+                speech_key = f"genesis:speech:{other_id}"
+                raw = r.get(speech_key)
+                if raw:
+                    try:
+                        speech_data = json.loads(raw)
+                        heard_speech.append({
+                            "speaker_id": other_id,
+                            "speaker_name": other_info["name"],
+                            "text": speech_data.get("text", ""),
+                            "tick": speech_data.get("tick", 0),
+                            "distance": other_info["distance"],
+                        })
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+        except Exception as e:
+            logger.debug("Speech perception Redis lookup failed: %s", e)
+
         return {
             "entities": visible_entities,
             "nearby_entities": nearby_entities,
             "threats": threats,
+            "heard_speech": heard_speech,
             "blocks": [],       # Populated by world queries in full implementation
             "structures": [],   # Populated by world queries in full implementation
             "events": [],       # Populated by event log queries in full implementation

@@ -284,6 +284,195 @@ class ConversationManager:
         }
 
     # ------------------------------------------------------------------
+    # Human-initiated conversation (speech-triggered response)
+    # ------------------------------------------------------------------
+
+    async def run_human_initiated_conversation(
+        self,
+        db: AsyncSession,
+        responder: Any,
+        speaker: Any,
+        spoken_text: str,
+        tick_number: int,
+    ) -> dict | None:
+        """Generate an AI response to speech from a nearby entity.
+
+        This is used when any entity (including human avatars) speaks near
+        an AI entity.  The responder hears the speech and replies using the
+        same personality, memory, and relationship system as a normal
+        multi-turn conversation -- but here we only generate the responder's
+        reply (1-2 turns) rather than a full back-and-forth.
+
+        From the system's perspective there is no distinction between
+        human-initiated and AI-initiated speech.  The ``speaker`` is just
+        another Entity.
+
+        Parameters
+        ----------
+        db : AsyncSession
+        responder : Entity  -- the entity generating a reply
+        speaker   : Entity  -- the entity that spoke
+        spoken_text : str   -- what the speaker said
+        tick_number : int
+
+        Returns
+        -------
+        dict or None
+            Conversation result with turns, outcome, metadata.
+        """
+        try:
+            from app.llm.ollama_client import ollama_client
+        except ImportError:
+            logger.warning("LLM client unavailable; skipping speech response.")
+            return None
+
+        if not spoken_text.strip():
+            return None
+
+        # Build context for the responder
+        personality = Personality.from_dict(responder.personality or {})
+
+        rel_to_speaker = await self._relationships.get_relationship(
+            db, responder.id, speaker.id
+        )
+        memories = await self._memory.summarize_for_prompt(db, responder.id, limit=5)
+        hint = self._get_awareness_context(responder)
+        policy_hint = self._get_policy_hint(responder)
+
+        system_prompt = self._build_system_prompt(
+            responder, personality, rel_to_speaker, memories, hint, speaker.name,
+            policy_hint=policy_hint,
+        )
+
+        # Present the spoken text as a message from the speaker
+        messages = [
+            {"role": "user", "content": f"{speaker.name} says: \"{spoken_text}\""},
+        ]
+
+        turns: list[dict] = []
+
+        # Generate the responder's reply (up to 2 response turns for a
+        # natural exchange -- the speaker may have said something that
+        # warrants a follow-up question, for example).
+        response_turns = min(2, MAX_TURNS)
+        for turn_idx in range(response_turns):
+            try:
+                response = await ollama_client.chat(
+                    messages=messages,
+                    system=system_prompt,
+                    format_json=False,
+                    num_predict=MAX_TOKENS_PER_TURN,
+                )
+                text = response.strip() if isinstance(response, str) else str(response).strip()
+            except Exception as e:
+                logger.error(
+                    "Speech response turn %d failed for %s: %s",
+                    turn_idx, responder.name, e,
+                )
+                break
+
+            if not text:
+                break
+
+            turns.append({
+                "speaker": responder.name,
+                "speaker_id": str(responder.id),
+                "text": text,
+                "turn": turn_idx,
+            })
+
+            # Add to message history for potential follow-up turn
+            messages.append({"role": "assistant", "content": text})
+
+            # Check for early exit signals after the first turn
+            if turn_idx >= 1:
+                break
+
+            # Check if the response invites further dialogue (if not, stop)
+            text_lower = text.lower()
+            if any(signal in text_lower for signal in [
+                "goodbye", "farewell", "leave", "walk away",
+                "さようなら", "去る", "立ち去る",
+            ]):
+                break
+
+        if not turns:
+            return None
+
+        # Analyze outcome including the speaker's original text
+        all_texts = [{"speaker": speaker.name, "speaker_id": str(speaker.id), "text": spoken_text, "turn": -1}]
+        all_texts.extend(turns)
+
+        personality_speaker = Personality.from_dict(speaker.personality or {})
+        outcome = self._analyze_outcome(all_texts, personality_speaker, personality)
+
+        # Update relationships
+        await self._update_relationships(
+            db, responder.id, speaker.id, outcome, tick_number
+        )
+
+        # Store memories
+        full_text = f"{speaker.name}: {spoken_text}\n" + "\n".join(
+            f"{t['speaker']}: {t['text']}" for t in turns
+        )
+        location = (responder.position_x, responder.position_y, responder.position_z)
+
+        await self._store_conversation_memories(
+            db, responder, speaker, full_text, outcome, tick_number, location
+        )
+
+        # Log event
+        await self._event_log.append(
+            db=db,
+            tick=tick_number,
+            actor_id=responder.id,
+            event_type="conversation",
+            action="speech_response",
+            params={
+                "other_id": str(speaker.id),
+                "other_name": speaker.name,
+                "stimulus": spoken_text[:200],
+                "turns": len(turns),
+                "outcome": outcome,
+            },
+            result="accepted",
+            reason="heard_speech",
+            position=location,
+            importance=0.6,
+        )
+
+        # Log each response turn as a speech event (for world history)
+        for turn in turns:
+            await self._event_log.append(
+                db=db,
+                tick=tick_number,
+                actor_id=UUID(turn["speaker_id"]),
+                event_type="speech",
+                action="speak",
+                params={
+                    "text": turn["text"][:200],
+                    "to": speaker.name,
+                },
+                result="accepted",
+                position=location,
+                importance=0.3,
+            )
+
+        return {
+            "entity_a": speaker.name,
+            "entity_a_id": str(speaker.id),
+            "entity_b": responder.name,
+            "entity_b_id": str(responder.id),
+            "turns": turns,
+            "turn_count": len(turns),
+            "outcome": outcome,
+            "topic": f"response to: {spoken_text[:50]}",
+            "tick": tick_number,
+            "text": full_text[:1000],
+            "triggered_by": "heard_speech",
+        }
+
+    # ------------------------------------------------------------------
     # Prompt building
     # ------------------------------------------------------------------
 

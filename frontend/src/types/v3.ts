@@ -255,4 +255,6 @@ export interface SocketSpeechEvent {
   text: string;
   position: Vector3;
   tick: number;
+  /** ISO language code detected by the backend (e.g. "EN", "JA"). */
+  sourceLang?: string;
 }

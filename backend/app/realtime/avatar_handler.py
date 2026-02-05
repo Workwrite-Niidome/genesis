@@ -17,6 +17,7 @@ All actions go through WorldServer.process_proposal() for validation.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -216,6 +217,8 @@ async def handle_avatar_speak(sid: str, data: dict):
     """Human types a chat message. Appears as speech event.
 
     Expects: { text: str }
+    The broadcast includes the detected source language so clients can
+    request translation on the fly.
     """
     session = _get_session(sid)
     if not session:
@@ -232,6 +235,14 @@ async def handle_avatar_speak(sid: str, data: dict):
     if len(text) > 500:
         text = text[:500]
 
+    # Detect language for cross-language translation support
+    source_lang = "EN"
+    try:
+        from app.services.translation import translation_service
+        source_lang = await translation_service.detect_language(text)
+    except Exception as exc:
+        logger.debug("Language detection skipped: %s", exc)
+
     async with async_session() as db:
         tick = await _get_current_tick(db)
         from app.world.world_server import world_server
@@ -245,13 +256,33 @@ async def handle_avatar_speak(sid: str, data: dict):
         await db.commit()
 
         if result.get("status") == "accepted":
-            # Broadcast speech event (same format as AI speech)
+            # Broadcast speech event with source language for translation
             publish_event("speech", {
                 "entityId": str(session.entity_id),
                 "name": session.entity_name,
                 "text": text,
                 "tick": tick,
+                "sourceLang": source_lang,
             })
+
+            # Store speech in Redis so nearby AI entities perceive it
+            # during their next tick cycle.  The key expires after 30
+            # seconds to avoid stale data accumulation.
+            try:
+                import redis as _redis
+                r = _redis.from_url(settings.REDIS_URL)
+                r.setex(
+                    f"genesis:speech:{session.entity_id}",
+                    30,
+                    json.dumps({
+                        "text": text,
+                        "tick": tick,
+                        "speaker_name": session.entity_name,
+                        "entity_id": str(session.entity_id),
+                    }),
+                )
+            except Exception as e:
+                logger.warning("Failed to store speech in Redis for %s: %s", session.entity_name, e)
 
 
 @sio.on("avatar_build")

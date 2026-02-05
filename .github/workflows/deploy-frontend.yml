@@ -3,18 +3,29 @@ name: Deploy Frontend to Cloudflare Pages
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:
+
+env:
+  VITE_API_URL: https://api.genesis-pj.net
+  VITE_WS_URL: wss://api.genesis-pj.net
 
 jobs:
   deploy:
+    name: Build & Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
+      deployments: write
 
-      - name: Setup Node.js
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -22,22 +33,15 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
         working-directory: frontend
+        run: npm ci --no-audit --no-fund
 
-      - name: Build
-        run: npx vite build
+      - name: Build frontend
         working-directory: frontend
         env:
-          VITE_API_URL: https://api.genesis-pj.net
-
-      - name: Create Pages project if not exists
-        uses: cloudflare/wrangler-action@v3
-        continue-on-error: true
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages project create genesis-frontend --production-branch=master
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+          VITE_WS_URL: ${{ env.VITE_WS_URL }}
+        run: npm run build
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

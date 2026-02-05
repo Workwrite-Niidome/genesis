@@ -14,6 +14,7 @@ import { AvatarController } from '../../engine/AvatarController';
 import { useWorldStoreV3 } from '../../stores/worldStoreV3';
 import { useObserverStore } from '../../stores/observerStore';
 import { connectSocket, getSocket } from '../../services/socket';
+import { translateText, needsTranslation, normalizeToDeepL } from '../../services/translation';
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -37,6 +38,11 @@ interface ChatMessage {
   id: string;
   entityName: string;
   text: string;
+  originalText: string;
+  translatedText?: string;
+  sourceLang?: string;
+  isTranslated: boolean;
+  showOriginal: boolean;
   timestamp: number;
 }
 
@@ -241,7 +247,7 @@ export default function PlayView() {
     clearVoxelUpdates();
   }, [pendingVoxelUpdates, clearVoxelUpdates]);
 
-  // ── Handle speech events -> chat messages ──────────────────
+  // ── Handle speech events -> chat messages (with translation) ──
 
   useEffect(() => {
     if (recentSpeech.length === 0) return;
@@ -252,14 +258,42 @@ export default function PlayView() {
       sceneRef.current.handleSpeechEvent(latest);
     }
 
-    // Add to chat overlay
+    const msgId = `${latest.entityId}-${latest.tick}-${Date.now()}`;
+    const userLang = i18n.language;
+
+    // Add message to chat immediately (original text)
     const msg: ChatMessage = {
-      id: `${latest.entityId}-${latest.tick}-${Date.now()}`,
+      id: msgId,
       entityName: latest.entityName,
       text: latest.text,
+      originalText: latest.text,
+      sourceLang: latest.sourceLang,
+      isTranslated: false,
+      showOriginal: false,
       timestamp: Date.now(),
     };
     setChatMessages((prev) => [...prev.slice(-29), msg]);
+
+    // If the source language differs from user language, auto-translate
+    if (needsTranslation(latest.sourceLang, userLang)) {
+      translateText(latest.text, userLang, latest.sourceLang).then((translated) => {
+        if (translated && translated !== latest.text) {
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === msgId
+                ? {
+                    ...m,
+                    text: translated,
+                    translatedText: translated,
+                    isTranslated: true,
+                  }
+                : m,
+            ),
+          );
+        }
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentSpeech]);
 
   // ── Fade old chat messages ─────────────────────────────────
