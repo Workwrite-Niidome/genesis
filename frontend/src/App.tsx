@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import './services/i18n';
 import { useWorldStore } from './stores/worldStore';
@@ -8,6 +8,8 @@ import ObserverView from './pages/ObserverView';
 import AdminView from './pages/AdminView';
 import AgentDashboard from './pages/AgentDashboard';
 import { WorldViewV3 } from './components/world/WorldViewV3';
+
+const PlayView = lazy(() => import('./components/world/PlayView'));
 
 function App() {
   const fetchState = useWorldStore((s) => s.fetchState);
@@ -46,6 +48,15 @@ function App() {
         <div className="w-screen h-screen">
           <WorldViewV3 />
         </div>
+      } />
+      <Route path="/play" element={
+        <Suspense fallback={
+          <div className="w-screen h-screen bg-gray-900 flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        }>
+          <PlayView />
+        </Suspense>
       } />
     </Routes>
   );

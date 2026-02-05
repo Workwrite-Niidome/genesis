@@ -36,6 +36,12 @@ async def connect(sid, environ):
 @sio.event
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
+    # Clean up avatar session if this was a human player
+    try:
+        from app.realtime.avatar_handler import cleanup_avatar_session
+        await cleanup_avatar_session(sid)
+    except ImportError:
+        pass
 
 
 def publish_event(event_type: str, data: dict | list) -> None:

@@ -167,6 +167,10 @@ async def _process_tick_v3():
 
         # ── 3. Age & passive energy drain ─────────────────────────────
         for entity in entities:
+            # Human avatars don't age or drain energy
+            if entity.origin_type == "human_avatar":
+                continue
+
             state = dict(entity.state) if entity.state else {}
 
             # Increment age
@@ -196,6 +200,10 @@ async def _process_tick_v3():
         conversations = 0
 
         for entity in entities:
+            # Skip human avatars — they are controlled via WebSocket, not the AI agent runtime
+            if entity.origin_type == "human_avatar":
+                continue
+
             try:
                 summary = await agent_runtime.tick(
                     db=db,
@@ -312,6 +320,9 @@ async def _check_deaths(
 
     for entity in entities:
         if not entity.is_alive:
+            continue
+        # Human avatars don't die from energy exhaustion
+        if entity.origin_type == "human_avatar":
             continue
 
         state = dict(entity.state) if entity.state else {}

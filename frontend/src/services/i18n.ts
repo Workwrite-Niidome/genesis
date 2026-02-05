@@ -365,6 +365,23 @@ const en = {
     agent_no_events: 'No events recorded yet',
     agent_no_relationships: 'No relationships formed yet',
     agent_login_required: 'Sign in to manage your agents',
+
+    // Play mode
+    press_enter_chat: 'Press Enter to chat',
+    press_escape_menu: 'Press ESC for menu',
+    press_b_build: 'Toggle build',
+    building_mode: 'Building',
+    chat_mode: 'Chat',
+    play_mode: 'Move',
+    leave_world: 'Leave World',
+    resume: 'Resume',
+    enter_world: 'Enter World',
+    avatar_name: 'Avatar Name',
+    create_avatar: 'Create Avatar',
+    avatar_created: 'Avatar created',
+    connecting: 'Connecting...',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
   },
 };
 
@@ -732,6 +749,23 @@ const ja = {
     agent_no_events: 'まだイベントがありません',
     agent_no_relationships: 'まだ関係がありません',
     agent_login_required: 'エージェントを管理するにはログインしてください',
+
+    // Play mode
+    press_enter_chat: 'Enterでチャット',
+    press_escape_menu: 'ESCでメニュー',
+    press_b_build: '建設切替',
+    building_mode: '建設モード',
+    chat_mode: 'チャット',
+    play_mode: '移動',
+    leave_world: 'ワールドを離れる',
+    resume: '再開',
+    enter_world: 'ワールドに入る',
+    avatar_name: 'アバター名',
+    create_avatar: 'アバター作成',
+    avatar_created: 'アバター作成完了',
+    connecting: '接続中...',
+    connected: '接続済み',
+    disconnected: '切断',
   },
 };
 
