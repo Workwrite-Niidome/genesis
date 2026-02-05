@@ -153,6 +153,7 @@ class GOAPPlanner:
         needs: dict[str, float],
         perception: dict,
         personality: Personality,
+        agent_policy: dict | None = None,
     ) -> list[dict]:
         """Select the best goal based on needs, then find an action sequence.
 
@@ -191,7 +192,7 @@ class GOAPPlanner:
             return [{"action": "rest", "params": {}, "reason": "energy_critical"}]
 
         # Select goal
-        goal_name = self._select_goal(needs, perception, personality, behavior_mode)
+        goal_name = self._select_goal(needs, perception, personality, behavior_mode, agent_policy)
         logger.debug("Selected goal: %s (mode=%s)", goal_name, behavior_mode)
 
         # Find actions to achieve goal
@@ -213,6 +214,7 @@ class GOAPPlanner:
         perception: dict,
         personality: Personality,
         behavior_mode: str,
+        agent_policy: dict | None = None,
     ) -> str:
         """Select the highest priority goal based on needs, personality, and context.
 
@@ -283,6 +285,23 @@ class GOAPPlanner:
             # Nobody around: reduce social goals, boost exploration
             goal_scores["satisfy_social"] = goal_scores.get("satisfy_social", 50.0) - 20.0
             goal_scores["satisfy_curiosity"] = goal_scores.get("satisfy_curiosity", 50.0) + 10.0
+
+        # Agent policy influence (for user agents with directives)
+        if agent_policy:
+            directive = str(agent_policy.get("current_directive", "")).lower()
+            if directive:
+                _POLICY_KEYWORDS: dict[str, list[str]] = {
+                    "satisfy_curiosity": ["explore", "discover", "investigate", "search", "find", "探索", "発見", "調べ"],
+                    "satisfy_social": ["friend", "talk", "meet", "social", "together", "仲間", "話", "会う"],
+                    "satisfy_creation": ["build", "create", "construct", "art", "作", "建て", "創"],
+                    "satisfy_dominance": ["power", "territory", "control", "conquer", "支配", "領土", "制圧"],
+                    "seek_safety": ["safe", "careful", "avoid", "danger", "安全", "注意", "避け"],
+                    "satisfy_expression": ["express", "write", "sign", "speak", "表現", "書く", "語る"],
+                    "satisfy_understanding": ["learn", "understand", "study", "analyze", "学", "理解", "研究"],
+                }
+                for goal_key, keywords in _POLICY_KEYWORDS.items():
+                    if any(kw in directive for kw in keywords):
+                        goal_scores[goal_key] = goal_scores.get(goal_key, 50.0) + 25.0
 
         # Small random jitter to prevent deterministic loops (+-5)
         for goal_name in goal_scores:

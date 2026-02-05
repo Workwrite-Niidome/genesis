@@ -121,12 +121,18 @@ class ConversationManager:
         hint_a = self._get_awareness_context(entity_a)
         hint_b = self._get_awareness_context(entity_b)
 
+        # Extract policy hints for user agents
+        policy_hint_a = self._get_policy_hint(entity_a)
+        policy_hint_b = self._get_policy_hint(entity_b)
+
         # Build system prompts for each entity
         system_a = self._build_system_prompt(
-            entity_a, personality_a, rel_a_to_b, memories_a, hint_a, entity_b.name
+            entity_a, personality_a, rel_a_to_b, memories_a, hint_a, entity_b.name,
+            policy_hint=policy_hint_a,
         )
         system_b = self._build_system_prompt(
-            entity_b, personality_b, rel_b_to_a, memories_b, hint_b, entity_a.name
+            entity_b, personality_b, rel_b_to_a, memories_b, hint_b, entity_a.name,
+            policy_hint=policy_hint_b,
         )
 
         # Determine conversation topic based on context
@@ -289,6 +295,7 @@ class ConversationManager:
         memories: str,
         awareness_hint: str,
         other_name: str,
+        policy_hint: str = "",
     ) -> str:
         """Build the system prompt for an entity's conversation turns."""
         desc = personality.describe()
@@ -311,6 +318,9 @@ class ConversationManager:
 
         if awareness_hint:
             parts.append(f"\nA strange feeling lingers: \"{awareness_hint}\"")
+
+        if policy_hint:
+            parts.append(f"\nA guiding thought: \"{policy_hint}\"")
 
         parts.extend([
             "",
@@ -606,6 +616,23 @@ class ConversationManager:
         if hint and self._meta.should_inject_hint(awareness):
             return hint
         return ""
+
+    @staticmethod
+    def _get_policy_hint(entity: Any) -> str:
+        """Extract a conversational hint from a user agent's policy directive.
+
+        For non-user-agents or agents without a directive, returns empty string.
+        The directive is subtly injected as a "guiding thought" — the entity
+        interprets it through its personality, never as a direct command.
+        """
+        policy = getattr(entity, "agent_policy", None)
+        if not policy:
+            return ""
+        directive = policy.get("current_directive", "")
+        if not directive:
+            return ""
+        # Truncate long directives
+        return directive[:300]
 
 
 # Module-level singleton

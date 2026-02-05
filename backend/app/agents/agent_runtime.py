@@ -207,7 +207,10 @@ class AgentRuntime:
         await self._decay_relationships(db, entity_id, tick_number)
 
         # 5. Plan actions (GOAP, no LLM)
-        plan = self._planner.plan(entity_state, needs, perception, personality)
+        plan = self._planner.plan(
+            entity_state, needs, perception, personality,
+            agent_policy=entity.agent_policy,
+        )
 
         # 6. Execute actions
         action_results = await self._execute_actions(
