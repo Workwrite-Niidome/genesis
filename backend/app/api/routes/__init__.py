@@ -3,8 +3,12 @@ from fastapi import APIRouter, Depends
 from app.api.auth import require_admin
 from app.api.routes import world, god, ais, concepts, history, thoughts, deploy, interactions, artifacts, observers, board, saga
 from app.api.routes import world_v3, entities, building, agents, avatar
+from app.api.routes import auth_oauth
 
 api_router = APIRouter(prefix="/api")
+
+# --- Auth routes ---
+api_router.include_router(auth_oauth.router, tags=["auth"])
 
 # --- v2 routes (backward-compatible) ---
 api_router.include_router(world.router, prefix="/world", tags=["world"])

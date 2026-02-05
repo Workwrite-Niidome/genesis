@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     MAX_AGENTS_PER_USER_FREE: int = 1
     MAX_AGENTS_PER_USER_PREMIUM: int = 5
 
+    # OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    OAUTH_REDIRECT_BASE: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # Translation
     DEEPL_API_KEY: Optional[str] = None
 

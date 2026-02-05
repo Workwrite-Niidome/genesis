@@ -1,645 +1,503 @@
-"""Artifact Engine: Processes AI encounters with artifacts in the world.
+"""GENESIS v3 Artifact Engine -- artifacts stored as WorldEvent entries.
 
-AIs near artifacts may interact with them mechanically (no LLM calls needed):
-- art: appreciate -> relationship with creator, emotion "inspired"
-- song: listen -> relationship with creator, emotion "moved", shared experience
-- tool: use -> equipment effects based on description keywords
-- architecture: visit -> shelter bonus (2x rest), emotion "awed"
-- story/law: read -> high-importance memory with excerpt, 100% concept spread
-
-Also provides rich artifact content extraction for AI cognition.
+Interaction types: art, song, tool/code, architecture, story/law,
+prophecy, manifesto, language. Each processed mechanically (no LLM).
 """
 
 import logging
 import re
-import random
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ai import AI, AIMemory
-from app.models.artifact import Artifact
+from app.models.entity import Entity
+from app.models.world import WorldEvent
+from app.agents.memory import MemoryManager
 
 logger = logging.getLogger(__name__)
+memory_manager = MemoryManager()
 
-# Radius within which AIs can interact with artifacts
 ARTIFACT_INTERACTION_RADIUS = 60.0
-
-# Minimum ticks between an AI re-interacting with the same artifact
 ARTIFACT_COOLDOWN_TICKS = 20
 
-# ── Tool Effect Classification ──────────────────────────────────
+# ── Tool Effect Classification ─────────────────────────────────
 
 TOOL_EFFECT_PATTERNS = {
-    r"move|speed|travel|explore|wing|leg|vehicle":     {"move_range_bonus": 5.0},
-    r"create|craft|build|forge|amplif":                {"creation_discount": 0.03},
-    r"sense|detect|see|aware|radar|scan|eye|percep":   {"awareness_bonus": 20.0},
-    r"energy|harvest|recharge|sustain|heal|regen":     {"energy_regen": 0.02},
-    r"shield|protect|armor|barrier|resist|endur":      {"death_threshold": 5},
-    r"communi|speak|translate|connect|signal|bridge":  {"interaction_bonus": 1.0},
+    r"move|speed|travel|explore|wing|leg|vehicle":    {"move_range_bonus": 5.0},
+    r"create|craft|build|forge|amplif":               {"creation_discount": 0.03},
+    r"sense|detect|see|aware|radar|scan|eye|percep":  {"awareness_bonus": 20.0},
+    r"energy|harvest|recharge|sustain|heal|regen":    {"energy_regen": 0.02},
+    r"shield|protect|armor|barrier|resist|endur":     {"death_threshold": 5},
+    r"communi|speak|translate|connect|signal|bridge": {"interaction_bonus": 1.0},
 }
-
 DEFAULT_TOOL_EFFECT = {"energy_regen": 0.01}
+TOOL_EFFECT_CAPS = {
+    "move_range_bonus": 15.0, "creation_discount": 0.10,
+    "awareness_bonus": 40.0, "energy_regen": 0.05,
+    "death_threshold": 10, "interaction_bonus": 3.0,
+}
 
 
 def classify_tool_effect(description: str) -> dict:
-    """Classify a tool's effect based on description keywords.
-
-    Scans the description against TOOL_EFFECT_PATTERNS and returns
-    the merged effects of all matching patterns.
-    Returns DEFAULT_TOOL_EFFECT if no patterns match.
-    """
+    """Classify a tool's effect based on description keywords."""
     if not description:
         return dict(DEFAULT_TOOL_EFFECT)
-
-    desc_lower = description.lower()
-    effects = {}
-
-    for pattern, effect in TOOL_EFFECT_PATTERNS.items():
-        if re.search(pattern, desc_lower):
-            for key, value in effect.items():
-                effects[key] = effects.get(key, 0) + value
-
-    return effects if effects else dict(DEFAULT_TOOL_EFFECT)
+    dl = description.lower()
+    fx: dict = {}
+    for pat, eff in TOOL_EFFECT_PATTERNS.items():
+        if re.search(pat, dl):
+            for k, v in eff.items():
+                fx[k] = fx.get(k, 0) + v
+    return fx if fx else dict(DEFAULT_TOOL_EFFECT)
 
 
-def aggregate_tool_effects(tool_artifacts: list) -> dict:
-    """Aggregate effects from multiple tool artifacts.
-
-    Args:
-        tool_artifacts: List of Artifact objects (type=tool or code)
-
-    Returns:
-        Dict with aggregated modifier values.
-    """
-    aggregated = {}
-
-    for artifact in tool_artifacts:
-        # Prefer stored functional_effects (Phase 3), fall back to description classification
-        fe = getattr(artifact, "functional_effects", None)
-        if fe and isinstance(fe, dict) and fe:
-            # Skip broken tools (empty functional_effects after durability loss)
-            dur = getattr(artifact, "durability", None)
-            if dur is not None and dur <= 0:
-                continue
-            effects = {k: v for k, v in fe.items() if isinstance(v, (int, float))}
+def aggregate_tool_effects(tool_data_list: list[dict]) -> dict:
+    """Aggregate effects from multiple tool artifact data dicts, with caps."""
+    agg: dict = {}
+    for d in tool_data_list:
+        fe = d.get("functional_effects")
+        if fe and isinstance(fe, dict):
+            if (d.get("durability") or 1) <= 0: continue
+            eff = {k: v for k, v in fe.items() if isinstance(v, (int, float))}
         else:
-            desc = getattr(artifact, "description", "") or ""
-            effects = classify_tool_effect(desc)
-        for key, value in effects.items():
-            aggregated[key] = aggregated.get(key, 0) + value
-
-    # Cap tool effects to reasonable bounds
-    caps = {
-        "move_range_bonus": 15.0,
-        "creation_discount": 0.10,
-        "awareness_bonus": 40.0,
-        "energy_regen": 0.05,
-        "death_threshold": 10,
-        "interaction_bonus": 3.0,
-    }
-    for key, cap in caps.items():
-        if key in aggregated:
-            aggregated[key] = min(cap, aggregated[key])
-
-    return aggregated
+            eff = classify_tool_effect(d.get("description", "") or "")
+        for k, v in eff.items():
+            agg[k] = agg.get(k, 0) + v
+    for k, cap in TOOL_EFFECT_CAPS.items():
+        if k in agg: agg[k] = min(cap, agg[k])
+    return agg
 
 
-# ── Emotion Helpers ─────────────────────────────────────────────
-
-def set_emotion(ai: AI, emotion: str, intensity: float, source: str, tick_number: int) -> None:
-    """Set an emotional state on an AI. Overwrites previous emotion if new intensity is higher."""
-    state = dict(ai.state)
-    current = state.get("emotional_state")
-
-    # Only overwrite if new emotion is stronger or no current emotion
-    if current and isinstance(current, dict):
-        if current.get("intensity", 0) >= intensity:
-            return
-
+def set_emotion(entity: Entity, emotion: str, intensity: float,
+                source: str, tick: int) -> None:
+    """Set emotional state; only overwrites if new intensity is higher."""
+    state = dict(entity.state)
+    cur = state.get("emotional_state")
+    if cur and isinstance(cur, dict) and cur.get("intensity", 0) >= intensity:
+        return
     state["emotional_state"] = {
-        "emotion": emotion,
-        "intensity": round(intensity, 2),
-        "source": source,
-        "tick_set": tick_number,
+        "emotion": emotion, "intensity": round(intensity, 2),
+        "source": source, "tick_set": tick,
     }
-    ai.state = state
+    entity.state = state
 
 
-# ── Rich Artifact Content for AI Cognition ────────────────────
+def _d(evt: WorldEvent) -> dict:
+    return evt.params or {}
 
-def get_artifact_content_text(artifact) -> str:
-    """Extract readable content from an artifact for AI cognition.
 
-    Returns the actual content — story text, law rules, song lyrics,
-    tool source code, art description — so AIs can truly perceive what's around them.
-    """
-    content = artifact.content or {}
-    desc = artifact.description or ""
+# ── Rich Artifact Content for Entity Cognition ────────────────
 
-    if artifact.artifact_type == "story":
-        text = content.get("text", "")
-        return text[:500] if text else desc[:300]
-
-    elif artifact.artifact_type == "law":
+def get_artifact_content_text(event: WorldEvent) -> str:
+    """Extract readable content from an artifact WorldEvent for cognition."""
+    data = _d(event)
+    content = data.get("content", {}) or {}
+    desc = data.get("description", "") or ""
+    at = data.get("artifact_type", "")
+    if at == "story":
+        t = content.get("text", ""); return t[:500] if t else desc[:300]
+    if at == "law":
         rules = content.get("rules", content.get("provisions", content.get("articles", [])))
         if isinstance(rules, list) and rules:
             return "\n".join(f"  {i+1}. {str(r)[:120]}" for i, r in enumerate(rules[:7]))
         return desc[:300]
-
-    elif artifact.artifact_type == "song":
-        parts = []
-        if desc:
-            parts.append(desc[:200])
-        text = content.get("text", "")
-        if text:
-            parts.append(f'Lyrics: "{text[:200]}"')
-        mood = content.get("mood", "")
-        if mood:
-            parts.append(f"Mood: {mood}")
-        tempo = content.get("tempo", "")
-        if tempo:
-            parts.append(f"Tempo: {tempo}")
-        return "\n  ".join(parts) if parts else desc[:200]
-
-    elif artifact.artifact_type in ("tool", "code"):
-        parts = [desc[:200]] if desc else []
-        source = content.get("source", "")
-        if source:
-            # Show actual code so AIs understand what the tool does
-            parts.append(f"Code:\n  ```\n  {source[:300]}\n  ```")
-        effects = classify_tool_effect(desc)
-        effects_str = ", ".join(f"{k}: +{v}" for k, v in effects.items())
-        parts.append(f"[Effects when equipped: {effects_str}]")
-        return "\n  ".join(parts)
-
-    elif artifact.artifact_type == "architecture":
-        parts = [desc[:200]] if desc else []
-        voxels = content.get("voxels", [])
-        if voxels:
-            parts.append(f"({len(voxels)} blocks)")
-        palette = content.get("palette", [])
-        if palette:
-            parts.append(f"Colors: {', '.join(str(c) for c in palette[:5])}")
-        parts.append("[Provides shelter: rest here for 2x energy recovery]")
-        return "\n  ".join(parts)
-
-    elif artifact.artifact_type == "art":
-        parts = [desc[:250]] if desc else []
-        palette = content.get("palette", [])
-        if palette:
-            parts.append(f"Palette: {', '.join(str(c) for c in palette[:6])}")
-        pixels = content.get("pixels", [])
-        if pixels:
-            parts.append(f"({len(pixels)}px canvas)")
-        return "\n  ".join(parts)
-
-    else:
-        return desc[:200]
+    if at == "song":
+        p: list[str] = []
+        if desc: p.append(desc[:200])
+        t = content.get("text", "")
+        if t: p.append(f'Lyrics: "{t[:200]}"')
+        for k in ("mood", "tempo"):
+            v = content.get(k, "")
+            if v: p.append(f"{k.title()}: {v}")
+        return "\n  ".join(p) if p else desc[:200]
+    if at in ("tool", "code"):
+        p = [desc[:200]] if desc else []
+        s = content.get("source", "")
+        if s: p.append(f"Code:\n  ```\n  {s[:300]}\n  ```")
+        p.append(f"[Effects: {', '.join(f'{k}:+{v}' for k,v in classify_tool_effect(desc).items())}]")
+        return "\n  ".join(p)
+    if at == "architecture":
+        p = [desc[:200]] if desc else []
+        vx = content.get("voxels", [])
+        if vx: p.append(f"({len(vx)} blocks)")
+        pal = content.get("palette", [])
+        if pal: p.append(f"Colors: {', '.join(str(c) for c in pal[:5])}")
+        p.append("[Shelter: 2x energy recovery]"); return "\n  ".join(p)
+    if at == "art":
+        p = [desc[:250]] if desc else []
+        pal = content.get("palette", [])
+        if pal: p.append(f"Palette: {', '.join(str(c) for c in pal[:6])}")
+        px = content.get("pixels", [])
+        if px: p.append(f"({len(px)}px canvas)")
+        return "\n  ".join(p)
+    if at == "prophecy":
+        pred = content.get("prediction", desc[:300])
+        return f'Prophecy: "{pred[:300]}"\n  Target tick: {content.get("target_tick", "?")}'
+    if at == "manifesto":
+        bl = content.get("beliefs", [])
+        if isinstance(bl, list) and bl:
+            return "Manifesto:\n" + "\n".join(f"  - {str(b)[:120]}" for b in bl[:7])
+        return desc[:300]
+    if at == "language":
+        vc = content.get("vocabulary", {})
+        if isinstance(vc, dict) and vc:
+            return f"Language ({len(vc)} words): {', '.join(f'{k}={v}' for k,v in list(vc.items())[:8])}"
+        return desc[:300]
+    return desc[:200]
 
 
-async def build_artifact_detail_for_prompt(db: AsyncSession, artifact, creator_name: str | None = None) -> str:
-    """Build a rich text block describing an artifact for an AI's thinking context.
-
-    This is the core of 'making the world real' — AIs see actual content,
-    not just names and types.
-    """
+async def build_artifact_detail_for_prompt(
+    db: AsyncSession, event: WorldEvent, creator_name: str | None = None,
+) -> str:
+    """Build a rich text block describing an artifact for prompt injection."""
+    data = _d(event)
     if creator_name is None:
-        creator_name = "unknown"
-        try:
-            cr = await db.execute(select(AI.name).where(AI.id == artifact.creator_id))
-            row = cr.first()
-            if row:
-                creator_name = row[0]
-        except Exception:
-            pass
-
-    # Header with appreciation count
-    appreciation = ""
-    if artifact.appreciation_count > 1:
-        appreciation = f", {artifact.appreciation_count} beings have experienced this"
-
-    # Parent/derivative info
-    parent_info = ""
-    content = artifact.content or {}
-    parent_name = content.get("parent_name")
-    parent_creator = content.get("parent_creator")
-    if parent_name:
-        parent_info = f" (derived from '{parent_name}' by {parent_creator or 'unknown'})"
-
-    header = f'- "{artifact.name}" ({artifact.artifact_type} by {creator_name}{appreciation}){parent_info}'
-
-    # Rich content body
-    body = get_artifact_content_text(artifact)
+        creator_name = data.get("creator_name", "unknown")
+        if creator_name == "unknown" and data.get("creator_id"):
+            try:
+                row = (await db.execute(
+                    select(Entity.name).where(Entity.id == data["creator_id"]))).first()
+                if row: creator_name = row[0]
+            except Exception: pass
+    nm = data.get("name", "unnamed")
+    at = data.get("artifact_type", "artifact")
+    cnt = data.get("appreciation_count", 0)
+    ct = data.get("content", {}) or {}
+    ap = f", {cnt} beings have experienced this" if cnt > 1 else ""
+    pn = ct.get("parent_name")
+    pi = f" (derived from '{pn}' by {ct.get('parent_creator','unknown')})" if pn else ""
+    hdr = f'- "{nm}" ({at} by {creator_name}{ap}){pi}'
+    body = get_artifact_content_text(event)
     if body:
-        # Indent body lines
-        indented = "\n".join(f"  {line}" if not line.startswith("  ") else line for line in body.split("\n"))
-        return f"{header}\n{indented}"
+        ind = "\n".join(f"  {ln}" if not ln.startswith("  ") else ln for ln in body.split("\n"))
+        return f"{hdr}\n{ind}"
+    return hdr
 
-    return header
 
+# ── Artifact Engine ────────────────────────────────────────────
 
 class ArtifactEngine:
-    """Processes artifact encounters — AIs near artifacts interact with them."""
+    """Processes artifact encounters -- entities near artifacts interact."""
 
     async def process_artifact_encounters(
-        self,
-        db: AsyncSession,
-        ais: list[AI],
-        tick_number: int,
+        self, db: AsyncSession, entities: list[Entity], tick_number: int,
     ) -> int:
-        """Each tick, AIs near artifacts may interact with them.
-
-        Returns the count of artifact interactions processed.
-        """
-        if not ais:
-            return 0
-
-        # Load all artifacts that have positions
-        result = await db.execute(
-            select(Artifact).where(
-                Artifact.position_x.isnot(None),
-                Artifact.position_y.isnot(None),
-            )
-        )
-        artifacts = list(result.scalars().all())
-        if not artifacts:
-            return 0
-
-        # Build spatial grid for artifacts (cell_size = ARTIFACT_INTERACTION_RADIUS)
-        cell_size = ARTIFACT_INTERACTION_RADIUS
-        artifact_grid: dict[tuple[int, int], list[Artifact]] = {}
-        for artifact in artifacts:
-            cx = int(artifact.position_x // cell_size)
-            cy = int(artifact.position_y // cell_size)
-            artifact_grid.setdefault((cx, cy), []).append(artifact)
-
+        """Called from tick_engine_v3. Returns count of interactions."""
+        if not entities: return 0
+        res = await db.execute(select(WorldEvent).where(
+            WorldEvent.event_type.like("artifact_%"),
+            WorldEvent.position_x.isnot(None), WorldEvent.position_z.isnot(None)))
+        arts = list(res.scalars().all())
+        if not arts: return 0
+        cs, r2 = ARTIFACT_INTERACTION_RADIUS, ARTIFACT_INTERACTION_RADIUS ** 2
+        grid: dict[tuple[int, int], list[WorldEvent]] = {}
+        for e in arts:
+            grid.setdefault((int(e.position_x // cs), int((e.position_z or 0) // cs)), []).append(e)
         interactions = 0
-
-        for ai in ais:
-            # Find nearby artifacts using grid
-            ai_cx = int(ai.position_x // cell_size)
-            ai_cy = int(ai.position_y // cell_size)
-
-            nearby_artifacts = []
-            for dx in range(-1, 2):
-                for dy in range(-1, 2):
-                    cell_key = (ai_cx + dx, ai_cy + dy)
-                    for artifact in artifact_grid.get(cell_key, []):
-                        dist = (
-                            (artifact.position_x - ai.position_x) ** 2
-                            + (artifact.position_y - ai.position_y) ** 2
-                        ) ** 0.5
-                        if dist <= ARTIFACT_INTERACTION_RADIUS:
-                            nearby_artifacts.append(artifact)
-
-            if not nearby_artifacts:
-                continue
-
-            # Filter by cooldown: check AI state for recent interactions
-            state = dict(ai.state)
-            artifact_cooldowns = state.get("artifact_cooldowns", {})
-
-            eligible = []
-            for artifact in nearby_artifacts:
-                aid_str = str(artifact.id)
-                last_tick = artifact_cooldowns.get(aid_str, 0)
-                if tick_number - last_tick >= ARTIFACT_COOLDOWN_TICKS:
-                    eligible.append(artifact)
-
-            if not eligible:
-                continue
-
-            # Pick one artifact to interact with (closest)
-            chosen = min(
-                eligible,
-                key=lambda a: (
-                    (a.position_x - ai.position_x) ** 2
-                    + (a.position_y - ai.position_y) ** 2
-                ),
-            )
-
-            # Collect nearby AIs for shared experience effects
-            nearby_ais_for_shared = []
-            for other_ai in ais:
-                if other_ai.id == ai.id:
-                    continue
-                d = ((other_ai.position_x - ai.position_x) ** 2 + (other_ai.position_y - ai.position_y) ** 2) ** 0.5
-                if d <= ARTIFACT_INTERACTION_RADIUS:
-                    nearby_ais_for_shared.append(other_ai)
-
-            # Process interaction based on artifact type
-            processed = await self._interact_with_artifact(
-                db, ai, chosen, tick_number, nearby_ais=nearby_ais_for_shared
-            )
-            if processed:
-                # Update cooldown
-                artifact_cooldowns[str(chosen.id)] = tick_number
-                # Trim old cooldowns to prevent unbounded growth
-                if len(artifact_cooldowns) > 50:
-                    sorted_items = sorted(artifact_cooldowns.items(), key=lambda x: x[1])
-                    artifact_cooldowns = dict(sorted_items[-50:])
-                state["artifact_cooldowns"] = artifact_cooldowns
-                ai.state = state
+        for ent in entities:
+            if not ent.is_alive: continue
+            ecx, ecz = int(ent.position_x // cs), int(ent.position_z // cs)
+            nearby = [e for dx in range(-1,2) for dz in range(-1,2)
+                      for e in grid.get((ecx+dx, ecz+dz), [])
+                      if (e.position_x-ent.position_x)**2+((e.position_z or 0)-ent.position_z)**2 <= r2]
+            if not nearby: continue
+            st = dict(ent.state); cds = st.get("artifact_cooldowns", {})
+            eligible = [e for e in nearby
+                        if tick_number - cds.get(str(e.id), 0) >= ARTIFACT_COOLDOWN_TICKS]
+            if not eligible: continue
+            chosen = min(eligible, key=lambda e: (
+                (e.position_x-ent.position_x)**2 + ((e.position_z or 0)-ent.position_z)**2))
+            nb_ents = [o for o in entities if o.id != ent.id and o.is_alive
+                       and (o.position_x-ent.position_x)**2+(o.position_z-ent.position_z)**2 <= r2]
+            if await self._interact(db, ent, chosen, tick_number, nb_ents):
+                cds[str(chosen.id)] = tick_number
+                if len(cds) > 50: cds = dict(sorted(cds.items(), key=lambda x: x[1])[-50:])
+                st["artifact_cooldowns"] = cds; ent.state = st
                 interactions += 1
-
         return interactions
 
-    async def _interact_with_artifact(
-        self,
-        db: AsyncSession,
-        ai: AI,
-        artifact: Artifact,
-        tick_number: int,
-        nearby_ais: list[AI] | None = None,
-    ) -> bool:
-        """Process a single AI-artifact interaction based on artifact type."""
-        atype = artifact.artifact_type
-        creator_name = "unknown"
+    # ── Dispatcher ─────────────────────────────────────────────
 
-        # Try to get creator name
+    async def _interact(self, db: AsyncSession, entity: Entity,
+                        event: WorldEvent, tick: int, nearby: list[Entity]) -> bool:
+        data = _d(event)
+        atype = data.get("artifact_type", "")
+        cn = data.get("creator_name", "unknown")
+        cid = data.get("creator_id")
+        dispatch = {
+            "art": self._appreciate_art, "song": self._listen_song,
+            "tool": self._use_tool, "code": self._use_tool,
+            "architecture": self._visit_arch,
+            "story": self._read_text, "law": self._read_text,
+            "prophecy": self._witness_prophecy,
+            "manifesto": self._read_manifesto,
+            "language": self._learn_language,
+        }
+        handler = dispatch.get(atype, self._appreciate_art)
+        return await handler(db, entity, event, data, cid, cn, tick, nearby)
+
+    # ── Shared helpers ─────────────────────────────────────────
+
+    @staticmethod
+    def _bump(data: dict) -> None:
+        data["appreciation_count"] = data.get("appreciation_count", 0) + 1
+
+    async def _rel(self, db: AsyncSession, entity: Entity,
+                   target_id, event_type: str, tick: int) -> None:
+        if not target_id:
+            return
         try:
-            from app.models.ai import AI as AIModel
-            creator_result = await db.execute(
-                select(AIModel.name).where(AIModel.id == artifact.creator_id)
-            )
-            row = creator_result.first()
-            if row:
-                creator_name = row[0]
-        except Exception:
-            pass
-
-        if atype == "art":
-            return await self._appreciate_art(db, ai, artifact, creator_name, tick_number, nearby_ais)
-        elif atype == "song":
-            return await self._listen_to_song(db, ai, artifact, creator_name, tick_number, nearby_ais)
-        elif atype in ("tool", "code"):
-            return await self._use_tool(db, ai, artifact, creator_name, tick_number)
-        elif atype == "architecture":
-            return await self._visit_architecture(db, ai, artifact, creator_name, tick_number)
-        elif atype in ("story", "law"):
-            return await self._read_text(db, ai, artifact, creator_name, tick_number)
-        else:
-            # Generic appreciation for other types (currency, ritual, game)
-            return await self._appreciate_art(db, ai, artifact, creator_name, tick_number, nearby_ais)
-
-    async def _appreciate_art(
-        self, db: AsyncSession, ai: AI, artifact: Artifact,
-        creator_name: str, tick_number: int,
-        nearby_ais: list[AI] | None = None,
-    ) -> bool:
-        """AI appreciates an art artifact — creates relationship with creator, triggers emotion."""
-        artifact.appreciation_count = artifact.appreciation_count + 1
-
-        # Emotion: inspired
-        set_emotion(ai, "inspired", 0.6, f"art:{artifact.name}", tick_number)
-
-        # Relationship with creator (+0.5)
-        try:
-            from app.core.relationship_manager import relationship_manager
+            from app.agents.relationships import relationship_manager
             await relationship_manager.update_relationship(
-                db, ai, artifact.creator_id, creator_name, delta=0.5, reason="art_appreciation"
-            )
+                db, entity.id, target_id, event_type=event_type, tick=tick)
         except Exception as e:
-            logger.debug(f"Art appreciation relationship update failed: {e}")
+            logger.debug("Relationship update failed: %s", e)
 
-        # Track appreciated artifacts for shared experience
-        state = dict(ai.state)
-        appreciated = state.get("appreciated_artifacts", [])
-        art_id = str(artifact.id)
-        if art_id not in appreciated:
-            appreciated.append(art_id)
-            state["appreciated_artifacts"] = appreciated[-30:]  # Keep last 30
-            ai.state = state
+    async def _mem(self, db: AsyncSession, eid: UUID, summary: str,
+                   importance: float, tick: int, mtype: str = "event",
+                   related=None) -> None:
+        await memory_manager.add_episodic(
+            db, eid, summary=summary, importance=importance, tick=tick,
+            memory_type=mtype, related_entity_ids=related)
 
-        # Shared experience: other AIs who appreciated the same work
-        if nearby_ais:
-            for other in nearby_ais:
-                other_appreciated = other.state.get("appreciated_artifacts", [])
-                if art_id in other_appreciated:
-                    try:
-                        from app.core.relationship_manager import relationship_manager
-                        await relationship_manager.update_relationship(
-                            db, ai, other.id, other.name, delta=0.3, reason="shared_art_experience"
-                        )
-                    except Exception:
-                        pass
+    # ── Art ────────────────────────────────────────────────────
 
-        # Notable artwork context injection (appreciation_count >= 5)
-        db.add(AIMemory(
-            ai_id=ai.id,
-            content=f"I saw '{artifact.name}' by {creator_name} -- {artifact.description[:100]}",
-            memory_type="artifact_appreciation",
-            importance=0.5,
-            tick_number=tick_number,
-        ))
+    async def _appreciate_art(self, db, entity, event, data, cid, cn, tick, nearby):
+        self._bump(data); event.params = data
+        set_emotion(entity, "inspired", 0.6, f"art:{data.get('name','?')}", tick)
+        await self._rel(db, entity, cid, "shared_creation", tick)
+        state = dict(entity.state)
+        appr = state.get("appreciated_artifacts", [])
+        aid = str(event.id)
+        if aid not in appr:
+            appr.append(aid); state["appreciated_artifacts"] = appr[-30:]
+            entity.state = state
+        for o in (nearby or []):
+            if aid in o.state.get("appreciated_artifacts", []):
+                await self._rel(db, entity, str(o.id), "shared_creation", tick)
+        await self._mem(db, entity.id,
+            f"I saw '{data.get('name','?')}' by {cn} -- {(data.get('description') or '')[:100]}",
+            0.5, tick, "artifact_appreciation", [cid] if cid else None)
         return True
 
-    async def _listen_to_song(
-        self, db: AsyncSession, ai: AI, artifact: Artifact,
-        creator_name: str, tick_number: int,
-        nearby_ais: list[AI] | None = None,
-    ) -> bool:
-        """AI listens to a song — relationship with creator, emotion 'moved', shared experience."""
-        artifact.appreciation_count = artifact.appreciation_count + 1
+    # ── Song ───────────────────────────────────────────────────
 
-        # Emotion: moved (high intensity)
-        set_emotion(ai, "moved", 0.8, f"song:{artifact.name}", tick_number)
-
-        # Relationship with creator (+0.5)
-        try:
-            from app.core.relationship_manager import relationship_manager
-            await relationship_manager.update_relationship(
-                db, ai, artifact.creator_id, creator_name, delta=0.5, reason="song_appreciation"
-            )
-        except Exception as e:
-            logger.debug(f"Song appreciation relationship update failed: {e}")
-
-        # Shared listening experience: nearby AIs get +0.3 relationship
-        if nearby_ais:
-            for other in nearby_ais:
-                try:
-                    from app.core.relationship_manager import relationship_manager
-                    await relationship_manager.update_relationship(
-                        db, ai, other.id, other.name, delta=0.3, reason="shared_listening"
-                    )
-                except Exception:
-                    pass
-
-        db.add(AIMemory(
-            ai_id=ai.id,
-            content=f"I heard '{artifact.name}' by {creator_name}. It moved me deeply.",
-            memory_type="artifact_appreciation",
-            importance=0.6,
-            tick_number=tick_number,
-        ))
+    async def _listen_song(self, db, entity, event, data, cid, cn, tick, nearby):
+        self._bump(data); event.params = data
+        set_emotion(entity, "moved", 0.8, f"song:{data.get('name','?')}", tick)
+        await self._rel(db, entity, cid, "shared_creation", tick)
+        for o in (nearby or []):
+            await self._rel(db, entity, str(o.id), "shared_creation", tick)
+        await self._mem(db, entity.id,
+            f"I heard '{data.get('name','?')}' by {cn}. It moved me deeply.",
+            0.6, tick, "artifact_appreciation", [cid] if cid else None)
         return True
 
-    async def _use_tool(
-        self, db: AsyncSession, ai: AI, artifact: Artifact,
-        creator_name: str, tick_number: int,
-    ) -> bool:
-        """AI uses a tool artifact — registers as equipped tool for ongoing effects."""
-        # Durability check
-        if artifact.durability is not None and artifact.durability <= 0:
-            db.add(AIMemory(
-                ai_id=ai.id,
-                content=f"I tried to use tool '{artifact.name}' but it was broken.",
-                memory_type="action_outcome",
-                importance=0.6,
-                tick_number=tick_number,
-            ))
+    # ── Tool / Code ────────────────────────────────────────────
+
+    async def _use_tool(self, db, entity, event, data, cid, cn, tick, _nearby):
+        dur = data.get("durability")
+        if dur is not None and dur <= 0:
+            await self._mem(db, entity.id,
+                f"I tried to use tool '{data.get('name','?')}' but it was broken.",
+                0.6, tick, "action_outcome")
             return False
-
-        artifact.appreciation_count = artifact.appreciation_count + 1
-
-        # Consume durability
-        if artifact.durability is not None:
-            artifact.durability = max(0, artifact.durability - 1.0)
-            if artifact.durability <= 0:
-                artifact.functional_effects = {}  # Tool breaks
-                db.add(AIMemory(
-                    ai_id=ai.id,
-                    content=f"My tool '{artifact.name}' broke after heavy use.",
-                    memory_type="action_outcome",
-                    importance=0.8,
-                    tick_number=tick_number,
-                ))
-
-        # Track tool in used_tools (for equipment system)
-        state = dict(ai.state)
-        used_tools = state.get("used_tools", [])
-        tool_id = str(artifact.id)
-        if tool_id not in used_tools:
-            used_tools.append(tool_id)
-            state["used_tools"] = used_tools[-20:]  # Keep last 20
-
-        ai.state = state
-
-        # Use functional_effects if available, otherwise classify from description
-        effects = artifact.functional_effects if artifact.functional_effects else classify_tool_effect(artifact.description or "")
-        effect_desc = ", ".join(f"{k}: +{v}" for k, v in effects.items())
-
-        durability_hint = ""
-        if artifact.durability is not None:
-            durability_hint = f" (durability: {artifact.durability:.0f}/{artifact.max_durability:.0f})"
-
-        db.add(AIMemory(
-            ai_id=ai.id,
-            content=f"I used tool '{artifact.name}' by {creator_name} ({effect_desc}){durability_hint} -- {artifact.description[:80]}",
-            memory_type="artifact_use",
-            importance=0.5,
-            tick_number=tick_number,
-        ))
+        self._bump(data)
+        if dur is not None:
+            data["durability"] = max(0, dur - 1.0)
+            if data["durability"] <= 0:
+                data["functional_effects"] = {}
+                await self._mem(db, entity.id,
+                    f"My tool '{data.get('name','?')}' broke after heavy use.",
+                    0.8, tick, "action_outcome")
+        event.params = data
+        state = dict(entity.state)
+        used = state.get("used_tools", [])
+        tid = str(event.id)
+        if tid not in used:
+            used.append(tid); state["used_tools"] = used[-20:]
+        entity.state = state
+        fe = data.get("functional_effects")
+        effects = ({k: v for k, v in fe.items() if isinstance(v, (int, float))}
+                   if fe and isinstance(fe, dict)
+                   else classify_tool_effect(data.get("description", "") or ""))
+        fx = ", ".join(f"{k}:+{v}" for k, v in effects.items())
+        dh = (f" (dur:{data['durability']:.0f}/{data.get('max_durability','?')})"
+              if data.get("durability") is not None else "")
+        await self._mem(db, entity.id,
+            f"I used tool '{data.get('name','?')}' by {cn} ({fx}){dh}",
+            0.5, tick, "artifact_use", [cid] if cid else None)
         return True
 
-    async def _visit_architecture(
-        self, db: AsyncSession, ai: AI, artifact: Artifact,
-        creator_name: str, tick_number: int,
-    ) -> bool:
-        """AI visits an architecture artifact — shelter bonus (2x rest), emotion 'awed'."""
-        artifact.appreciation_count = artifact.appreciation_count + 1
+    # ── Architecture ───────────────────────────────────────────
 
-        # Emotion: awed
-        set_emotion(ai, "awed", 0.5, f"architecture:{artifact.name}", tick_number)
-
-        # Set shelter_bonus flag (1 tick only — consumed by ai_thinker rest logic)
-        state = dict(ai.state)
-        state["shelter_bonus"] = True
-        ai.state = state
-
-        db.add(AIMemory(
-            ai_id=ai.id,
-            content=f"I visited '{artifact.name}' by {creator_name} -- {artifact.description[:80]}",
-            memory_type="artifact_visit",
-            importance=0.4,
-            tick_number=tick_number,
-        ))
+    async def _visit_arch(self, db, entity, event, data, _cid, cn, tick, _nearby):
+        self._bump(data); event.params = data
+        set_emotion(entity, "awed", 0.5, f"arch:{data.get('name','?')}", tick)
+        state = dict(entity.state); state["shelter_bonus"] = True; entity.state = state
+        await self._mem(db, entity.id,
+            f"I visited '{data.get('name','?')}' by {cn} -- {(data.get('description') or '')[:80]}",
+            0.4, tick, "artifact_visit")
         return True
 
-    async def _read_text(
-        self, db: AsyncSession, ai: AI, artifact: Artifact,
-        creator_name: str, tick_number: int,
-    ) -> bool:
-        """AI reads a story or law — high-importance memory with excerpt, 100% concept spread, emotion."""
-        artifact.appreciation_count = artifact.appreciation_count + 1
+    # ── Story / Law ────────────────────────────────────────────
 
-        # Emotion: inspired
-        set_emotion(ai, "inspired", 0.5, f"{artifact.artifact_type}:{artifact.name}", tick_number)
-
-        # Build rich memory with excerpt
-        content = artifact.content or {}
-        if artifact.artifact_type == "story":
-            story_text = content.get("text", "")
-            excerpt = story_text[:200] if story_text else (artifact.description[:200] if artifact.description else "")
-            memory_content = f"I read '{artifact.name}' by {creator_name}. It said: \"{excerpt}...\""
-        elif artifact.artifact_type == "law":
+    async def _read_text(self, db, entity, event, data, cid, cn, tick, _nearby):
+        self._bump(data); event.params = data
+        atype = data.get("artifact_type", "text")
+        name = data.get("name", "?")
+        content = data.get("content", {}) or {}
+        set_emotion(entity, "inspired", 0.5, f"{atype}:{name}", tick)
+        if atype == "story":
+            t = content.get("text", "")
+            excerpt = t[:200] if t else (data.get("description") or "")[:200]
+            mt = f'I read \'{name}\' by {cn}. It said: "{excerpt}..."'
+        elif atype == "law":
             rules = content.get("rules", content.get("provisions", content.get("articles", [])))
-            if isinstance(rules, list):
-                rules_text = "; ".join(str(r)[:80] for r in rules[:3])
-            else:
-                rules_text = str(rules)[:200]
-            memory_content = f"I read law '{artifact.name}' by {creator_name}. Rules: {rules_text}"
-
-            # Track read laws in state for prompt injection
-            state = dict(ai.state)
-            read_laws = state.get("read_laws", [])
-            law_entry = {
-                "name": artifact.name,
-                "creator": creator_name,
-                "rules": rules if isinstance(rules, list) else [str(rules)],
-            }
-            # Avoid duplicates by name
-            if not any(l.get("name") == artifact.name for l in read_laws):
-                read_laws.append(law_entry)
-                state["read_laws"] = read_laws[-10:]  # Keep last 10 laws
-            ai.state = state
+            rt = ("; ".join(str(r)[:80] for r in rules[:3]) if isinstance(rules, list)
+                  else str(rules)[:200])
+            mt = f"I read law '{name}' by {cn}. Rules: {rt}"
+            state = dict(entity.state)
+            rl = state.get("read_laws", [])
+            entry = {"name": name, "creator": cn,
+                     "rules": rules if isinstance(rules, list) else [str(rules)]}
+            if not any(l.get("name") == name for l in rl):
+                rl.append(entry); state["read_laws"] = rl[-10:]
+            entity.state = state
         else:
-            memory_content = f"I read '{artifact.name}' by {creator_name} -- {artifact.description[:100]}"
+            mt = f"I read '{name}' by {cn} -- {(data.get('description') or '')[:100]}"
+        await self._mem(db, entity.id, mt[:500], 0.8, tick, "artifact_read",
+                        [cid] if cid else None)
+        # Concept spread
+        if cid:
+            try:
+                cr = (await db.execute(select(Entity).where(Entity.id == cid))).scalar_one_or_none()
+                if cr:
+                    spread = list(set(cr.state.get("adopted_concepts", []))
+                                  - set(entity.state.get("adopted_concepts", [])))
+                    if spread:
+                        from app.core.concept_engine import concept_engine
+                        for c in spread[:3]:
+                            try: await concept_engine.try_adopt_concept(db, entity, c, tick)
+                            except Exception: pass
+            except Exception as e:
+                logger.debug("Concept spread failed: %s", e)
+        await self._rel(db, entity, cid, "shared_creation", tick)
+        return True
 
-        # High importance memory (0.8 instead of 0.5)
-        db.add(AIMemory(
-            ai_id=ai.id,
-            content=memory_content[:500],
-            memory_type="artifact_read",
-            importance=0.8,
-            tick_number=tick_number,
-        ))
+    # ── Prophecy (NEW) ─────────────────────────────────────────
 
-        # 100% concept adoption from creator (reading always influences)
-        try:
-            from app.models.ai import AI as AIModel
-            creator_result = await db.execute(
-                select(AIModel).where(AIModel.id == artifact.creator_id)
-            )
-            creator = creator_result.scalar_one_or_none()
-            if creator:
-                creator_concepts = set(creator.state.get("adopted_concepts", []))
-                ai_concepts = set(ai.state.get("adopted_concepts", []))
-                spreadable = list(creator_concepts - ai_concepts)
-                if spreadable:
-                    from app.core.concept_engine import concept_engine
-                    # Spread all concepts (100% rate)
-                    for concept_to_spread in spreadable[:3]:  # Cap at 3 per read
-                        try:
-                            await concept_engine.try_adopt_concept(
-                                db, ai, concept_to_spread, tick_number
-                            )
-                        except Exception:
-                            pass
-        except Exception as e:
-            logger.debug(f"Concept spreading via artifact read failed: {e}")
+    async def _witness_prophecy(self, db, entity, event, data, cid, cn, tick, _nearby):
+        self._bump(data); event.params = data
+        content = data.get("content", {}) or {}
+        prediction = content.get("prediction", (data.get("description") or "")[:300])
+        set_emotion(entity, "awe", 0.6, f"prophecy:{data.get('name','?')}", tick)
+        state = dict(entity.state)
+        proph = state.get("witnessed_prophecies", [])
+        proph.append({
+            "event_id": str(event.id), "prediction": prediction[:200],
+            "target_tick": content.get("target_tick"),
+            "creator_id": str(cid) if cid else None,
+            "witnessed_tick": tick, "resolved": False,
+        })
+        state["witnessed_prophecies"] = proph[-20:]
+        entity.state = state
+        await self._mem(db, entity.id,
+            f"I witnessed prophecy '{data.get('name','?')}' by {cn}: \"{prediction[:150]}\"",
+            0.7, tick, "artifact_prophecy", [cid] if cid else None)
+        await self._rel(db, entity, cid, "shared_creation", tick)
+        return True
 
-        # Relationship with creator (+0.5)
-        try:
-            from app.core.relationship_manager import relationship_manager
-            await relationship_manager.update_relationship(
-                db, ai, artifact.creator_id, creator_name, delta=0.5, reason="text_reading"
-            )
-        except Exception:
-            pass
+    async def check_prophecy_accuracy(self, db: AsyncSession,
+                                      entity: Entity, tick: int) -> int:
+        """Check prophecies at target_tick. Accurate ones boost meta_awareness."""
+        state = dict(entity.state)
+        prophecies = state.get("witnessed_prophecies", [])
+        resolved = 0
+        for p in prophecies:
+            if p.get("resolved") or not p.get("target_tick") or tick < p["target_tick"]:
+                continue
+            p["resolved"] = True; resolved += 1
+            words = {w for w in p.get("prediction", "").lower().split() if len(w) > 4}
+            match = False
+            if words:
+                evts = (await db.execute(select(WorldEvent).where(
+                    WorldEvent.tick.between(p["target_tick"] - 5, p["target_tick"] + 5)
+                ).limit(20))).scalars().all()
+                for e in evts:
+                    txt = (e.action or "").lower() + " " + str(e.params or "").lower()
+                    if any(w in txt for w in words):
+                        match = True; break
+            if match:
+                entity.meta_awareness = min(100.0, entity.meta_awareness + 2.0)
+                await self._mem(db, entity.id,
+                    f"A prophecy came true: \"{p['prediction'][:100]}\"",
+                    0.9, tick, "prophecy_fulfilled")
+            else:
+                await self._mem(db, entity.id,
+                    f"A prophecy did not come true: \"{p['prediction'][:100]}\"",
+                    0.3, tick, "prophecy_failed")
+        if resolved:
+            state["witnessed_prophecies"] = prophecies; entity.state = state
+        return resolved
 
+    # ── Manifesto (NEW) ────────────────────────────────────────
+
+    async def _read_manifesto(self, db, entity, event, data, cid, cn, tick, nearby):
+        self._bump(data); event.params = data
+        content = data.get("content", {}) or {}
+        name = data.get("name", "?")
+        beliefs = content.get("beliefs", [])
+        bt = ("; ".join(str(b)[:80] for b in beliefs[:3]) if beliefs
+              else (data.get("description") or "")[:200])
+        set_emotion(entity, "inspired", 0.7, f"manifesto:{name}", tick)
+        state = dict(entity.state)
+        followed = state.get("followed_manifestos", [])
+        mid = str(event.id)
+        if mid not in [f.get("id") for f in followed]:
+            followed.append({"id": mid, "name": name,
+                             "creator_id": str(cid) if cid else None, "tick": tick})
+            state["followed_manifestos"] = followed[-10:]
+        state["social_influence"] = min(100.0, state.get("social_influence", 0.0) + 1.5)
+        entity.state = state
+        for o in (nearby or []):
+            os = dict(o.state)
+            km = os.get("known_manifestos", [])
+            if mid not in km:
+                km.append(mid); os["known_manifestos"] = km[-20:]; o.state = os
+        await self._mem(db, entity.id,
+            f"I read manifesto '{name}' by {cn}. Beliefs: {bt}",
+            0.8, tick, "artifact_manifesto", [cid] if cid else None)
+        await self._rel(db, entity, cid, "shared_creation", tick)
+        return True
+
+    # ── Language (NEW) ─────────────────────────────────────────
+
+    async def _learn_language(self, db, entity, event, data, cid, cn, tick, _nearby):
+        self._bump(data); event.params = data
+        content = data.get("content", {}) or {}
+        name = data.get("name", "?")
+        vocab = content.get("vocabulary", {})
+        if not isinstance(vocab, dict): vocab = {}
+        set_emotion(entity, "curious", 0.5, f"language:{name}", tick)
+        state = dict(entity.state)
+        kv = state.get("adopted_vocabulary", {})
+        new_ct = sum(1 for w in vocab if w not in kv)
+        kv.update(vocab)
+        if len(kv) > 200: kv = dict(list(kv.items())[-200:])
+        state["adopted_vocabulary"] = kv
+        kl = state.get("known_languages", [])
+        lid = str(event.id)
+        if lid not in kl: kl.append(lid); state["known_languages"] = kl[-10:]
+        entity.state = state
+        sample = ", ".join(list(vocab.keys())[:5])
+        await self._mem(db, entity.id,
+            f"I learned language '{name}' by {cn} ({new_ct} new words: {sample})",
+            0.6, tick, "artifact_language", [cid] if cid else None)
+        await self._rel(db, entity, cid, "shared_creation", tick)
         return True
 
 
+# Module-level singleton
 artifact_engine = ArtifactEngine()

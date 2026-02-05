@@ -11,6 +11,7 @@ from app.models.chat import ChatMessage
 from app.models.board import BoardThread, BoardReply
 from app.models.saga import WorldSaga
 from app.models.world_feature import WorldFeature
+from app.models.user import User
 
 # v3 models
 from app.models.entity import Entity, EpisodicMemory, SemanticMemory, EntityRelationship
@@ -33,6 +34,7 @@ __all__ = [
     "BoardReply",
     "WorldSaga",
     "WorldFeature",
+    "User",
     # v3
     "Entity",
     "EpisodicMemory",

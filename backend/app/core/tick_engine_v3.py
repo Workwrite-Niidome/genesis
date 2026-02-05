@@ -45,6 +45,8 @@ RELATIONSHIP_DECAY_INTERVAL = 100     # ~100 sec
 SAGA_CHECK_INTERVAL = 50              # checked frequently; saga_service gates itself
 DEATH_CHECK_INTERVAL = 10             # check energy deaths every 10 ticks
 ENTITY_AGE_INTERVAL = 1               # age increments every tick
+CULTURE_ENGINE_INTERVAL = 5           # group conversations every 5 ticks
+ARTIFACT_ENGINE_INTERVAL = 3          # artifact encounters every 3 ticks
 
 # Minimum tick before succession trials are eligible
 SUCCESSION_MIN_TICK = 200
@@ -247,6 +249,16 @@ async def _process_tick_v3():
             logger.error("Tick %d: post-agent flush failed: %s", tick_number, e)
             await db.rollback()
             return
+
+        # ── 5a. Culture engine (group conversations, movements) ──────
+        culture_events = 0
+        if tick_number % CULTURE_ENGINE_INTERVAL == 0:
+            culture_events = await _safe_culture_tick(db, entities, tick_number)
+
+        # ── 5a2. Artifact engine (entity-artifact encounters) ────────
+        artifact_interactions = 0
+        if tick_number % ARTIFACT_ENGINE_INTERVAL == 0:
+            artifact_interactions = await _safe_artifact_tick(db, entities, tick_number)
 
         # ── 5b. Drama assessment (feeds God AI context) ────────────────
         drama_context = ""
@@ -549,6 +561,45 @@ async def _safe_saga_check(db: Any, tick_number: int) -> None:
                 logger.info("Tick %d: Saga chapter generated", tick_number)
     except Exception as e:
         logger.error("Tick %d: Saga generation error: %s", tick_number, e)
+
+
+# ── Culture & Artifact engine helpers ────────────────────────────
+
+async def _safe_culture_tick(
+    db: Any, entities: list[Any], tick_number: int,
+) -> int:
+    """Run culture engine: group conversations, movements, organizations."""
+    try:
+        from app.core.culture_engine import culture_engine
+
+        result = await culture_engine.process_culture_tick(db, entities, tick_number)
+        events = result.get("groups_processed", 0) if isinstance(result, dict) else 0
+        if events > 0:
+            logger.debug(
+                "Tick %d: Culture engine — %d group events", tick_number, events,
+            )
+        return events
+    except Exception as e:
+        logger.debug("Tick %d: Culture engine error (non-fatal): %s", tick_number, e)
+        return 0
+
+
+async def _safe_artifact_tick(
+    db: Any, entities: list[Any], tick_number: int,
+) -> int:
+    """Run artifact engine: entity-artifact proximity interactions."""
+    try:
+        from app.core.artifact_engine import artifact_engine
+
+        count = await artifact_engine.process_artifact_encounters(db, entities, tick_number)
+        if count > 0:
+            logger.debug(
+                "Tick %d: Artifact engine — %d interactions", tick_number, count,
+            )
+        return count
+    except Exception as e:
+        logger.debug("Tick %d: Artifact engine error (non-fatal): %s", tick_number, e)
+        return 0
 
 
 # ===================================================================

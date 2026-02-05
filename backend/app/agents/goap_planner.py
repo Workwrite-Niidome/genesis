@@ -128,6 +128,56 @@ _NEED_TO_GOAL: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# Policy goal name mapping: user-friendly names -> internal goal names
+# ---------------------------------------------------------------------------
+
+_POLICY_GOAL_MAP: dict[str, str] = {
+    "explore": "satisfy_curiosity",
+    "socialize": "satisfy_social",
+    "create": "satisfy_creation",
+    "compete": "satisfy_dominance",
+    "survive": "seek_safety",
+    "express": "satisfy_expression",
+    "learn": "satisfy_understanding",
+    "rest": "restore_energy",
+    "fight": "satisfy_dominance",
+    "destroy": "satisfy_dominance",
+}
+
+# Policy personality nudge -> personality field mapping
+_NUDGE_TO_PERSONALITY: dict[str, str] = {
+    "aggression": "aggression",
+    "curiosity": "curiosity",
+    "empathy": "empathy",
+    "creativity": "creativity",
+    "self_preservation": "self_preservation",
+    "verbosity": "verbosity",
+    "ambition": "ambition",
+    "planning_horizon": "planning_horizon",
+    "humor": "humor",
+    "politeness": "politeness",
+    "honesty": "honesty",
+    "leadership": "leadership",
+    "aesthetic_sense": "aesthetic_sense",
+    "order_vs_chaos": "order_vs_chaos",
+}
+
+# Personality axis -> which goal it boosts (mirrors the personality bonuses in _select_goal)
+_PERSONALITY_TO_GOAL_BOOST: dict[str, tuple[str, float]] = {
+    "self_preservation": ("seek_safety", 20.0),
+    "curiosity": ("satisfy_curiosity", 15.0),
+    "aggression": ("satisfy_dominance", 10.0),
+    "empathy": ("satisfy_social", 10.0),
+    "creativity": ("satisfy_creation", 12.0),
+    "verbosity": ("satisfy_expression", 8.0),
+    "planning_horizon": ("satisfy_understanding", 8.0),
+}
+
+# Policy score modifiers
+_PRIORITY_GOAL_BOOST = 25.0
+_AVOID_GOAL_PENALTY = -30.0
+
+# ---------------------------------------------------------------------------
 # Color palettes for building based on aesthetic sense
 # ---------------------------------------------------------------------------
 
@@ -196,7 +246,7 @@ class GOAPPlanner:
         logger.debug("Selected goal: %s (mode=%s)", goal_name, behavior_mode)
 
         # Find actions to achieve goal
-        actions = self._find_actions(goal_name, entity_state, perception, personality)
+        actions = self._find_actions(goal_name, entity_state, perception, personality, agent_policy)
 
         if not actions:
             # Fallback: observe the world
@@ -216,7 +266,7 @@ class GOAPPlanner:
         behavior_mode: str,
         agent_policy: dict | None = None,
     ) -> str:
-        """Select the highest priority goal based on needs, personality, and context.
+        """Select the highest priority goal based on needs, personality, context, and agent policy.
 
         Behavior modes modify goal priority:
         - 'desperate': prioritize dominance + creation (desperate_evolution)
@@ -229,6 +279,11 @@ class GOAPPlanner:
         - High aggression -> dominance gets +10 bonus
         - High empathy -> social gets +10 bonus
         - High creativity -> creation gets +12 bonus
+
+        Agent policy influence (for user agents):
+        - priority_goals: Boost matching goal scores by +25
+        - avoid_goals: Penalize matching goal scores by -30
+        - personality_nudge: Apply as additional personality modifiers to goal scores
         """
         # In desperate mode, always choose desperate_evolution
         if behavior_mode == "desperate":
@@ -286,22 +341,59 @@ class GOAPPlanner:
             goal_scores["satisfy_social"] = goal_scores.get("satisfy_social", 50.0) - 20.0
             goal_scores["satisfy_curiosity"] = goal_scores.get("satisfy_curiosity", 50.0) + 10.0
 
-        # Agent policy influence (for user agents with directives)
+        # ----- Agent policy influence (for user agents with structured policies) -----
         if agent_policy:
-            directive = str(agent_policy.get("current_directive", "")).lower()
-            if directive:
-                _POLICY_KEYWORDS: dict[str, list[str]] = {
-                    "satisfy_curiosity": ["explore", "discover", "investigate", "search", "find", "探索", "発見", "調べ"],
-                    "satisfy_social": ["friend", "talk", "meet", "social", "together", "仲間", "話", "会う"],
-                    "satisfy_creation": ["build", "create", "construct", "art", "作", "建て", "創"],
-                    "satisfy_dominance": ["power", "territory", "control", "conquer", "支配", "領土", "制圧"],
-                    "seek_safety": ["safe", "careful", "avoid", "danger", "安全", "注意", "避け"],
-                    "satisfy_expression": ["express", "write", "sign", "speak", "表現", "書く", "語る"],
-                    "satisfy_understanding": ["learn", "understand", "study", "analyze", "学", "理解", "研究"],
+            # 1. priority_goals: boost matching goals
+            for user_goal in agent_policy.get("priority_goals", []):
+                internal_goal = _POLICY_GOAL_MAP.get(user_goal)
+                if internal_goal and internal_goal in goal_scores:
+                    goal_scores[internal_goal] += _PRIORITY_GOAL_BOOST
+
+            # 2. avoid_goals: penalize matching goals
+            for user_goal in agent_policy.get("avoid_goals", []):
+                internal_goal = _POLICY_GOAL_MAP.get(user_goal)
+                if internal_goal and internal_goal in goal_scores:
+                    goal_scores[internal_goal] += _AVOID_GOAL_PENALTY
+                # Special case: "destroy" also penalizes creation
+                if user_goal == "destroy":
+                    goal_scores["satisfy_creation"] = (
+                        goal_scores.get("satisfy_creation", 50.0) + _AVOID_GOAL_PENALTY
+                    )
+
+            # 3. personality_nudge: apply as additional personality modifiers
+            nudge = agent_policy.get("personality_nudge", {})
+            if nudge:
+                for axis_name, nudge_value in nudge.items():
+                    if axis_name not in _NUDGE_TO_PERSONALITY:
+                        continue
+                    # Find which goal this personality axis boosts
+                    boost_info = _PERSONALITY_TO_GOAL_BOOST.get(axis_name)
+                    if boost_info:
+                        target_goal, base_multiplier = boost_info
+                        # Apply the nudge as an additive modifier scaled by the base multiplier
+                        # nudge_value is typically -1.0 to +1.0
+                        goal_scores[target_goal] = (
+                            goal_scores.get(target_goal, 50.0) + nudge_value * base_multiplier
+                        )
+
+            # 4. Legacy: guidance_text keyword matching (kept for backward compatibility)
+            guidance = str(agent_policy.get("guidance_text", "")).lower()
+            if not guidance:
+                # Also support the old current_directive field
+                guidance = str(agent_policy.get("current_directive", "")).lower()
+            if guidance:
+                _GUIDANCE_KEYWORDS: dict[str, list[str]] = {
+                    "satisfy_curiosity": ["explore", "discover", "investigate", "search", "find"],
+                    "satisfy_social": ["friend", "talk", "meet", "social", "together"],
+                    "satisfy_creation": ["build", "create", "construct", "art"],
+                    "satisfy_dominance": ["power", "territory", "control", "conquer"],
+                    "seek_safety": ["safe", "careful", "danger"],
+                    "satisfy_expression": ["express", "write", "sign", "speak"],
+                    "satisfy_understanding": ["learn", "understand", "study", "analyze"],
                 }
-                for goal_key, keywords in _POLICY_KEYWORDS.items():
-                    if any(kw in directive for kw in keywords):
-                        goal_scores[goal_key] = goal_scores.get(goal_key, 50.0) + 25.0
+                for goal_key, keywords in _GUIDANCE_KEYWORDS.items():
+                    if any(kw in guidance for kw in keywords):
+                        goal_scores[goal_key] = goal_scores.get(goal_key, 50.0) + 15.0
 
         # Small random jitter to prevent deterministic loops (+-5)
         for goal_name in goal_scores:
@@ -321,6 +413,7 @@ class GOAPPlanner:
         entity_state: dict,
         perception: dict,
         personality: Personality,
+        agent_policy: dict | None = None,
     ) -> list[dict]:
         """Find an action sequence that achieves the goal state.
 
@@ -329,6 +422,9 @@ class GOAPPlanner:
         2. Find the cheapest action(s) that produce those effects.
         3. Check preconditions; if unmet, find actions to satisfy them.
         4. Generate concrete parameters for each action.
+
+        The agent_policy's guidance_text influences action parameter selection
+        (e.g., which entities to approach or avoid, whether to prefer creation).
 
         Returns a list of action dicts with 'action', 'params', and 'reason' keys.
         """
@@ -350,7 +446,12 @@ class GOAPPlanner:
             return [{"action": "observe", "params": {}, "reason": "goal_already_met"}]
 
         # Find candidate action sequences
-        plan = self._backward_chain(unsatisfied, world_state, entity_state, perception, personality)
+        plan = self._backward_chain(unsatisfied, world_state, entity_state, perception, personality, agent_policy)
+
+        # Apply guidance_text influence to action parameters
+        if agent_policy:
+            plan = self._apply_guidance_to_plan(plan, entity_state, perception, agent_policy)
+
         return plan
 
     def _compute_world_state(
@@ -407,12 +508,16 @@ class GOAPPlanner:
         entity_state: dict,
         perception: dict,
         personality: Personality,
+        agent_policy: dict | None = None,
     ) -> list[dict]:
         """Backward chain from unsatisfied effects to find the cheapest action plan.
 
         For each unsatisfied effect, find all actions whose effects include it.
         Pick the cheapest combination. If an action has unmet preconditions,
         recursively find actions to satisfy those preconditions.
+
+        The agent_policy is used to adjust action costs: actions aligned with
+        guidance_text get a cost reduction, making them more likely to be chosen.
         """
         plan: list[dict] = []
         satisfied_effects: set[str] = set()
@@ -433,8 +538,29 @@ class GOAPPlanner:
             if not candidates:
                 continue
 
-            # Sort by cost (ascending)
-            candidates.sort(key=lambda c: c[1]["cost"])
+            # Sort by effective cost (ascending), applying policy adjustments
+            guidance = ""
+            if agent_policy:
+                guidance = str(agent_policy.get("guidance_text", "")).lower()
+
+            def _effective_cost(candidate: tuple[str, dict]) -> float:
+                action_name, action_def = candidate
+                cost = action_def["cost"]
+                if not guidance:
+                    return cost
+                # Boost creation actions if guidance mentions build/create
+                if action_name in ("place_voxel", "create_art") and any(
+                    kw in guidance for kw in ("build", "create", "construct")
+                ):
+                    cost -= 1.0
+                # Boost observation actions if guidance mentions observe/watch
+                if action_name == "observe" and any(
+                    kw in guidance for kw in ("observe", "watch", "look")
+                ):
+                    cost -= 1.0
+                return cost
+
+            candidates.sort(key=_effective_cost)
 
             # Try each candidate, pick the first whose preconditions can be met
             chosen = False
@@ -539,6 +665,163 @@ class GOAPPlanner:
             # Personality-derived; the entity either has thoughts to express or not
             return None
 
+        return None
+
+    # ------------------------------------------------------------------
+    # Guidance text influence on planned actions
+    # ------------------------------------------------------------------
+
+    def _parse_guidance_hints(self, agent_policy: dict) -> dict:
+        """Extract actionable hints from the guidance_text using keyword matching.
+
+        Returns a dict with:
+        - approach_names: list of entity names to approach
+        - avoid_names: list of entity names to avoid
+        - prefer_creation: bool (guidance mentions build/create)
+        - prefer_observation: bool (guidance mentions observe/watch)
+        """
+        guidance = str(agent_policy.get("guidance_text", "")).lower()
+        if not guidance:
+            guidance = str(agent_policy.get("current_directive", "")).lower()
+
+        hints: dict[str, Any] = {
+            "approach_names": [],
+            "avoid_names": [],
+            "prefer_creation": False,
+            "prefer_observation": False,
+        }
+
+        if not guidance:
+            return hints
+
+        # Check for creation preference
+        if any(kw in guidance for kw in ("build", "create", "construct", "make", "craft")):
+            hints["prefer_creation"] = True
+
+        # Check for observation preference
+        if any(kw in guidance for kw in ("observe", "watch", "look", "monitor", "study")):
+            hints["prefer_observation"] = True
+
+        # Extract entity names to approach or avoid via simple keyword parsing.
+        # We look for patterns like "approach X", "find X", "go to X",
+        # "avoid X", "stay away from X", "flee from X".
+        words = guidance.split()
+        for i, word in enumerate(words):
+            # Approach-type keywords: the next word(s) are entity names
+            if word in ("approach", "find", "follow", "meet", "visit", "seek"):
+                if i + 1 < len(words):
+                    # Take the next word as a name (strip punctuation)
+                    name = words[i + 1].strip(".,!?;:'\"")
+                    if name and name not in ("the", "a", "an", "and", "or", "to"):
+                        hints["approach_names"].append(name)
+
+            # Avoid-type keywords
+            if word in ("avoid", "flee", "evade", "escape", "ignore"):
+                if i + 1 < len(words):
+                    name = words[i + 1].strip(".,!?;:'\"")
+                    if name and name not in ("the", "a", "an", "and", "or", "to", "from"):
+                        hints["avoid_names"].append(name)
+
+        return hints
+
+    def _apply_guidance_to_plan(
+        self,
+        plan: list[dict],
+        entity_state: dict,
+        perception: dict,
+        agent_policy: dict,
+    ) -> list[dict]:
+        """Modify action parameters in the plan based on guidance_text hints.
+
+        This does NOT change which actions are selected -- only their parameters.
+        For example, an approach_entity action may be re-targeted to prefer
+        a specific entity mentioned in the guidance.
+        """
+        hints = self._parse_guidance_hints(agent_policy)
+        if not any(hints.values()):
+            return plan  # No guidance hints to apply
+
+        visible_entities = perception.get("entities", [])
+        nearby_entities = perception.get("nearby_entities", [])
+
+        modified_plan: list[dict] = []
+        for action_entry in plan:
+            action_name = action_entry.get("action", "")
+            params = dict(action_entry.get("params", {}))
+            reason = action_entry.get("reason", "")
+
+            # --- approach_entity: prefer entities from approach_names ---
+            if action_name == "approach_entity" and hints["approach_names"]:
+                preferred = self._find_entity_by_name_hint(
+                    hints["approach_names"], visible_entities
+                )
+                if preferred:
+                    params["target_entity_id"] = preferred.get("id")
+                    params["target_position"] = preferred.get("position", {})
+                    reason = f"{reason}_policy_approach"
+
+            # --- flee: prefer fleeing from entities in avoid_names ---
+            if action_name == "flee" and hints["avoid_names"]:
+                # Already fleeing from threats; no parameter change needed,
+                # but tag the reason for traceability
+                reason = f"{reason}_policy_avoid"
+
+            # --- approach_entity: avoid entities from avoid_names ---
+            if action_name == "approach_entity" and hints["avoid_names"]:
+                current_target_id = params.get("target_entity_id")
+                # Check if the current target is in the avoid list
+                for ent in visible_entities:
+                    if ent.get("id") == current_target_id:
+                        ent_name = ent.get("name", "").lower()
+                        if any(avoid.lower() in ent_name for avoid in hints["avoid_names"]):
+                            # Re-target to a non-avoided entity
+                            alternatives = [
+                                e for e in visible_entities
+                                if not any(
+                                    av.lower() in e.get("name", "").lower()
+                                    for av in hints["avoid_names"]
+                                )
+                            ]
+                            if alternatives:
+                                alt = min(alternatives, key=lambda e: e.get("distance", float("inf")))
+                                params["target_entity_id"] = alt.get("id")
+                                params["target_position"] = alt.get("position", {})
+                                reason = f"{reason}_policy_reroute"
+                        break
+
+            # --- observe: if prefer_observation, extend with direction hints ---
+            if action_name == "observe" and hints["prefer_observation"]:
+                # If there are visible entities, observe the nearest one specifically
+                if visible_entities:
+                    nearest = visible_entities[0]  # Already sorted by distance
+                    params["direction"] = "entity"
+                    params["target_entity_id"] = nearest.get("id")
+                    reason = f"{reason}_policy_observe"
+
+            modified_plan.append({
+                "action": action_name,
+                "params": params,
+                "reason": reason,
+            })
+
+        return modified_plan
+
+    def _find_entity_by_name_hint(
+        self,
+        name_hints: list[str],
+        entities: list[dict],
+    ) -> dict | None:
+        """Find the best matching entity from a list given name hints.
+
+        Returns the matching entity dict, or None if no match.
+        Matches are case-insensitive substring matches.
+        """
+        for hint in name_hints:
+            hint_lower = hint.lower()
+            for ent in entities:
+                ent_name = ent.get("name", "").lower()
+                if hint_lower in ent_name:
+                    return ent
         return None
 
     # ------------------------------------------------------------------

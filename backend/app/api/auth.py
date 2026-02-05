@@ -1,5 +1,6 @@
 import base64
 import secrets
+import uuid
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -94,3 +95,50 @@ async def get_current_observer(
         )
 
     return observer
+
+
+async def get_current_user(
+    request: Request, db: AsyncSession = Depends(get_db),
+):
+    """Extract and validate a User from a JWT Bearer token.
+
+    The JWT must contain ``"type": "user"`` (distinguishing it from the
+    anonymous observer tokens).  Returns the :class:`User` ORM instance.
+    """
+    from app.models.user import User
+
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    token = auth[7:]
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=["HS256"]
+        )
+        token_type = payload.get("type")
+        user_id_str = payload.get("sub")
+        if token_type != "user" or user_id_str is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+        user_id = uuid.UUID(user_id_str)
+    except (JWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user
