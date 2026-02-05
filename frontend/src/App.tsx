@@ -43,15 +43,15 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<ObserverView />} />
-      <Route path="/admin" element={<AdminView />} />
-      <Route path="/agents" element={<AgentDashboard />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
-      <Route path="/v3" element={
+      <Route path="/" element={
         <div className="w-screen h-screen">
           <WorldViewV3 />
         </div>
       } />
+      <Route path="/v2" element={<ObserverView />} />
+      <Route path="/admin" element={<AdminView />} />
+      <Route path="/agents" element={<AgentDashboard />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/play" element={
         <Suspense fallback={
           <div className="w-screen h-screen bg-gray-900 flex items-center justify-center">
