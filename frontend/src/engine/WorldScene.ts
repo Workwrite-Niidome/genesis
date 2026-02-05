@@ -16,6 +16,10 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { GodRaysShader } from './shaders/GodRaysShader';
+import { VignetteShader } from './shaders/VignetteShader';
+import { FilmGrainShader } from './shaders/FilmGrainShader';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
@@ -24,6 +28,9 @@ import { WaterPlane } from './WaterPlane';
 import { GroundSystem } from './GroundSystem';
 import { ParticleSystem } from './ParticleSystem';
 import { ProceduralStructures } from './ProceduralStructures';
+import { AssetLoader } from './AssetLoader';
+import { AssetManager } from './AssetManager';
+import { ProceduralSky } from './ProceduralSky';
 import type {
   EntityV3, Voxel, VoxelUpdate, StructureInfo,
   ActionProposal, SocketEntityPosition,
@@ -54,6 +61,7 @@ export class WorldScene {
 
   // Post-processing
   private composer: EffectComposer;
+  private filmGrainPass: ShaderPass;
 
   // Subsystems
   voxelRenderer: VoxelRenderer;
@@ -67,6 +75,10 @@ export class WorldScene {
   private particleSystem: ParticleSystem;
   private proceduralStructures: ProceduralStructures;
 
+  // Asset loading system
+  private assetLoader: AssetLoader;
+  private assetManager: AssetManager;
+
   // State
   private animationFrameId: number | null = null;
   private mouseNDC = new THREE.Vector2();
@@ -77,6 +89,9 @@ export class WorldScene {
   // Touch tap detection
   private touchStartPos: { x: number; y: number } | null = null;
   private touchStartTime = 0;
+
+  // Procedural sky texture (equirectangular, used as background + environment)
+  private skyTexture: THREE.Texture | null = null;
 
   // Sign rendering
   private signSprites: Map<string, THREE.Sprite> = new Map();
@@ -100,8 +115,6 @@ export class WorldScene {
     this.renderer.toneMappingExposure = 1.2;
 
     this.scene = new THREE.Scene();
-    // No flat background color -- the sky dome provides the backdrop
-    this.scene.background = null;
 
     // Atmospheric fog: deep indigo-purple tint for depth and mystery
     // Color matches the sky horizon for seamless blending
@@ -117,10 +130,14 @@ export class WorldScene {
 
     this.clock = new THREE.Clock();
 
-    // Setup lighting, sky dome, environment
+    // Setup lighting and environment details
     this.setupLighting();
-    this.setupSkyDome();
     this.setupEnvironment();
+
+    // Procedural equirectangular sky: replaces the old sky dome mesh with a
+    // canvas-rendered texture featuring stars, aurora, moon, and clouds.
+    // Also sets scene.environment for PBR reflections on all materials.
+    this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
 
     // Post-processing pipeline
     this.composer = new EffectComposer(this.renderer);
@@ -145,6 +162,27 @@ export class WorldScene {
     );
     this.composer.addPass(bloomPass);
 
+    // GodRaysPass: volumetric light scattering from the main directional light
+    // Light position in screen-space (0.5, 0.7) approximates the warm sunset light
+    const godRaysPass = new ShaderPass(GodRaysShader);
+    godRaysPass.uniforms.lightPosition.value.set(0.5, 0.7);
+    godRaysPass.uniforms.exposure.value = 0.25;
+    godRaysPass.uniforms.decay.value = 0.95;
+    godRaysPass.uniforms.density.value = 0.8;
+    godRaysPass.uniforms.weight.value = 0.5;
+    this.composer.addPass(godRaysPass);
+
+    // VignettePass: gentle edge darkening for cinematic focus
+    const vignettePass = new ShaderPass(VignetteShader);
+    vignettePass.uniforms.offset.value = 1.0;
+    vignettePass.uniforms.darkness.value = 1.2;
+    this.composer.addPass(vignettePass);
+
+    // FilmGrainPass: barely-perceptible animated grain for film-like quality
+    this.filmGrainPass = new ShaderPass(FilmGrainShader);
+    this.filmGrainPass.uniforms.intensity.value = 0.04;
+    this.composer.addPass(this.filmGrainPass);
+
     // OutputPass: final output with tone mapping applied
     const outputPass = new OutputPass();
     this.composer.addPass(outputPass);
@@ -164,6 +202,19 @@ export class WorldScene {
 
     // Procedural Japanese-themed 3D structures (torii, lanterns, shrines, paths, trees)
     this.proceduralStructures = new ProceduralStructures(this.scene);
+
+    // Asset loading system: tries to load HDRI skybox and GLTF models from /assets/
+    // Falls back gracefully to procedural sky dome and structures if no assets exist
+    this.assetLoader = new AssetLoader();
+    this.assetManager = new AssetManager(this.scene, this.renderer, this.assetLoader);
+
+    // Kick off async asset loading (non-blocking -- scene renders immediately with procedural fallbacks)
+    this.assetManager.applySkybox().catch((err) => {
+      console.warn('[WorldScene] Skybox loading failed, using procedural sky dome:', err);
+    });
+    this.assetManager.loadAndPlaceModels(this.proceduralStructures).catch((err) => {
+      console.warn('[WorldScene] Model loading failed, using procedural structures:', err);
+    });
 
     if (onProposal) {
       this.buildingTool.setProposalCallback(onProposal);
@@ -229,88 +280,9 @@ export class WorldScene {
     this.scene.add(pinkLight);
   }
 
-  /**
-   * Create a sky dome with a twilight/dusk gradient shader.
-   * Deep navy/indigo at zenith transitioning to warm purple/pink at horizon.
-   * Inspired by the ethereal skies in 超かぐや姫.
-   */
-  private setupSkyDome(): void {
-    const skyGeo = new THREE.SphereGeometry(800, 32, 32);
-
-    const skyMat = new THREE.ShaderMaterial({
-      uniforms: {
-        topColor:    { value: new THREE.Color(0x050520) },  // Deep navy zenith
-        midColor:    { value: new THREE.Color(0x2d1b69) },  // Rich indigo/purple mid-sky
-        horizonColor:{ value: new THREE.Color(0x6b2a6b) },  // Warm purple-magenta at horizon
-        bottomColor: { value: new THREE.Color(0x1a0a2e) },  // Dark purple below horizon (matches fog)
-        offset:      { value: 20.0 },
-        exponent:    { value: 0.6 },
-      },
-      vertexShader: /* glsl */ `
-        varying vec3 vWorldPosition;
-        void main() {
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldPosition = worldPosition.xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform vec3 topColor;
-        uniform vec3 midColor;
-        uniform vec3 horizonColor;
-        uniform vec3 bottomColor;
-        uniform float offset;
-        uniform float exponent;
-        varying vec3 vWorldPosition;
-
-        void main() {
-          // Normalized height: 0 at horizon, 1 at zenith, negative below
-          float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;
-
-          if (h < 0.0) {
-            // Below horizon: blend from horizon color to dark bottom
-            float t = clamp(-h * 4.0, 0.0, 1.0);
-            gl_FragColor = vec4(mix(horizonColor, bottomColor, t), 1.0);
-          } else if (h < 0.3) {
-            // Horizon to mid-sky: warm purple/pink to rich indigo
-            float t = pow(h / 0.3, exponent);
-            gl_FragColor = vec4(mix(horizonColor, midColor, t), 1.0);
-          } else {
-            // Mid-sky to zenith: indigo to deep navy
-            float t = pow((h - 0.3) / 0.7, exponent);
-            gl_FragColor = vec4(mix(midColor, topColor, t), 1.0);
-          }
-        }
-      `,
-      side: THREE.BackSide,
-      depthWrite: false,
-    });
-
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    this.scene.add(sky);
-  }
-
   private setupEnvironment(): void {
     // Ground is now handled by GroundSystem (instantiated separately)
-
-    // Starfield
-    const starGeometry = new THREE.BufferGeometry();
-    const starCount = 3000;
-    const positions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 1600;
-      positions[i + 1] = Math.random() * 400 + 50;
-      positions[i + 2] = (Math.random() - 0.5) * 1600;
-    }
-    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const starMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.5,
-      transparent: true,
-      opacity: 0.6,
-    });
-    const stars = new THREE.Points(starGeometry, starMaterial);
-    this.scene.add(stars);
+    // Stars are now part of the procedural equirectangular sky texture
 
     // Origin marker (where the world begins)
     const originGeo = new THREE.RingGeometry(0.5, 1.0, 32);
@@ -632,7 +604,11 @@ export class WorldScene {
     this.waterPlane.setCameraPosition(this.camera.position);
     this.particleSystem.update(elapsed);
 
-    // Render through post-processing pipeline (bloom + tone mapping)
+    // Animate film grain noise pattern each frame
+    this.filmGrainPass.uniforms.time.value = elapsed;
+
+    // Render through post-processing pipeline
+    // Pipeline: RenderPass -> SSAOPass -> UnrealBloomPass -> GodRaysPass -> VignettePass -> FilmGrainPass -> OutputPass
     this.composer.render();
   };
 
@@ -731,6 +707,9 @@ export class WorldScene {
     this.waterPlane.dispose();
     this.particleSystem.dispose();
     this.proceduralStructures.dispose();
+    this.assetManager.dispose();
+    this.assetLoader.dispose();
+    this.skyTexture?.dispose();
 
     // Dispose all sign sprites
     for (const [_id, sprite] of this.signSprites) {
