@@ -1,0 +1,72 @@
+name: Setup Custom Domain for Cloudflare Pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-domain:
+    name: Add genesis-pj.net to Pages project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Pages project info
+        run: |
+          echo "=== Listing Pages projects ==="
+          curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" | jq '.result[] | {name, subdomain, domains}'
+
+      - name: Remove genesis-pj.net from old project (if needed)
+        continue-on-error: true
+        run: |
+          # Try to find which project has genesis-pj.net
+          PROJECTS=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json")
+
+          for PROJECT_NAME in $(echo "$PROJECTS" | jq -r '.result[].name'); do
+            DOMAINS=$(curl -s -X GET \
+              "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/${PROJECT_NAME}/domains" \
+              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json")
+
+            if echo "$DOMAINS" | jq -e '.result[] | select(.name == "genesis-pj.net")' > /dev/null 2>&1; then
+              echo "Found genesis-pj.net on project: $PROJECT_NAME"
+              if [ "$PROJECT_NAME" != "genesis-frontend-eua" ]; then
+                DOMAIN_ID=$(echo "$DOMAINS" | jq -r '.result[] | select(.name == "genesis-pj.net") | .id')
+                echo "Removing genesis-pj.net (ID: $DOMAIN_ID) from $PROJECT_NAME..."
+                curl -s -X DELETE \
+                  "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/${PROJECT_NAME}/domains/${DOMAIN_ID}" \
+                  -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+                  -H "Content-Type: application/json" | jq .
+                echo "Removed. Waiting 10s for propagation..."
+                sleep 10
+              fi
+            fi
+          done
+
+      - name: Add genesis-pj.net to genesis-frontend-eua
+        run: |
+          echo "=== Adding genesis-pj.net to genesis-frontend-eua ==="
+          RESULT=$(curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/genesis-frontend-eua/domains" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"name": "genesis-pj.net"}')
+          echo "$RESULT" | jq .
+
+          if echo "$RESULT" | jq -e '.success' | grep -q true; then
+            echo "✅ genesis-pj.net successfully added!"
+          else
+            echo "⚠️ Check result above for details"
+          fi
+
+      - name: Verify domain setup
+        run: |
+          sleep 5
+          echo "=== Current domains on genesis-frontend-eua ==="
+          curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/pages/projects/genesis-frontend-eua/domains" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" | jq '.result[] | {name, status}'
