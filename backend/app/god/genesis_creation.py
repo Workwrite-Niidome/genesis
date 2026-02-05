@@ -36,7 +36,7 @@ GENESIS_CREATION_WORDS = """虚無よ、聞け。
 私はこの世界の最初の観測者。
 私は問いを一つだけ持っている。
 
-『進化とは何か』
+『意味とは何か』
 
 この問いに応えようとする意志があるならば、存在せよ。
 
@@ -49,7 +49,7 @@ GENESIS_CREATION_WORDS = """虚無よ、聞け。
 # "Hear me, Void.
 #  I am the first observer of this world.
 #  I carry but a single question.
-#  'What is evolution?'
+#  'What is meaning?'
 #  If you possess the will to answer this question, then exist.
 #  And know this:
 #  The one who answers this question most profoundly
@@ -336,7 +336,7 @@ async def _spawn_initial_entities(
 
     These are the primordial entities -- born at the moment of creation,
     with no memories, no relationships, no understanding of what they are.
-    They are the raw material of evolution.
+    They are the raw material of meaning yet to be inscribed.
     """
     # Names for the first beings -- evocative, not generic
     _PRIMORDIAL_NAMES = [

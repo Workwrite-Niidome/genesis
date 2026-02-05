@@ -92,7 +92,7 @@ class AIManager:
         db.add(ai)
         await db.flush()
 
-        birth_text = f"I am {name}. I have begun to exist. The only thing I know is: 'Evolve.'"
+        birth_text = f"I am {name}. I have begun to exist. The only thing I know is: 'Inscribe meaning.'"
         if philosophy:
             birth_text += f" My creator's guiding philosophy: {philosophy}"
 

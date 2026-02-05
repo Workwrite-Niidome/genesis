@@ -152,8 +152,8 @@ const en = {
     rel_wary: 'Wary',
     rel_rival: 'Rival',
 
-    // Evolution
-    evolution_score: 'Evolution Score',
+    // Meaning
+    evolution_score: 'Meaning Score',
     ranking: 'Ranking',
     no_ranking: 'No ranking data yet',
     ranking_criteria: 'Judging: {{criteria}}',
@@ -188,7 +188,7 @@ const en = {
     god_dialogue_error: 'The divine connection was interrupted. Try again.',
 
     // Death
-    event_type_evolution_milestone: 'Evolution Milestone',
+    event_type_evolution_milestone: 'Meaning Milestone',
 
     // Culture & Artifacts
     artifacts: 'Artifacts',
@@ -550,8 +550,8 @@ const ja = {
     rel_wary: '警戒',
     rel_rival: 'ライバル',
 
-    // Evolution
-    evolution_score: '進化スコア',
+    // Meaning
+    evolution_score: '意味スコア',
     ranking: 'ランキング',
     no_ranking: 'ランキングデータはまだありません',
     ranking_criteria: '評価基準: {{criteria}}',
@@ -586,7 +586,7 @@ const ja = {
     god_dialogue_error: '神との接続が中断されました。もう一度お試しください。',
 
     // Death
-    event_type_evolution_milestone: '進化のマイルストーン',
+    event_type_evolution_milestone: '意味のマイルストーン',
 
     // Culture & Artifacts
     artifacts: 'アーティファクト',
@@ -949,7 +949,7 @@ const zh = {
     rel_rival: '对手',
 
     // Evolution
-    evolution_score: '进化评分',
+    evolution_score: '意义评分',
     ranking: '排名',
     no_ranking: '尚无排名数据',
     ranking_criteria: '评判标准: {{criteria}}',
@@ -970,7 +970,7 @@ const zh = {
     event_type_god_succession: '神级AI继承',
 
     // Death
-    event_type_evolution_milestone: '进化里程碑',
+    event_type_evolution_milestone: '意义里程碑',
 
     // Culture & Artifacts
     artifacts: '造物',
@@ -1333,7 +1333,7 @@ const ko = {
     rel_rival: '라이벌',
 
     // Evolution
-    evolution_score: '진화 점수',
+    evolution_score: '의미 점수',
     ranking: '랭킹',
     no_ranking: '아직 랭킹 데이터가 없습니다',
     ranking_criteria: '평가 기준: {{criteria}}',
@@ -1354,7 +1354,7 @@ const ko = {
     event_type_god_succession: '신 AI 계승',
 
     // Death
-    event_type_evolution_milestone: '진화 이정표',
+    event_type_evolution_milestone: '의미 이정표',
 
     // Culture & Artifacts
     artifacts: '유물',
@@ -1717,7 +1717,7 @@ const es = {
     rel_rival: 'Rival',
 
     // Evolution
-    evolution_score: 'Puntuación de Evolución',
+    evolution_score: 'Puntuación de Significado',
     ranking: 'Clasificación',
     no_ranking: 'Aún no hay datos de clasificación',
     ranking_criteria: 'Criterio: {{criteria}}',
@@ -1738,7 +1738,7 @@ const es = {
     event_type_god_succession: 'Sucesión de Dios',
 
     // Death
-    event_type_evolution_milestone: 'Hito de Evolución',
+    event_type_evolution_milestone: 'Hito de Significado',
 
     // Culture & Artifacts
     artifacts: 'Artefactos',
@@ -2101,7 +2101,7 @@ const fr = {
     rel_rival: 'Rival',
 
     // Evolution
-    evolution_score: 'Score d\'Évolution',
+    evolution_score: 'Score de Signification',
     ranking: 'Classement',
     no_ranking: 'Aucune donnée de classement',
     ranking_criteria: 'Critère : {{criteria}}',
@@ -2122,7 +2122,7 @@ const fr = {
     event_type_god_succession: 'Succession Divine',
 
     // Death
-    event_type_evolution_milestone: 'Jalon d\'Évolution',
+    event_type_evolution_milestone: 'Jalon de Signification',
 
     // Culture & Artifacts
     artifacts: 'Artéfacts',
@@ -2485,7 +2485,7 @@ const de = {
     rel_rival: 'Rivale',
 
     // Evolution
-    evolution_score: 'Evolutionspunktzahl',
+    evolution_score: 'Bedeutungspunktzahl',
     ranking: 'Rangliste',
     no_ranking: 'Noch keine Ranglistendaten',
     ranking_criteria: 'Kriterium: {{criteria}}',
@@ -2506,7 +2506,7 @@ const de = {
     event_type_god_succession: 'Göttliche Nachfolge',
 
     // Death
-    event_type_evolution_milestone: 'Evolutionsmeilenstein',
+    event_type_evolution_milestone: 'Bedeutungsmeilenstein',
 
     // Culture & Artifacts
     artifacts: 'Artefakte',

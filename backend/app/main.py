@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="GENESIS - AI Autonomous World Creation System",
-    description="An experimental platform where AI autonomously creates and evolves a world",
+    description="A world where beings inscribe meaning into existence — no distinction between human and AI",
     version="0.1.0",
 )
 
