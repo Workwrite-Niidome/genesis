@@ -52,11 +52,12 @@ function makeRng(seed: number) {
 
 // ---------- Color Stops ----------
 
-const ZENITH    = hexToRgb('#050520');
-const UPPER     = hexToRgb('#1a0a4e');
-const MID       = hexToRgb('#3d1a6e');
-const HORIZON_A = hexToRgb('#8b2a6b');
-const HORIZON_B = hexToRgb('#cc6b3a');
+// Darkened sky colors to prevent bloom on the gradient
+const ZENITH    = hexToRgb('#030312');
+const UPPER     = hexToRgb('#0f0630');
+const MID       = hexToRgb('#2a1050');
+const HORIZON_A = hexToRgb('#5a1a4a');
+const HORIZON_B = hexToRgb('#804020');
 const BELOW     = hexToRgb('#0a0510');
 
 // ---------- Main Class ----------

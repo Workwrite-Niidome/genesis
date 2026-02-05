@@ -35,7 +35,7 @@ export class CameraController {
   // Observer mode state
   private yaw = 0;
   private pitch = -0.3;
-  private targetPosition = new THREE.Vector3(0, 30, 50);
+  private targetPosition = new THREE.Vector3(0, 8, 25);
   private velocity = new THREE.Vector3();
 
   // Input state

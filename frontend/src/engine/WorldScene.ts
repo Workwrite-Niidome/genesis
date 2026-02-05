@@ -111,15 +111,17 @@ export class WorldScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     // Cinematic tone mapping (ACESFilmic for rich color grading)
+    // Exposure reduced to prevent washed-out appearance
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 0.9;
 
     this.scene = new THREE.Scene();
 
     // Atmospheric fog: deep indigo-purple tint for depth and mystery
     // Color matches the sky horizon for seamless blending
+    // Density reduced to allow structures to be visible at reasonable distances
     const fogColor = new THREE.Color(0x1a0a2e);
-    this.scene.fog = new THREE.FogExp2(fogColor, 0.01);
+    this.scene.fog = new THREE.FogExp2(fogColor, 0.004);
 
     this.camera = new THREE.PerspectiveCamera(
       60,
@@ -154,22 +156,24 @@ export class WorldScene {
     this.composer.addPass(ssaoPass);
 
     // UnrealBloomPass: emissive voxels and lights bloom beautifully
+    // Threshold raised to 0.85 so only truly emissive objects (lanterns, ornaments) bloom
+    // and the gradient sky doesn't wash out the entire scene
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
-      0.8,  // strength
-      0.4,  // radius
-      0.7,  // threshold -- only bright/emissive objects bloom (raised for shadow/SSAO compatibility)
+      0.6,  // strength (reduced from 0.8)
+      0.3,  // radius (reduced from 0.4)
+      0.85, // threshold (raised from 0.7 to prevent sky bloom)
     );
     this.composer.addPass(bloomPass);
 
     // GodRaysPass: volumetric light scattering from the main directional light
-    // Light position in screen-space (0.5, 0.7) approximates the warm sunset light
+    // Exposure reduced to prevent washing out the scene
     const godRaysPass = new ShaderPass(GodRaysShader);
-    godRaysPass.uniforms.lightPosition.value.set(0.5, 0.7);
-    godRaysPass.uniforms.exposure.value = 0.25;
-    godRaysPass.uniforms.decay.value = 0.95;
-    godRaysPass.uniforms.density.value = 0.8;
-    godRaysPass.uniforms.weight.value = 0.5;
+    godRaysPass.uniforms.lightPosition.value.set(0.5, 0.3); // lower on screen
+    godRaysPass.uniforms.exposure.value = 0.1;  // reduced from 0.25
+    godRaysPass.uniforms.decay.value = 0.93;
+    godRaysPass.uniforms.density.value = 0.5;   // reduced from 0.8
+    godRaysPass.uniforms.weight.value = 0.3;    // reduced from 0.5
     this.composer.addPass(godRaysPass);
 
     // VignettePass: gentle edge darkening for cinematic focus
