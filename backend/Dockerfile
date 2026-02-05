@@ -4,17 +4,13 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-
-# Create non-root user for production
-RUN addgroup --system appuser && adduser --system --ingroup appuser appuser
-RUN chown -R appuser:appuser /app
-USER appuser
 
 EXPOSE 8000
 

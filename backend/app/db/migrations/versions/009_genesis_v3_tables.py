@@ -1,6 +1,10 @@
 """GENESIS v3 tables: entities, episodic_memories, semantic_memories,
 entity_relationships, voxel_blocks, structures, world_events, zones.
 
+Adds the new v3 model layer alongside existing v1/v2 tables (ais, events,
+interactions, observers, concepts, artifacts, ticks, world_saga, etc.).
+No existing tables are modified or dropped — full backward compatibility.
+
 Revision ID: 009
 Revises: 008
 Create Date: 2026-02-05
@@ -20,6 +24,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # ── entities ────────────────────────────────────────────────────
+    # Unified being model replacing the old AI/human distinction.
     op.create_table(
         "entities",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -44,13 +49,20 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_entities_alive", "entities", ["is_alive"])
-    op.create_index("ix_entities_position", "entities", ["position_x", "position_y", "position_z"])
+    op.create_index(
+        "ix_entities_position", "entities",
+        ["position_x", "position_y", "position_z"],
+    )
 
     # ── episodic_memories ───────────────────────────────────────────
+    # Event-based memory with TTL based on importance.
     op.create_table(
         "episodic_memories",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("entity_id", UUID(as_uuid=True), sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "entity_id", UUID(as_uuid=True),
+            sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False,
+        ),
         sa.Column("summary", sa.Text, nullable=False),
         sa.Column("importance", sa.Float, server_default="0.5"),
         sa.Column("tick", sa.BigInteger, nullable=False),
@@ -66,24 +78,39 @@ def upgrade() -> None:
     op.create_index("ix_episodic_importance", "episodic_memories", ["entity_id", "importance"])
 
     # ── semantic_memories ───────────────────────────────────────────
+    # Knowledge-based memory: facts, concepts, world knowledge.
     op.create_table(
         "semantic_memories",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("entity_id", UUID(as_uuid=True), sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "entity_id", UUID(as_uuid=True),
+            sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False,
+        ),
         sa.Column("key", sa.String(200), nullable=False),
         sa.Column("value", sa.Text, nullable=False),
         sa.Column("confidence", sa.Float, server_default="1.0"),
         sa.Column("source_tick", sa.BigInteger, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_semantic_entity_key", "semantic_memories", ["entity_id", "key"], unique=True)
+    op.create_index(
+        "ix_semantic_entity_key", "semantic_memories",
+        ["entity_id", "key"], unique=True,
+    )
 
     # ── entity_relationships ────────────────────────────────────────
+    # 7-axis relationship between two entities, plus debt and alliance.
     op.create_table(
         "entity_relationships",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("entity_id", UUID(as_uuid=True), sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("target_id", UUID(as_uuid=True), sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "entity_id", UUID(as_uuid=True),
+            sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False,
+        ),
+        sa.Column(
+            "target_id", UUID(as_uuid=True),
+            sa.ForeignKey("entities.id", ondelete="CASCADE"), nullable=False,
+        ),
+        # 7 core axes
         sa.Column("trust", sa.Float, server_default="0.0"),
         sa.Column("familiarity", sa.Float, server_default="0.0"),
         sa.Column("respect", sa.Float, server_default="0.0"),
@@ -91,32 +118,21 @@ def upgrade() -> None:
         sa.Column("rivalry", sa.Float, server_default="0.0"),
         sa.Column("gratitude", sa.Float, server_default="0.0"),
         sa.Column("anger", sa.Float, server_default="0.0"),
+        # Extra dimensions
         sa.Column("debt", sa.Float, server_default="0.0"),
         sa.Column("alliance", sa.Boolean, server_default="false"),
         sa.Column("last_interaction_tick", sa.BigInteger, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_relationship_pair", "entity_relationships", ["entity_id", "target_id"], unique=True)
-
-    # ── voxel_blocks ────────────────────────────────────────────────
-    op.create_table(
-        "voxel_blocks",
-        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("x", sa.Integer, nullable=False),
-        sa.Column("y", sa.Integer, nullable=False),
-        sa.Column("z", sa.Integer, nullable=False),
-        sa.Column("color", sa.String(7), nullable=False, server_default="#888888"),
-        sa.Column("material", sa.String(20), nullable=False, server_default="solid"),
-        sa.Column("has_collision", sa.Boolean, server_default="true"),
-        sa.Column("placed_by", UUID(as_uuid=True), nullable=True),
-        sa.Column("structure_id", UUID(as_uuid=True), nullable=True),
-        sa.Column("placed_tick", sa.BigInteger, nullable=False, server_default="0"),
+    op.create_index(
+        "ix_relationship_pair", "entity_relationships",
+        ["entity_id", "target_id"], unique=True,
     )
-    op.create_index("ix_voxel_position", "voxel_blocks", ["x", "y", "z"], unique=True)
-    op.create_index("ix_voxel_structure", "voxel_blocks", ["structure_id"])
 
     # ── structures ──────────────────────────────────────────────────
+    # Named collection of voxels (must be created before voxel_blocks
+    # in case we later add a FK from voxel_blocks.structure_id).
     op.create_table(
         "structures",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -134,7 +150,26 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
+    # ── voxel_blocks ────────────────────────────────────────────────
+    # A single voxel in the world. 1 voxel = 1 m cubed.
+    op.create_table(
+        "voxel_blocks",
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
+        sa.Column("x", sa.Integer, nullable=False),
+        sa.Column("y", sa.Integer, nullable=False),
+        sa.Column("z", sa.Integer, nullable=False),
+        sa.Column("color", sa.String(7), nullable=False, server_default="#888888"),
+        sa.Column("material", sa.String(20), nullable=False, server_default="solid"),
+        sa.Column("has_collision", sa.Boolean, server_default="true"),
+        sa.Column("placed_by", UUID(as_uuid=True), nullable=True),
+        sa.Column("structure_id", UUID(as_uuid=True), nullable=True),
+        sa.Column("placed_tick", sa.BigInteger, nullable=False, server_default="0"),
+    )
+    op.create_index("ix_voxel_position", "voxel_blocks", ["x", "y", "z"], unique=True)
+    op.create_index("ix_voxel_structure", "voxel_blocks", ["structure_id"])
+
     # ── world_events ────────────────────────────────────────────────
+    # Event sourcing: every state change is recorded as a world event.
     op.create_table(
         "world_events",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
@@ -156,6 +191,7 @@ def upgrade() -> None:
     op.create_index("ix_world_event_type", "world_events", ["event_type"])
 
     # ── zones ───────────────────────────────────────────────────────
+    # Named region in the world: territory, hub, etc.
     op.create_table(
         "zones",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -175,11 +211,39 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Drop indexes explicitly, then tables in reverse dependency order.
+
+    # zones (no FK deps)
     op.drop_table("zones")
+
+    # world_events
+    op.drop_index("ix_world_event_type", table_name="world_events")
+    op.drop_index("ix_world_event_actor", table_name="world_events")
+    op.drop_index("ix_world_event_tick", table_name="world_events")
     op.drop_table("world_events")
-    op.drop_table("structures")
+
+    # voxel_blocks
+    op.drop_index("ix_voxel_structure", table_name="voxel_blocks")
+    op.drop_index("ix_voxel_position", table_name="voxel_blocks")
     op.drop_table("voxel_blocks")
+
+    # structures
+    op.drop_table("structures")
+
+    # entity_relationships (FK -> entities)
+    op.drop_index("ix_relationship_pair", table_name="entity_relationships")
     op.drop_table("entity_relationships")
+
+    # semantic_memories (FK -> entities)
+    op.drop_index("ix_semantic_entity_key", table_name="semantic_memories")
     op.drop_table("semantic_memories")
+
+    # episodic_memories (FK -> entities)
+    op.drop_index("ix_episodic_importance", table_name="episodic_memories")
+    op.drop_index("ix_episodic_entity_tick", table_name="episodic_memories")
     op.drop_table("episodic_memories")
+
+    # entities (referenced by memories + relationships — drop last)
+    op.drop_index("ix_entities_position", table_name="entities")
+    op.drop_index("ix_entities_alive", table_name="entities")
     op.drop_table("entities")

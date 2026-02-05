@@ -144,13 +144,20 @@ class GodAIManager:
     # ------------------------------------------------------------------
 
     async def autonomous_observation(
-        self, db: AsyncSession, tick_number: int
+        self, db: AsyncSession, tick_number: int, *, drama_context: str = "",
     ) -> str | None:
         """God observes the world and comments.
 
         Called every tick, but only actually produces output roughly
         every OBSERVATION_INTERVAL ticks. Returns the observation text
         or None if it is not yet time.
+
+        Parameters
+        ----------
+        drama_context:
+            Optional narrative context string produced by the Drama Engine.
+            When present it is appended to the awareness report so that
+            the LLM knows about stagnation, crises, and awareness events.
         """
         god = await self.get_or_create(db)
         god_state = dict(god.state)
@@ -164,6 +171,14 @@ class GodAIManager:
         recent_events = await self._gather_recent_events(db, tick_number, limit=20)
         ranking = await self._gather_ranking(db)
         awareness_report = await self._gather_awareness_report(db)
+
+        # Enrich awareness report with drama context if available
+        if drama_context:
+            awareness_report = (
+                awareness_report
+                + "\n\n## Drama Engine Narrative Report\n"
+                + drama_context
+            )
 
         phase_prompt = get_god_phase_prompt(god_state)
 

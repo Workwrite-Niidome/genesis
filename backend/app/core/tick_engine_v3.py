@@ -128,7 +128,8 @@ async def _process_tick_v3():
         3. Age & energy drain (passive survival pressure)
         4. Death check (kill zero-energy entities)
         5. Agent Runtime for each entity (perceive -> needs -> GOAP -> act -> remember)
-        6. God AI observation  (every GOD_OBSERVATION_INTERVAL)
+       5b. Drama assessment (stagnation detection, crisis generation, God context)
+        6. God AI observation  (every GOD_OBSERVATION_INTERVAL, with drama context)
         7. God AI world update (every GOD_WORLD_UPDATE_INTERVAL)
         8. God AI succession   (every GOD_SUCCESSION_INTERVAL, after tick 200)
         9. Memory cleanup      (every MEMORY_CLEANUP_INTERVAL)
@@ -247,10 +248,47 @@ async def _process_tick_v3():
             await db.rollback()
             return
 
+        # ── 5b. Drama assessment (feeds God AI context) ────────────────
+        drama_context = ""
+        if tick_number > 0 and tick_number % GOD_OBSERVATION_INTERVAL == 0:
+            try:
+                from app.god.drama_engine import drama_engine
+
+                drama_assessment = drama_engine.assess_world_drama(
+                    entities=entities,
+                    recent_actions=actions_taken,
+                    recent_conflicts=0,  # TODO: count from tick summaries
+                    recent_conversations=conversations,
+                    recent_deaths=deaths,
+                    tick_number=tick_number,
+                )
+
+                # If stagnant and world is mature enough, trigger a crisis
+                crisis_result = None
+                if drama_assessment["is_stagnant"] and tick_number > 100:
+                    crisis_result = await drama_engine.generate_crisis(
+                        db, entities, tick_number,
+                    )
+
+                drama_context = drama_engine.build_drama_context_for_god(
+                    drama_assessment, crisis_result,
+                )
+
+                logger.debug(
+                    "Tick %d: Drama assessment -- level=%.2f stagnant=%s",
+                    tick_number,
+                    drama_assessment["drama_level"],
+                    drama_assessment["is_stagnant"],
+                )
+            except Exception as e:
+                logger.debug("Drama assessment failed: %s", e)
+
         # ── 6. God AI observation (~every 15 min) ─────────────────────
         god_observation = None
         if tick_number > 0 and tick_number % GOD_OBSERVATION_INTERVAL == 0:
-            god_observation = await _safe_god_observation(db, tick_number)
+            god_observation = await _safe_god_observation(
+                db, tick_number, drama_context=drama_context,
+            )
 
         # ── 7. God AI world update (~every 1 hour) ────────────────────
         god_world_update = None
@@ -425,11 +463,15 @@ def _adapt_entity_for_god_ai(entity: Any) -> None:
 
 # ── God AI phases ─────────────────────────────────────────────────
 
-async def _safe_god_observation(db: Any, tick_number: int) -> str | None:
+async def _safe_god_observation(
+    db: Any, tick_number: int, *, drama_context: str = "",
+) -> str | None:
     """Run God AI autonomous observation.  Returns observation text or None."""
     try:
         from app.god.god_ai import god_ai_manager
-        result = await god_ai_manager.autonomous_observation(db, tick_number)
+        result = await god_ai_manager.autonomous_observation(
+            db, tick_number, drama_context=drama_context,
+        )
         logger.info("Tick %d: God AI observation complete", tick_number)
         return result
     except Exception as e:

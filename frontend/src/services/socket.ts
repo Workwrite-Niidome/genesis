@@ -84,6 +84,13 @@ export function connectSocket(): Socket {
     const store = useAIStore.getState();
     store.updateAI({ id: data.id, is_alive: false });
     console.log('[GENESIS] AI died:', data.name);
+    useWorldStoreV3.getState().addEvent({
+      id: `death-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'death',
+      tick: data.tick ?? 0,
+      timestamp: Date.now(),
+      data,
+    });
   });
 
   socket.on('concept_created', (_data: any) => {
@@ -131,6 +138,43 @@ export function connectSocket(): Socket {
 
   socket.on('speech', (data: SocketSpeechEvent) => {
     useWorldStoreV3.getState().addSpeechEvent(data);
+    useWorldStoreV3.getState().addEvent({
+      id: `speech-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'speech',
+      tick: data.tick ?? 0,
+      timestamp: Date.now(),
+      data,
+    });
+  });
+
+  socket.on('conflict', (data: any) => {
+    useWorldStoreV3.getState().addEvent({
+      id: `conflict-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'conflict',
+      tick: data.tick ?? 0,
+      timestamp: Date.now(),
+      data,
+    });
+  });
+
+  socket.on('god_crisis', (data: any) => {
+    useWorldStoreV3.getState().addEvent({
+      id: `god_crisis-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'god_crisis',
+      tick: data.tick ?? 0,
+      timestamp: Date.now(),
+      data,
+    });
+  });
+
+  socket.on('god_observation_summary', (data: any) => {
+    useWorldStoreV3.getState().addEvent({
+      id: `god_obs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'god_observation',
+      tick: data.tick_number ?? 0,
+      timestamp: Date.now(),
+      data,
+    });
   });
 
   socket.on('world_update', (data: any) => {

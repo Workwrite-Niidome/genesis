@@ -4,10 +4,20 @@
  * Manages 3D world state: entities, voxels, world metadata.
  */
 import { create } from 'zustand';
+import { getSocket } from '../services/socket';
 import type {
   EntityV3, Voxel, VoxelUpdate, WorldStateV3,
   SocketEntityPosition, SocketSpeechEvent,
 } from '../types/v3';
+
+// ── Real-time event feed types ──────────────────────────────
+export interface WorldEvent {
+  id: string;
+  type: 'conflict' | 'speech' | 'death' | 'god_crisis' | 'god_observation';
+  tick: number;
+  timestamp: number;
+  data: any;
+}
 
 interface WorldStoreV3State {
   // World metadata
@@ -30,6 +40,9 @@ interface WorldStoreV3State {
   // Recent speech events
   recentSpeech: SocketSpeechEvent[];
 
+  // Real-time event feed (last 50)
+  recentEvents: WorldEvent[];
+
   // Actions
   setWorldState: (state: Partial<WorldStateV3>) => void;
   updateTick: (data: { tickNumber: number; entityCount: number; voxelCount: number }) => void;
@@ -45,6 +58,8 @@ interface WorldStoreV3State {
   clearVoxelUpdates: () => void;
 
   addSpeechEvent: (event: SocketSpeechEvent) => void;
+
+  addEvent: (event: WorldEvent) => void;
 
   setPaused: (paused: boolean) => void;
   setTimeSpeed: (speed: number) => void;
@@ -66,6 +81,7 @@ export const useWorldStoreV3 = create<WorldStoreV3State>((set, get) => ({
 
   pendingVoxelUpdates: [],
   recentSpeech: [],
+  recentEvents: [],
 
   // Actions
   setWorldState: (state) => set((prev) => ({
@@ -115,17 +131,40 @@ export const useWorldStoreV3 = create<WorldStoreV3State>((set, get) => ({
     return { entities: newMap, entityCount: newMap.size };
   }),
 
-  removeEntity: (entityId) => set((prev) => {
+  removeEntity: (entityId) => {
+    const prev = get();
     const newMap = new Map(prev.entities);
     newMap.delete(entityId);
-    return {
+    // If the removed entity was selected, emit observer_unfocus
+    if (prev.selectedEntityId === entityId) {
+      const socket = getSocket();
+      if (socket?.connected) {
+        socket.emit('observer_unfocus', {});
+      }
+    }
+    set({
       entities: newMap,
       entityCount: newMap.size,
       selectedEntityId: prev.selectedEntityId === entityId ? null : prev.selectedEntityId,
-    };
-  }),
+    });
+  },
 
-  selectEntity: (entityId) => set({ selectedEntityId: entityId }),
+  selectEntity: (entityId) => {
+    const prev = get().selectedEntityId;
+    // Emit observer tracking events via Socket.IO
+    const socket = getSocket();
+    if (socket?.connected) {
+      // Unfocus the previously selected entity (if any)
+      if (prev !== null) {
+        socket.emit('observer_unfocus', {});
+      }
+      // Focus the newly selected entity (if any)
+      if (entityId !== null) {
+        socket.emit('observer_focus', { entity_id: entityId });
+      }
+    }
+    set({ selectedEntityId: entityId });
+  },
 
   getEntity: (entityId) => get().entities.get(entityId),
 
@@ -137,6 +176,10 @@ export const useWorldStoreV3 = create<WorldStoreV3State>((set, get) => ({
 
   addSpeechEvent: (event) => set((prev) => ({
     recentSpeech: [...prev.recentSpeech.slice(-49), event],
+  })),
+
+  addEvent: (event) => set((prev) => ({
+    recentEvents: [...prev.recentEvents.slice(-49), event],
   })),
 
   setPaused: (paused) => set({ isPaused: paused }),

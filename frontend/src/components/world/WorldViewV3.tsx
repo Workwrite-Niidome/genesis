@@ -7,6 +7,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { WorldScene } from '../../engine/WorldScene';
 import { useWorldStoreV3 } from '../../stores/worldStoreV3';
+import { EventFeed } from './EventFeed';
 import type { ActionProposal } from '../../types/v3';
 import type { CameraMode } from '../../engine/Camera';
 import type { BuildMode } from '../../engine/BuildingTool';
@@ -147,6 +148,9 @@ export function WorldViewV3() {
           </button>
         </div>
       </div>
+
+      {/* Real-time event feed */}
+      <EventFeed />
 
       {/* Build Tool Panel */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2 z-10">

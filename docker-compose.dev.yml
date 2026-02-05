@@ -31,12 +31,16 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
     env_file:
       - .env
+    environment:
+      - DEBUG=true
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
     depends_on:
       db:
         condition: service_healthy
@@ -44,12 +48,12 @@ services:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   celery-worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1 --pool=solo
     volumes:
       - ./backend:/app
     env_file:
@@ -61,12 +65,12 @@ services:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1 --pool=solo
 
   celery-beat:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    command: celery -A app.core.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app
     env_file:
@@ -76,7 +80,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.core.celery_app beat --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "3000:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=http://localhost:8000
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
