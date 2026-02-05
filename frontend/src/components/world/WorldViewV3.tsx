@@ -15,7 +15,8 @@ import { GodSuccessionOverlay } from './GodSuccessionOverlay';
 import { TimelinePanel, TimelineToggleButton } from './TimelinePanel';
 import { GodChatPanel, GodChatToggle } from './GodChatPanel';
 import { BuildingTool } from './BuildingTool';
-import type { ActionProposal } from '../../types/v3';
+import { api } from '../../services/api';
+import type { ActionProposal, Voxel, EntityV3 } from '../../types/v3';
 import type { CameraMode } from '../../engine/Camera';
 import type { BuildMode } from '../../engine/BuildingTool';
 
@@ -166,6 +167,81 @@ export function WorldViewV3() {
       sceneRef.current = null;
     };
   }, [selectEntity]);
+
+  // Load initial world data (voxels, entities, structures)
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+    const store = useWorldStoreV3.getState();
+
+    // Fetch world state
+    api.v3.getWorldState().then((state: any) => {
+      store.setWorldState({
+        tickNumber: state.tick,
+        entityCount: state.entity_count,
+        voxelCount: state.voxel_count,
+        isPaused: state.is_paused,
+        timeSpeed: state.time_speed,
+        godEntityId: state.god?.id || null,
+        godPhase: state.god?.state?.god_phase || 'genesis',
+      });
+    }).catch(() => {});
+
+    // Fetch initial voxels (large bounding box)
+    api.v3.getVoxels({
+      min_x: -200, max_x: 200,
+      min_y: -10, max_y: 100,
+      min_z: -200, max_z: 200,
+    }).then((voxels: any[]) => {
+      if (voxels && voxels.length > 0) {
+        const mapped: Voxel[] = voxels.map((v: any) => ({
+          x: v.x, y: v.y, z: v.z,
+          color: v.color || '#888888',
+          material: v.material || 'solid',
+          hasCollision: v.has_collision !== false,
+        }));
+        scene.loadVoxels(mapped);
+      }
+    }).catch(() => {});
+
+    // Fetch initial entities
+    api.v3.getEntities(true, 200).then((data: any) => {
+      if (data?.entities && data.entities.length > 0) {
+        const entities: EntityV3[] = data.entities.map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          position: e.position,
+          facing: e.facing || { x: 1, z: 0 },
+          appearance: e.appearance || { bodyColor: '#4fc3f7', accentColor: '#ffffff', shape: 'humanoid', size: 1, emissive: false },
+          personality: e.personality,
+          state: e.state,
+          isAlive: e.is_alive,
+          isGod: e.is_god,
+          metaAwareness: e.meta_awareness || 0,
+          birthTick: e.birth_tick || 0,
+          createdAt: e.created_at || '',
+        }));
+        store.setEntities(entities);
+      }
+    }).catch(() => {});
+
+    // Fetch structures (signs, etc.)
+    api.v3.getStructures().then((structures: any[]) => {
+      if (structures && structures.length > 0) {
+        scene.loadStructures(structures.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          structureType: s.structure_type,
+          bounds: {
+            min: { x: s.min_x, y: s.min_y, z: s.min_z },
+            max: { x: s.max_x, y: s.max_y, z: s.max_z },
+          },
+          properties: s.properties,
+        })));
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync entities to scene
   useEffect(() => {

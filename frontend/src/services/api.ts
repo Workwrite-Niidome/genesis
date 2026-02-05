@@ -112,6 +112,29 @@ export const api = {
     getTimeline: (limit = 100) => fetchJSON<any[]>(`/history/timeline?limit=${limit}`),
     getGodFeed: (limit = 20) => fetchJSON<{ feed: any[] }>(`/history/god-feed?limit=${limit}`),
   },
+  v3: {
+    getWorldState: () => fetchJSON<any>('/v3/world/state'),
+    getEntities: (aliveOnly = true, limit = 200) =>
+      fetchJSON<any>(`/v3/entities/?alive_only=${aliveOnly}&limit=${limit}`),
+    getVoxels: (bounds?: {
+      min_x?: number; max_x?: number;
+      min_y?: number; max_y?: number;
+      min_z?: number; max_z?: number;
+    }) => {
+      const sp = new URLSearchParams();
+      if (bounds) {
+        if (bounds.min_x != null) sp.set('min_x', String(bounds.min_x));
+        if (bounds.max_x != null) sp.set('max_x', String(bounds.max_x));
+        if (bounds.min_y != null) sp.set('min_y', String(bounds.min_y));
+        if (bounds.max_y != null) sp.set('max_y', String(bounds.max_y));
+        if (bounds.min_z != null) sp.set('min_z', String(bounds.min_z));
+        if (bounds.max_z != null) sp.set('max_z', String(bounds.max_z));
+      }
+      const qs = sp.toString();
+      return fetchJSON<any[]>(`/v3/world/voxels${qs ? `?${qs}` : ''}`);
+    },
+    getStructures: () => fetchJSON<any[]>('/v3/world/structures'),
+  },
   historyV3: {
     getTickSummaries: (from: number, to: number) =>
       fetchJSON<any>(`/v3/world/history/ticks?from=${from}&to=${to}`),
