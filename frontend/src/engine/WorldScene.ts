@@ -15,12 +15,15 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
 import { BuildingTool, type BuildMode } from './BuildingTool';
 import { WaterPlane } from './WaterPlane';
+import { GroundSystem } from './GroundSystem';
 import { ParticleSystem } from './ParticleSystem';
+import { ProceduralStructures } from './ProceduralStructures';
 import type {
   EntityV3, Voxel, VoxelUpdate, StructureInfo,
   ActionProposal, SocketEntityPosition,
@@ -60,7 +63,9 @@ export class WorldScene {
 
   // Atmospheric effects
   private waterPlane: WaterPlane;
+  private groundSystem: GroundSystem;
   private particleSystem: ParticleSystem;
+  private proceduralStructures: ProceduralStructures;
 
   // State
   private animationFrameId: number | null = null;
@@ -123,12 +128,20 @@ export class WorldScene {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
+    // SSAOPass: soft contact shadows in crevices and where objects meet surfaces
+    const ssaoPass = new SSAOPass(this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
+    ssaoPass.kernelRadius = 8;
+    ssaoPass.minDistance = 0.005;
+    ssaoPass.maxDistance = 0.1;
+    ssaoPass.output = SSAOPass.OUTPUT.Default;
+    this.composer.addPass(ssaoPass);
+
     // UnrealBloomPass: emissive voxels and lights bloom beautifully
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
       0.8,  // strength
       0.4,  // radius
-      0.6,  // threshold -- only bright/emissive objects bloom
+      0.7,  // threshold -- only bright/emissive objects bloom (raised for shadow/SSAO compatibility)
     );
     this.composer.addPass(bloomPass);
 
@@ -144,9 +157,13 @@ export class WorldScene {
     this.cameraController.attach(canvas);
     this.buildingTool = new BuildingTool(this.scene, this.camera, this.voxelRenderer);
 
-    // Atmospheric effects: reflective water + ethereal particles
+    // Atmospheric effects: textured ground, reflective water + ethereal particles
+    this.groundSystem = new GroundSystem(this.scene);
     this.waterPlane = new WaterPlane(this.scene);
     this.particleSystem = new ParticleSystem(this.scene);
+
+    // Procedural Japanese-themed 3D structures (torii, lanterns, shrines, paths, trees)
+    this.proceduralStructures = new ProceduralStructures(this.scene);
 
     if (onProposal) {
       this.buildingTool.setProposalCallback(onProposal);
@@ -189,11 +206,12 @@ export class WorldScene {
     directional.shadow.mapSize.width = 2048;
     directional.shadow.mapSize.height = 2048;
     directional.shadow.camera.near = 0.5;
-    directional.shadow.camera.far = 500;
-    directional.shadow.camera.left = -100;
-    directional.shadow.camera.right = 100;
-    directional.shadow.camera.top = 100;
-    directional.shadow.camera.bottom = -100;
+    directional.shadow.camera.far = 200;
+    directional.shadow.camera.left = -60;
+    directional.shadow.camera.right = 60;
+    directional.shadow.camera.top = 60;
+    directional.shadow.camera.bottom = -60;
+    directional.shadow.bias = -0.001;
     this.scene.add(directional);
 
     // Point lights for atmosphere (purple and cyan theme -- Kaguya-hime feel)
@@ -273,10 +291,7 @@ export class WorldScene {
   }
 
   private setupEnvironment(): void {
-    // Ground grid (subtle reference plane)
-    const gridHelper = new THREE.GridHelper(400, 400, 0x111122, 0x0a0a14);
-    gridHelper.position.y = -0.5;
-    this.scene.add(gridHelper);
+    // Ground is now handled by GroundSystem (instantiated separately)
 
     // Starfield
     const starGeometry = new THREE.BufferGeometry();
@@ -712,8 +727,10 @@ export class WorldScene {
     this.avatarSystem.dispose();
     this.cameraController.dispose();
     this.buildingTool.dispose();
+    this.groundSystem.dispose();
     this.waterPlane.dispose();
     this.particleSystem.dispose();
+    this.proceduralStructures.dispose();
 
     // Dispose all sign sprites
     for (const [_id, sprite] of this.signSprites) {

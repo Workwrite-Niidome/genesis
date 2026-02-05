@@ -10,6 +10,8 @@ export type { BuildMode } from './BuildingTool';
 export { AudioSystem } from './AudioSystem';
 export type { Vec3, Forward2, SoundCategory, AudioSource } from './AudioSystem';
 export { WaterPlane } from './WaterPlane';
+export { GroundSystem } from './GroundSystem';
 export { ParticleSystem } from './ParticleSystem';
+export { ProceduralStructures } from './ProceduralStructures';
 export { WorldScene } from './WorldScene';
 export type { WorldSceneOptions } from './WorldScene';

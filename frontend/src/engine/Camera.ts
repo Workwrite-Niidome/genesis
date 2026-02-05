@@ -233,12 +233,16 @@ export class CameraController {
 
   private onMouseMove = (e: MouseEvent): void => {
     if (this.mode === 'observer') {
-      // Left-drag or middle-drag → pan (translate camera in XZ plane)
-      const canPan = this.isLeftDragging || this.isMiddleDragging;
+      // Left-drag → pan in XZ plane (forward/back/left/right)
+      // Middle-drag → pan in screen space (left/right + up/down including Y axis)
       // Right-drag → rotate
       const canRotate = !!(e.buttons & 2);
 
-      if (canPan) {
+      if (this.isMiddleDragging) {
+        const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        this.targetPosition.addScaledVector(right, -e.movementX * MOUSE_PAN_SPEED);
+        this.targetPosition.y += -e.movementY * MOUSE_PAN_SPEED;
+      } else if (this.isLeftDragging) {
         const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
         const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
         this.targetPosition.addScaledVector(right, -e.movementX * MOUSE_PAN_SPEED);

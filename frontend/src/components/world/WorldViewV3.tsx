@@ -132,7 +132,7 @@ function DesktopWorldViewV3() {
 
       {/* Controls hint */}
       <div className="absolute bottom-16 right-4 text-white/40 text-xs font-mono z-10 bg-black/40 rounded-lg px-3 py-2 backdrop-blur-sm border border-white/[0.06]">
-        <div>Left drag: Move | Right drag: Rotate | Scroll: Zoom</div>
+        <div>Left drag: Move | Middle drag: Move+Height | Right drag: Rotate | Scroll: Zoom</div>
         <div>WASD/Arrows: Move | Space/C: Up/Down | Shift: Sprint</div>
         <div>Click entity: Select | B: Build mode | T: Chat</div>
       </div>
