@@ -50,6 +50,9 @@ KNOWN_EVENT_TYPES = frozenset({
     # Code execution events
     "code_executed",
 
+    # Speech events (AI and observer — identical format)
+    "speech",
+
     # Observer events
     "observer_count",
     "observer_focus",

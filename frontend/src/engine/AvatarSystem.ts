@@ -10,6 +10,7 @@ import type { EntityV3, EntityAppearance } from '../types/v3';
 
 const INTERPOLATION_SPEED = 0.15;
 const SPEECH_BUBBLE_DURATION = 5000; // ms
+const FLOATING_SPEECH_DURATION = 6000; // ms — slightly longer for position-based bubbles
 
 interface AvatarInstance {
   entityId: string;
@@ -37,10 +38,19 @@ const DEFAULT_BODY_VOXELS: [number, number, number][] = [
   [-0.4, 0, 0], [0.4, 0, 0],
 ];
 
+/** A floating speech bubble not attached to any entity. */
+interface FloatingBubble {
+  element: HTMLDivElement;
+  worldPos: THREE.Vector3;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 export class AvatarSystem {
   private scene: THREE.Scene;
   private avatars: Map<string, AvatarInstance> = new Map();
   private labelContainer: HTMLElement | null = null;
+  /** Speech bubbles rendered at arbitrary world positions (observer chat). */
+  private floatingBubbles: FloatingBubble[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -156,6 +166,47 @@ export class AvatarSystem {
   }
 
   /**
+   * Show a speech bubble at a world position (no entity required).
+   * Used for observer chat messages that have no avatar in the system.
+   * The visual style is identical to entity speech bubbles.
+   */
+  showSpeechAtPosition(text: string, position: { x: number; y: number; z: number }): void {
+    if (!this.labelContainer) return;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'genesis-speech-bubble';
+    bubble.style.cssText = `
+      position: absolute;
+      padding: 4px 8px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      border-radius: 6px;
+      font-size: 12px;
+      max-width: 200px;
+      word-wrap: break-word;
+      pointer-events: none;
+      transform: translate(-50%, -100%);
+      z-index: 100;
+    `;
+    bubble.textContent = text.slice(0, 100);
+    this.labelContainer.appendChild(bubble);
+
+    const worldPos = new THREE.Vector3(position.x, position.y + 3, position.z);
+
+    const entry: FloatingBubble = {
+      element: bubble,
+      worldPos,
+      timeout: setTimeout(() => {
+        bubble.remove();
+        const idx = this.floatingBubbles.indexOf(entry);
+        if (idx !== -1) this.floatingBubbles.splice(idx, 1);
+      }, FLOATING_SPEECH_DURATION),
+    };
+
+    this.floatingBubbles.push(entry);
+  }
+
+  /**
    * Update avatar positions (interpolation) and labels.
    * Call each frame.
    */
@@ -193,6 +244,17 @@ export class AvatarSystem {
           avatar.speechBubble.style.top = `${y - 20}px`;
         }
       }
+    }
+
+    // Project floating speech bubbles (observer chat)
+    for (const fb of this.floatingBubbles) {
+      const projected = fb.worldPos.clone().project(camera);
+      const sx = (projected.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-projected.y * 0.5 + 0.5) * window.innerHeight;
+      const visible = projected.z < 1;
+      fb.element.style.left = `${sx}px`;
+      fb.element.style.top = `${sy}px`;
+      fb.element.style.display = visible ? 'block' : 'none';
     }
   }
 
@@ -311,11 +373,17 @@ export class AvatarSystem {
   }
 
   /**
-   * Dispose all avatars.
+   * Dispose all avatars and floating bubbles.
    */
   dispose(): void {
     for (const id of Array.from(this.avatars.keys())) {
       this.removeEntity(id);
     }
+    // Clean up floating speech bubbles
+    for (const fb of this.floatingBubbles) {
+      clearTimeout(fb.timeout);
+      fb.element.remove();
+    }
+    this.floatingBubbles = [];
   }
 }

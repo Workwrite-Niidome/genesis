@@ -18,6 +18,7 @@ import { GodSuccessionOverlay } from './GodSuccessionOverlay';
 import { TimelinePanel, TimelineToggleButton } from './TimelinePanel';
 import { GodChatPanel, GodChatToggle } from './GodChatPanel';
 import { BuildingTool } from './BuildingTool';
+import { ChatInput } from './ChatInput';
 
 export function WorldViewV3() {
   const isMobile = useIsMobile();
@@ -31,6 +32,10 @@ export function WorldViewV3() {
 
 function DesktopWorldViewV3() {
   const scene = useWorldSceneV3();
+
+  const getCameraPosition = () => {
+    return scene.sceneRef.current?.getCameraPosition() ?? null;
+  };
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0f] overflow-hidden">
@@ -122,11 +127,14 @@ function DesktopWorldViewV3() {
       {/* Minimap (bottom-right) */}
       <MiniMap onPanTo={scene.handleMiniMapPan} />
 
+      {/* Proximity chat input */}
+      <ChatInput getCameraPosition={getCameraPosition} />
+
       {/* Controls hint */}
       <div className="absolute bottom-16 right-4 text-white/40 text-xs font-mono z-10 bg-black/40 rounded-lg px-3 py-2 backdrop-blur-sm border border-white/[0.06]">
         <div>Left drag: Move | Right drag: Rotate | Scroll: Zoom</div>
         <div>WASD/Arrows: Move | Space/C: Up/Down | Shift: Sprint</div>
-        <div>Click entity: Select | B: Build mode</div>
+        <div>Click entity: Select | B: Build mode | T: Chat</div>
       </div>
 
       {/* God Dialogue Panel (left side) */}

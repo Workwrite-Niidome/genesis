@@ -259,9 +259,18 @@ export class WorldScene {
 
   /**
    * Show speech bubble for an entity.
+   * If the entity has no avatar (e.g. observer chat), render the bubble
+   * at the provided position instead.  The visual is identical either way.
    */
   handleSpeechEvent(event: SocketSpeechEvent): void {
-    this.avatarSystem.showSpeech(event.entityId, event.text);
+    // Try entity-attached bubble first
+    const entityPos = this.avatarSystem.getEntityPosition(event.entityId);
+    if (entityPos) {
+      this.avatarSystem.showSpeech(event.entityId, event.text);
+    } else if (event.position) {
+      // No avatar found — render at the world position (observer chat)
+      this.avatarSystem.showSpeechAtPosition(event.text, event.position);
+    }
   }
 
   /**

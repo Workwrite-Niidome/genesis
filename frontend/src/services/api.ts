@@ -112,6 +112,13 @@ export const api = {
     getTimeline: (limit = 100) => fetchJSON<any[]>(`/history/timeline?limit=${limit}`),
     getGodFeed: (limit = 20) => fetchJSON<{ feed: any[] }>(`/history/god-feed?limit=${limit}`),
   },
+  chat: {
+    send: (message: string, position: { x: number; y: number; z: number }, senderName: string) =>
+      fetchJSON<{ status: string; entity_id: string; text: string }>('/v3/chat/send', {
+        method: 'POST',
+        body: JSON.stringify({ message, position, sender_name: senderName }),
+      }),
+  },
   v3: {
     getWorldState: () => fetchJSON<any>('/v3/world/state'),
     getEntities: (aliveOnly = true, limit = 200) =>

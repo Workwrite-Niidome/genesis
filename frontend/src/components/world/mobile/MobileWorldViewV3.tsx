@@ -20,6 +20,7 @@ import { MobileTimelineOverlay } from './MobileTimelineOverlay';
 import { MobileEventTicker } from './MobileEventTicker';
 import { MiniMap } from '../MiniMap';
 import { GodSuccessionOverlay } from '../GodSuccessionOverlay';
+import { MobileChatInput } from './MobileChatInput';
 
 export function MobileWorldViewV3() {
   const scene = useWorldSceneV3();
@@ -37,6 +38,10 @@ export function MobileWorldViewV3() {
       setBuildSheetState('closed');
     }
   }, [scene.buildActive, buildSheetState, setBuildSheetState]);
+
+  const getCameraPosition = () => {
+    return scene.sceneRef.current?.getCameraPosition() ?? null;
+  };
 
   const handleToggleBuild = () => {
     if (scene.buildActive) {
@@ -119,6 +124,9 @@ export function MobileWorldViewV3() {
 
       {/* God Succession Ceremony Overlay (already responsive) */}
       <GodSuccessionOverlay />
+
+      {/* Proximity chat input */}
+      <MobileChatInput getCameraPosition={getCameraPosition} />
 
       {/* Bottom tab bar */}
       <MobileV3TabBar />
