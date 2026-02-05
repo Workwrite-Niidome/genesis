@@ -5,7 +5,7 @@
  * as they stream in via Socket.IO, stored in worldStoreV3.recentEvents.
  */
 import { useEffect, useRef } from 'react';
-import { Swords, MessageCircle, Skull, Zap, Eye } from 'lucide-react';
+import { Swords, MessageCircle, Skull, Zap, Eye, Crown } from 'lucide-react';
 import { useWorldStoreV3 } from '../../stores/worldStoreV3';
 import type { WorldEvent } from '../../stores/worldStoreV3';
 
@@ -48,6 +48,13 @@ const eventConfig: Record<
     bg: 'bg-amber-500/10',
     border: 'border-amber-500/20',
     label: 'God',
+  },
+  god_succession: {
+    icon: Crown,
+    color: 'text-purple-400',
+    bg: 'bg-purple-500/10',
+    border: 'border-purple-500/20',
+    label: 'Succession',
   },
 };
 

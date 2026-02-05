@@ -6,9 +6,8 @@
  * No labels or indicators reveal whether an entity is AI or human.
  */
 import * as THREE from 'three';
-import type { EntityV3, EntityAppearance, Vector3 } from '../types/v3';
+import type { EntityV3, EntityAppearance } from '../types/v3';
 
-const AVATAR_UPDATE_RATE = 50; // ms between position interpolation steps
 const INTERPOLATION_SPEED = 0.15;
 const SPEECH_BUBBLE_DURATION = 5000; // ms
 

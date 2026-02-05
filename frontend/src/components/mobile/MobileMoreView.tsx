@@ -5,7 +5,6 @@ import {
   Palette,
   Eye,
   MessageSquare,
-  Settings,
   Rocket,
   Shield,
 } from 'lucide-react';

@@ -10,7 +10,7 @@ export default function ObserverHeader() {
   const { t } = useTranslation();
   const { tickNumber, aiCount, godAiPhase } = useWorldStore();
   const { showGrid, toggleGrid } = useUIStore();
-  const { togglePanel, remainingDeploys, maxDeploys } = useDeployStore();
+  const { togglePanel } = useDeployStore();
 
   return (
     <header className="absolute top-0 left-0 right-0 z-50 pointer-events-none">
@@ -58,9 +58,6 @@ export default function ObserverHeader() {
           >
             <Rocket size={12} />
             <span className="text-[10px] font-medium tracking-wide">{t('deploy_title')}</span>
-            <span className="badge bg-cyan/15 text-cyan text-[9px] mono">
-              {remainingDeploys}/{maxDeploys}
-            </span>
           </button>
 
           {/* Full Archive page link */}

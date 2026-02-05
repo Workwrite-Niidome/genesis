@@ -7,14 +7,13 @@ import {
   ArrowRight,
   Loader2,
   Zap,
-  ChevronRight,
 } from 'lucide-react';
 import { useDetailStore } from '../../../stores/detailStore';
-import { useAIStore } from '../../../stores/aiStore';
 import { api } from '../../../services/api';
 import type { AIEntity, Interaction } from '../../../types/world';
 
-export type TFn = (k: string, f?: string) => string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type TFn = (...args: any[]) => any;
 
 /** AI profile mini card */
 export function AIProfileCard({ ai, onClick }: { ai: AIEntity; onClick?: () => void }) {

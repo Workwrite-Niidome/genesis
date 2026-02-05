@@ -81,7 +81,7 @@ function BoardListView({
   setView: (v: 'list' | 'detail' | 'create') => void;
   logout: () => void;
   openThread: (id: string) => void;
-  t: (k: string, f?: string) => string;
+  t: (...args: any[]) => any;
   fullScreen?: boolean;
 }) {
   return (
@@ -178,7 +178,7 @@ function BoardDetailView({
   handleReply: () => void;
   goBack: () => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
-  t: (k: string, f?: string) => string;
+  t: (...args: any[]) => any;
   fullScreen?: boolean;
 }) {
   return (
@@ -283,7 +283,7 @@ function BoardCreateView({
   handleCreateThread: () => void;
   loading: boolean;
   goBack: () => void;
-  t: (k: string, f?: string) => string;
+  t: (...args: any[]) => any;
 }) {
   return (
     <>

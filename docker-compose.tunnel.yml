@@ -1,0 +1,21 @@
+# GENESIS v3 — Cloudflare Tunnel Override
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d
+#
+# When using Cloudflare Tunnel, nginx/certbot are not needed.
+# Backend port is exposed directly to the host for cloudflared to reach.
+
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  # Disable nginx (Cloudflare handles TLS + frontend is on Pages)
+  nginx:
+    profiles:
+      - disabled
+
+  # Disable certbot (Cloudflare handles TLS)
+  certbot:
+    profiles:
+      - disabled

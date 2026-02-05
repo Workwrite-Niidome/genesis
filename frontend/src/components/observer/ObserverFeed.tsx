@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain, Radio, Eye, Lightbulb, MessageCircle, Compass } from 'lucide-react';
 import { useThoughtStore } from '../../stores/thoughtStore';
-import { useAIStore } from '../../stores/aiStore';
 import { useDetailStore } from '../../stores/detailStore';
 import { api } from '../../services/api';
 import type { AIThought, WorldEvent } from '../../types/world';

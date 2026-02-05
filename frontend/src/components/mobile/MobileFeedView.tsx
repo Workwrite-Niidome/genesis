@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, Radio, Loader2 } from 'lucide-react';
+import { Brain, Radio } from 'lucide-react';
 import { FeedContent } from '../observer/ObserverFeed';
 
 type SubTab = 'thoughts' | 'events';

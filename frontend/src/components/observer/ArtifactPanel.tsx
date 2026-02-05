@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Palette, Heart, Sparkles } from 'lucide-react';
 import { api } from '../../services/api';
 import { useDetailStore } from '../../stores/detailStore';
@@ -34,7 +33,6 @@ interface Props {
 }
 
 export default function ArtifactPanel({ visible, onClose, fullScreen }: Props) {
-  const { t } = useTranslation();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [typeFilter, setTypeFilter] = useState<string>('all');
 

@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   ScrollText,
   Filter,
   Search,
   ChevronDown,
-  ChevronRight,
   Loader2,
   Users,
   Palette,
@@ -60,7 +58,6 @@ interface Props {
 }
 
 export default function WorldArchiveTimeline({ visible, onClose }: Props) {
-  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ArchiveTab>('events');
 
   const tabBar = (
@@ -119,7 +116,6 @@ export default function WorldArchiveTimeline({ visible, onClose }: Props) {
 // ===========================================================================
 
 function EventTimelineTab() {
-  const { t } = useTranslation();
   const [events, setEvents] = useState<WorldEventData[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');

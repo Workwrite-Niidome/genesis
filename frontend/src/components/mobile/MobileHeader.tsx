@@ -1,11 +1,9 @@
-import { useTranslation } from 'react-i18next';
 import { Grid3x3 } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 import LanguageSwitcher from '../ui/LanguageSwitcher';
 
 export default function MobileHeader() {
-  const { t } = useTranslation();
   const { tickNumber, aiCount, godAiPhase } = useWorldStore();
   const { showGrid, toggleGrid } = useUIStore();
 

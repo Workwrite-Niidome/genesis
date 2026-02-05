@@ -48,7 +48,6 @@ export class ChiptuneEngine {
   private _duration = 0;
   private _onTick: ((currentBeat: number) => void) | null = null;
   private _tickInterval: number | null = null;
-  private _song: SongData | null = null;
 
   get playing() { return this._playing; }
   get duration() { return this._duration; }
@@ -64,7 +63,6 @@ export class ChiptuneEngine {
 
   play(song: SongData) {
     this.stop();
-    this._song = song;
 
     this.ctx = new AudioContext();
 

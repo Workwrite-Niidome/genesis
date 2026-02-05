@@ -13,7 +13,7 @@ interface SagaStore {
   clearNewFlag: () => void;
 }
 
-export const useSagaStore = create<SagaStore>((set, get) => ({
+export const useSagaStore = create<SagaStore>((set) => ({
   chapters: [],
   selectedChapter: null,
   loading: false,

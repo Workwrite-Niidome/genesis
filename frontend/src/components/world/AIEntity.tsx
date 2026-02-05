@@ -8,7 +8,6 @@ import type { AIEntity as AIEntityType } from '../../types/world';
 // LOD distance thresholds
 const LOD_NEAR = 120;   // Full detail
 const LOD_MID = 300;    // Reduced detail (no rings, simpler halo)
-const LOD_FAR = 600;    // Minimal (no halo, no label, no point light)
 
 interface Props {
   ai: AIEntityType;

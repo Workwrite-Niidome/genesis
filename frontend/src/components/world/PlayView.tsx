@@ -14,7 +14,7 @@ import { AvatarController } from '../../engine/AvatarController';
 import { useWorldStoreV3 } from '../../stores/worldStoreV3';
 import { useObserverStore } from '../../stores/observerStore';
 import { connectSocket, getSocket } from '../../services/socket';
-import { translateText, needsTranslation, normalizeToDeepL } from '../../services/translation';
+import { translateText, needsTranslation } from '../../services/translation';
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ interface ChatMessage {
 // ── Component ────────────────────────────────────────────────
 
 export default function PlayView() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
 
   // Refs
@@ -324,6 +324,9 @@ export default function PlayView() {
       id: `self-${Date.now()}`,
       entityName: 'You',
       text: chatText,
+      originalText: chatText,
+      isTranslated: false,
+      showOriginal: false,
       timestamp: Date.now(),
     };
     setChatMessages((prev) => [...prev.slice(-29), msg]);
@@ -446,7 +449,7 @@ export default function PlayView() {
         </div>
         <div>{t('ais')}: {entityCount}</div>
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-400' : connectionStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-green-400' : 'bg-red-400'}`} />
           <span>{t(connectionStatus)}</span>
         </div>
       </div>

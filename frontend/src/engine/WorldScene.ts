@@ -489,7 +489,7 @@ export class WorldScene {
     this.mouseNDC.y = -(e.clientY / canvas.clientHeight) * 2 + 1;
   };
 
-  private onClick = (e: MouseEvent): void => {
+  private onClick = (_e: MouseEvent): void => {
     // Building mode: place/destroy/paint
     if (this.buildingTool.getMode() !== 'none') {
       this.buildingTool.execute();
@@ -533,7 +533,7 @@ export class WorldScene {
     this.buildingTool.dispose();
 
     // Dispose all sign sprites
-    for (const [id, sprite] of this.signSprites) {
+    for (const [_id, sprite] of this.signSprites) {
       this.scene.remove(sprite);
       sprite.material.map?.dispose();
       (sprite.material as THREE.SpriteMaterial).dispose();

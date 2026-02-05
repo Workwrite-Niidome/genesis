@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -9,20 +8,10 @@ import {
   Eye,
   BarChart3,
   Search,
-  Filter,
   ChevronDown,
   Loader2,
   X,
-  Skull,
-  Brain,
-  Swords,
-  Building2,
-  Sparkles,
-  MessageCircle,
-  Lightbulb,
-  Zap,
   ScrollText,
-  BookOpen,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useWorldStore } from '../stores/worldStore';

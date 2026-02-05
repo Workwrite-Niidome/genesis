@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { getSocket } from '../services/socket';
 import { api } from '../services/api';
 import type {
-  EntityV3, Voxel, VoxelUpdate, WorldStateV3,
+  EntityV3, VoxelUpdate, WorldStateV3,
   SocketEntityPosition, SocketSpeechEvent,
 } from '../types/v3';
 import type { SagaChapter } from '../types/world';

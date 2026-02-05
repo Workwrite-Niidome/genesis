@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Pause, FastForward, Rewind, Radio, Search, X } from 'lucide-react';
+import { Play, Pause, FastForward, Rewind, Radio, Search } from 'lucide-react';
 import { useWorldStore } from '../../stores/worldStore';
 import { useUIStore } from '../../stores/uiStore';
 import { api } from '../../services/api';

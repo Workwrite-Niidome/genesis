@@ -23,7 +23,6 @@ const PITCH_LIMIT = Math.PI / 2 - 0.01;
 export class AvatarController {
   private socket: Socket | null = null;
   private camera: THREE.PerspectiveCamera | null = null;
-  private entityId: string | null = null;
   private canvas: HTMLCanvasElement | null = null;
 
   // Movement state
@@ -67,13 +66,12 @@ export class AvatarController {
   init(
     socket: Socket,
     camera: THREE.PerspectiveCamera,
-    entityId: string,
+    _entityId: string,
     canvas: HTMLCanvasElement,
     callbacks?: AvatarControllerCallbacks,
   ): void {
     this.socket = socket;
     this.camera = camera;
-    this.entityId = entityId;
     this.canvas = canvas;
     this.callbacks = callbacks || {};
 
@@ -136,7 +134,6 @@ export class AvatarController {
 
     this.socket = null;
     this.camera = null;
-    this.entityId = null;
     this.canvas = null;
     this.keys.clear();
   }

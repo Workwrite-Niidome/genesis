@@ -151,7 +151,7 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
               luminanceSmoothing={0.85}
               mipmapBlur
             />
-            {!isMobile && <Vignette eskil={false} offset={0.1} darkness={0.8} />}
+            {(!isMobile ? <Vignette eskil={false} offset={0.1} darkness={0.8} /> : null) as any}
           </EffectComposer>
 
           <OrbitControls
@@ -175,7 +175,7 @@ export default function WorldCanvas({ showGenesis = true }: WorldCanvasProps) {
         </Suspense>
       </Canvas>
 
-      {showGenesis && godAiPhase === 'pre_genesis' && <VoidOverlay />}
+      {showGenesis && godAiPhase === 'pre_genesis' ? <VoidOverlay /> : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Palette, Lightbulb, Heart, Users, Filter, ChevronDown,
+  Palette, Lightbulb, Heart, Users, Filter,
   Sparkles, Building2, User
 } from 'lucide-react';
 import { api } from '../../services/api';
@@ -104,11 +104,11 @@ export default function CreationsPanel({ visible, onClose }: Props) {
     } else {
       items.sort((a, b) => {
         const aScore = '_type' in a && a._type === 'artifact'
-          ? (a as Artifact).appreciation_count
-          : (a as Concept).adoption_count;
+          ? (a as unknown as Artifact).appreciation_count
+          : (a as unknown as Concept).adoption_count;
         const bScore = '_type' in b && b._type === 'artifact'
-          ? (b as Artifact).appreciation_count
-          : (b as Concept).adoption_count;
+          ? (b as unknown as Artifact).appreciation_count
+          : (b as unknown as Concept).adoption_count;
         return bScore - aScore;
       });
     }
@@ -314,7 +314,7 @@ export default function CreationsPanel({ visible, onClose }: Props) {
           ) : (
             filteredItems.map((item) => {
               if ('_type' in item && item._type === 'artifact') {
-                return renderArtifact(item as Artifact);
+                return renderArtifact(item as unknown as Artifact);
               } else {
                 return renderConcept(item as Concept);
               }

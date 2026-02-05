@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Clock, MapPin, Brain, Users, Lightbulb, Palette, Building2, ChevronRight, Heart } from 'lucide-react';
+import { X, Clock, MapPin, Brain, Users, Palette, Building2, ChevronRight } from 'lucide-react';
 import { useAIStore } from '../../stores/aiStore';
 import { useDetailStore } from '../../stores/detailStore';
 import { api } from '../../services/api';
@@ -43,15 +43,12 @@ export function AIDetailContent() {
 
   if (!selectedAI) return null;
 
-  const color = selectedAI.appearance?.primaryColor || '#7c5bf5';
   const age = typeof selectedAI.state?.age === 'number' ? selectedAI.state.age : null;
   const innerState = typeof selectedAI.state?.inner_state === 'string' ? selectedAI.state.inner_state : '';
   const personalityTraits = selectedAI.personality_traits || [];
   const recentThoughts: AIThought[] = selectedAI.recent_thoughts || [];
   const relationships: Record<string, Relationship> = selectedAI.state?.relationships || {};
-  const adoptedConcepts: string[] = selectedAI.state?.adopted_concepts || [];
   const organizations: { id?: string; name: string; role: string }[] = selectedAI.state?.organizations || [];
-  const createdArtifacts: string[] = selectedAI.state?.created_artifacts || [];
 
   const traits = Object.entries(selectedAI.state || {})
     .filter(([key, val]) => typeof val === 'string' && key !== 'name')

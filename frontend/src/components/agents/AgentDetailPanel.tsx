@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import type {
-  AgentDetail,
   PersonalityAxis,
   NeedBar,
   Relationship,

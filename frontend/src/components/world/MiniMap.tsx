@@ -25,9 +25,6 @@ export function MiniMap({ onPanTo }: MiniMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
 
-  const entities = useWorldStoreV3((s) => s.entities);
-  const selectedEntityId = useWorldStoreV3((s) => s.selectedEntityId);
-
   // ── Compute the world bounding box from entity positions ────
   const boundsRef = useRef({ minX: -50, maxX: 50, minZ: -50, maxZ: 50 });
 

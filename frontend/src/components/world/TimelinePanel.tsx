@@ -619,7 +619,7 @@ function StatsTab() {
     async function load() {
       setLoading(true);
       try {
-        const [statsData, ticksData] = await Promise.all([
+        const [statsData] = await Promise.all([
           api.world.getStats(),
           api.history.getEvents(100), // Get recent events as proxy for tick activity
         ]);

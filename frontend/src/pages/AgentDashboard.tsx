@@ -22,7 +22,7 @@ export default function AgentDashboard() {
   const navigate = useNavigate();
 
   // Auth state
-  const { isLoggedIn, token, username, login, register, logout, loading: authLoading, error: authError } = useObserverStore();
+  const { isLoggedIn, username, login, register, logout, loading: authLoading, error: authError } = useObserverStore();
 
   // Agent state
   const { agents, isLoading, error, fetchAgents, selectAgent, selectedAgentId, clearError } = useAgentStore();
