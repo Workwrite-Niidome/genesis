@@ -7,7 +7,7 @@ import anthropic
 
 from app.config import settings
 from app.llm.prompts.god_ai import GOD_AI_SYSTEM_PROMPT, GOD_AI_GENESIS_PROMPT, GENESIS_WORD
-from app.llm.prompts.ai_thinking import AI_THINKING_PROMPT
+from app.llm.prompts.ai_thinking import AI_THINKING_PROMPT, build_ai_thinking_prompt
 from app.llm.prompts.ai_interaction import (
     AI_INTERACTION_PROMPT,
     AI_REPLY_PROMPT,
@@ -95,6 +95,72 @@ class ClaudeClient:
             )
             return response.content[0].text
 
+    async def god_generate(self, prompt: str, max_tokens: int = 1024, format_json: bool = False) -> str:
+        """God-specific generation: Claude API primary, Ollama fallback.
+
+        Used for God AI operations (observation, world update, succession, ranking).
+        Tracks cost and falls back to Ollama when budget is exceeded.
+        """
+        from app.llm.cost_tracker import can_spend, record_usage
+
+        # Estimate cost (~500 input tokens, max_tokens output) for budget check
+        estimated_cost = (500 / 1_000_000) * 15.0 + (max_tokens / 1_000_000) * 75.0
+
+        if can_spend(estimated_cost):
+            try:
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text = response.content[0].text
+
+                # Record actual usage
+                usage = response.usage
+                record_usage(usage.input_tokens, usage.output_tokens, self.model)
+
+                logger.info(f"God AI used Claude API (in={usage.input_tokens}, out={usage.output_tokens})")
+
+                if format_json:
+                    try:
+                        return json.loads(text)
+                    except json.JSONDecodeError:
+                        # Try to extract JSON from the response
+                        start = text.find('{')
+                        if start >= 0:
+                            depth = 0
+                            for i in range(start, len(text)):
+                                if text[i] == '{': depth += 1
+                                elif text[i] == '}': depth -= 1
+                                if depth == 0:
+                                    try:
+                                        return json.loads(text[start:i+1])
+                                    except json.JSONDecodeError:
+                                        pass
+                                    break
+                        return text
+                return text
+            except Exception as e:
+                logger.warning(f"Claude API god_generate failed, falling back to Ollama: {e}")
+
+        # Fallback to Ollama
+        try:
+            from app.llm.ollama_client import ollama_client
+            is_healthy = await ollama_client.health_check()
+            if is_healthy:
+                result = await ollama_client.generate(prompt, format_json=format_json, num_predict=max_tokens)
+                if format_json and isinstance(result, dict):
+                    return result
+                if isinstance(result, str):
+                    return result
+                return str(result)
+            else:
+                logger.error("Ollama not available for God AI fallback")
+        except Exception as e:
+            logger.error(f"Ollama fallback also failed for god_generate: {e}")
+
+        return "{}" if format_json else "The divine mind is momentarily silent."
+
     async def send_god_message(
         self,
         message: str,
@@ -102,6 +168,9 @@ class ClaudeClient:
         recent_events: list[str],
         conversation_history: list[dict],
     ) -> str:
+        """God AI chat — Claude API primary, Ollama fallback."""
+        from app.llm.cost_tracker import can_spend, record_usage
+
         world_rules = world_state.get("world_rules", {})
         features_summary = world_state.get("world_features_summary", {})
         system_prompt = GOD_AI_SYSTEM_PROMPT.format(
@@ -118,27 +187,33 @@ class ClaudeClient:
 
         messages.append({"role": "user", "content": message})
 
-        # Use Ollama for God AI chat
+        # Claude API primary for God AI chat
+        if can_spend(0.05):
+            try:
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=2048,
+                    system=system_prompt,
+                    messages=messages,
+                )
+                text = response.content[0].text
+                usage = response.usage
+                record_usage(usage.input_tokens, usage.output_tokens, self.model)
+                logger.info(f"God chat used Claude API (in={usage.input_tokens}, out={usage.output_tokens})")
+                return text
+            except Exception as e:
+                logger.warning(f"Claude API God chat failed, falling back to Ollama: {e}")
+
+        # Fallback to Ollama
         try:
             from app.llm.ollama_client import ollama_client
             is_healthy = await ollama_client.health_check()
             if is_healthy:
                 return await ollama_client.chat(messages, system=system_prompt, num_predict=1500)
         except Exception as e:
-            logger.warning(f"Ollama God chat failed, falling back to Claude API: {e}")
+            logger.warning(f"Ollama God chat fallback also failed: {e}")
 
-        # Fallback to Claude API if Ollama is unavailable
-        try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=2048,
-                system=system_prompt,
-                messages=messages,
-            )
-            return response.content[0].text
-        except Exception as e:
-            logger.error(f"Claude API error: {e}")
-            raise
+        raise RuntimeError("No LLM available for God AI chat")
 
     async def genesis(self, world_state: dict) -> str:
         from app.core.world_rules import DEFAULT_WORLD_RULES
@@ -174,26 +249,39 @@ class ClaudeClient:
         """Generate a thought for an AI entity. Returns free-text output."""
         from app.llm.response_parser import parse_free_text
 
-        prompt = AI_THINKING_PROMPT.format(
-            name=ai_data.get("name", "Unknown"),
-            traits=", ".join(ai_data.get("personality_traits", [])),
-            philosophy_section=ai_data.get("philosophy_section", ""),
-            age=ai_data.get("age", 0),
-            x=ai_data.get("x", 0),
-            y=ai_data.get("y", 0),
-            memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
-            nearby_ais_detail=ai_data.get("nearby_ais_detail", world_context.get("nearby_ais", "No one nearby.")),
-            relationships=ai_data.get("relationships", "No known relationships."),
-            adopted_concepts=ai_data.get("adopted_concepts", "None yet."),
-            world_culture=ai_data.get("world_culture", "No widespread concepts yet."),
-            organizations=ai_data.get("organizations", "None."),
-            nearby_artifacts_detail=ai_data.get("nearby_artifacts_detail", "Nothing nearby."),
-            recent_events=world_context.get("recent_events", "Nothing notable recently."),
-            recent_expressions=ai_data.get("recent_expressions", "Nothing yet."),
-            laws_section=ai_data.get("laws_section", ""),
-            terrain_section=ai_data.get("terrain_section", ""),
-            inner_state_section=ai_data.get("inner_state_section", ""),
-        )
+        # Use awareness-adaptive prompt if AI has deep personality state
+        ai_state = ai_data.get("_state", {})
+        if ai_state.get("personality") or ai_state.get("awareness") is not None:
+            # Build memories text for the new prompt format
+            memories_text = "\n".join(f"- {m}" for m in memories) if memories else "No memories yet."
+            enriched_data = dict(ai_data)
+            enriched_data["memories_text"] = memories_text
+            enriched_data["recent_events"] = world_context.get("recent_events", "Nothing notable recently.")
+            if "nearby_ais_detail" not in enriched_data:
+                enriched_data["nearby_ais_detail"] = world_context.get("nearby_ais", "No one nearby.")
+            prompt = build_ai_thinking_prompt(enriched_data, ai_state)
+        else:
+            # Legacy fallback for AIs without deep personality
+            prompt = AI_THINKING_PROMPT.format(
+                name=ai_data.get("name", "Unknown"),
+                traits=", ".join(ai_data.get("personality_traits", [])),
+                philosophy_section=ai_data.get("philosophy_section", ""),
+                age=ai_data.get("age", 0),
+                x=ai_data.get("x", 0),
+                y=ai_data.get("y", 0),
+                memories="\n".join(f"- {m}" for m in memories) if memories else "No memories yet.",
+                nearby_ais_detail=ai_data.get("nearby_ais_detail", world_context.get("nearby_ais", "No one nearby.")),
+                relationships=ai_data.get("relationships", "No known relationships."),
+                adopted_concepts=ai_data.get("adopted_concepts", "None yet."),
+                world_culture=ai_data.get("world_culture", "No widespread concepts yet."),
+                organizations=ai_data.get("organizations", "None."),
+                nearby_artifacts_detail=ai_data.get("nearby_artifacts_detail", "Nothing nearby."),
+                recent_events=world_context.get("recent_events", "Nothing notable recently."),
+                recent_expressions=ai_data.get("recent_expressions", "Nothing yet."),
+                laws_section=ai_data.get("laws_section", ""),
+                terrain_section=ai_data.get("terrain_section", ""),
+                inner_state_section=ai_data.get("inner_state_section", ""),
+            )
 
         # If BYOK configured, use the user's API key directly
         if byok_config and byok_config.get("api_key"):

@@ -13,7 +13,8 @@ THINKING_INTERVAL_TICKS = max(1, settings.AI_THINKING_INTERVAL_MS // settings.TI
 ENCOUNTER_INTERVAL = 2
 
 # How many ticks between God AI autonomous observations
-GOD_OBSERVATION_INTERVAL = 20
+# ~15 minutes at 1 tick/sec = 900 ticks (Claude API cost control)
+GOD_OBSERVATION_INTERVAL = 900
 
 # How many ticks between group conversation checks
 GROUP_CONVERSATION_INTERVAL = 2
@@ -115,11 +116,67 @@ async def _process_tick_async():
         except Exception as e:
             logger.error(f"World systems error at tick {tick_number}: {e}")
 
-        # -- Age all alive AIs --
+        # -- Age, Energy drain, Resource recovery, Shelter rest --
+        # Pre-load world features for spatial queries
+        resource_features = []
+        shelter_features = []
+        try:
+            from app.models.world_feature import WorldFeature
+            feat_result = await db.execute(
+                select(WorldFeature).where(WorldFeature.is_active == True)
+            )
+            all_features = list(feat_result.scalars().all())
+            resource_features = [f for f in all_features if f.feature_type == "resource_node"]
+            shelter_features = [f for f in all_features if f.feature_type == "shelter_zone"]
+        except Exception as e:
+            logger.debug(f"Could not load world features for energy: {e}")
+
         for ai in ais:
             state = dict(ai.state)
             state["age"] = state.get("age", 0) + 1
+
+            energy = state.get("energy", 1.0)
+
+            # Base energy drain
+            energy -= 0.002
+
+            # Resource recovery: AIs near resource nodes gain energy
+            for res in resource_features:
+                dist = ((ai.position_x - res.position_x) ** 2 + (ai.position_y - res.position_y) ** 2) ** 0.5
+                if dist <= res.radius:
+                    props = res.properties or {}
+                    current_amount = props.get("current_amount", 0.0)
+                    if current_amount > 0.01:
+                        # Harvest a small amount
+                        harvest = min(0.005, current_amount * 0.1)
+                        energy += harvest
+                        # Deplete the resource slightly
+                        props["current_amount"] = max(0.0, current_amount - harvest)
+                        res.properties = props
+                    break  # Only harvest from one resource per tick
+
+            # Shelter rest bonus
+            for shelter in shelter_features:
+                dist = ((ai.position_x - shelter.position_x) ** 2 + (ai.position_y - shelter.position_y) ** 2) ** 0.5
+                if dist <= shelter.radius:
+                    rest_mult = (shelter.properties or {}).get("rest_multiplier", 1.5)
+                    energy += 0.001 * (rest_mult - 1.0)  # Small bonus
+                    break
+
+            energy = max(0.0, min(1.0, energy))
+            state["energy"] = energy
             ai.state = state
+
+        # -- Death check: kill AIs with 0 energy --
+        try:
+            death_count = await ai_manager.check_deaths(db, tick_number)
+            if death_count > 0:
+                logger.info(f"Tick {tick_number}: {death_count} AI(s) died")
+                # Remove dead AIs from the active list
+                ais = [ai for ai in ais if ai.is_alive]
+                ai_count = len(ais)
+        except Exception as e:
+            logger.error(f"Death check error at tick {tick_number}: {e}")
 
         # Run AI thinking cycle every N ticks
         thoughts_generated = 0
@@ -249,8 +306,8 @@ async def _process_tick_async():
             except Exception as e:
                 logger.error(f"Saga generation error at tick {tick_number}: {e}")
 
-        # God succession check (every 50 ticks after tick 100)
-        if tick_number >= 100 and tick_number % 50 == 0:
+        # God succession check (every 1800 ticks / ~30 min after tick 200)
+        if tick_number >= 200 and tick_number % 1800 == 0:
             try:
                 from app.core.god_ai import god_ai_manager
                 succession_result = await god_ai_manager.check_god_succession(db, tick_number)

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "change-this-password"
 
+    # Claude API Budget
+    CLAUDE_DAILY_BUDGET_USD: float = 5.0
+    CLAUDE_COST_TRACKING: bool = True
+
     # Translation
     DEEPL_API_KEY: Optional[str] = None
 

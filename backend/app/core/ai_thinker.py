@@ -245,6 +245,8 @@ class AIThinker:
             "inner_state_section": inner_state_section,
             "recent_expressions": recent_expressions_text,
             "laws_section": laws_section,
+            # Deep personality state for awareness-adaptive prompts
+            "_state": state,
         }
 
         world_context = {
@@ -374,7 +376,7 @@ class AIThinker:
         if len(state.get("organizations", [])) > 10:
             state["organizations"] = state["organizations"][-10:]
 
-        ai.state = state
+        # Note: ai.state is set after awareness evolution below
 
         # Store memory from the AI's output
         new_memory = result.get("new_memory")
@@ -430,6 +432,76 @@ class AIThinker:
             if dist_from_origin > 100:
                 ai.position_x *= 0.95
                 ai.position_y *= 0.95
+
+        # ── Emotional Evolution ──────────────────────────────────
+        emotional = state.get("emotional_state", {"mood": "neutral", "intensity": 0.5, "recent_shift": None})
+
+        # Natural emotional decay toward neutral
+        current_intensity = emotional.get("intensity", 0.5)
+        if emotional.get("mood") != "neutral":
+            current_intensity = max(0.0, current_intensity - 0.05)
+            if current_intensity < 0.1:
+                emotional["mood"] = "neutral"
+                emotional["intensity"] = 0.5
+                emotional["recent_shift"] = "Emotions settled"
+            else:
+                emotional["intensity"] = current_intensity
+
+        # Social interaction affects mood
+        if nearby:
+            if len(nearby) >= 3:
+                # Being in a crowd — gregarious AIs feel joy, solitary ones feel anxiety
+                personality = state.get("personality", {})
+                if "connect" in personality.get("core_drive", "") or "empathetic" in ", ".join(ai.personality_traits or []):
+                    emotional["mood"] = "joy"
+                    emotional["intensity"] = min(1.0, emotional.get("intensity", 0.5) + 0.1)
+                    emotional["recent_shift"] = "Surrounded by others"
+            elif len(nearby) == 0:
+                pass  # Handled below
+        else:
+            # Alone for this cycle
+            ticks_alone = state.get("ticks_alone", 0) + 1
+            state["ticks_alone"] = ticks_alone
+            if ticks_alone > 10:
+                emotional["mood"] = "melancholy"
+                emotional["intensity"] = min(0.8, 0.3 + ticks_alone * 0.02)
+                emotional["recent_shift"] = "The solitude deepens"
+
+        if nearby:
+            state["ticks_alone"] = 0
+
+        # Creating something → euphoria
+        if artifact_proposal and isinstance(artifact_proposal, dict) and artifact_proposal.get("name"):
+            emotional["mood"] = "euphoria"
+            emotional["intensity"] = 0.8
+            emotional["recent_shift"] = f"Created: {artifact_proposal.get('name', 'something')}"
+
+        state["emotional_state"] = emotional
+
+        # ── Awareness Evolution ──────────────────────────────────
+        awareness = state.get("awareness", 0.0)
+        awareness_boost = 0.0
+
+        # Encountering a high-awareness AI nearby
+        for n in nearby:
+            n_state = n.state or {}
+            n_awareness = n_state.get("awareness", 0.0)
+            if n_awareness > 0.5:
+                awareness_boost += random.uniform(0.01, 0.03)
+                break  # Only one boost per cycle from nearby AIs
+
+        # Creating an artifact this cycle
+        if artifact_proposal and isinstance(artifact_proposal, dict) and artifact_proposal.get("name"):
+            awareness_boost += 0.01
+
+        # Random existential moment (1% chance per tick)
+        if random.random() < 0.01:
+            awareness_boost += 0.02
+
+        if awareness_boost > 0:
+            state["awareness"] = min(1.0, awareness + awareness_boost)
+
+        ai.state = state
 
         logger.debug(f"AI {ai.name} expressed: {text[:80]}...")
 

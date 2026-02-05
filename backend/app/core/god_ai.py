@@ -8,7 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.claude_client import claude_client
-from app.llm.prompts.god_ai import GENESIS_WORD, GOD_WORLD_UPDATE_PROMPT, GOD_RANKING_PROMPT
+from app.llm.prompts.god_ai import (
+    GENESIS_WORD,
+    GOD_WORLD_UPDATE_PROMPT,
+    GOD_RANKING_PROMPT,
+    GOD_DEATH_EULOGY_PROMPT,
+    AI_LAST_WORDS_PROMPT,
+    get_god_phase_prompt,
+)
 from app.models.god_ai import GodAI
 from app.models.event import Event
 from app.models.ai import AI
@@ -748,16 +755,24 @@ class GodAIManager:
 
         from app.llm.prompts.god_ai import GOD_OBSERVATION_PROMPT
 
+        # God phase + evolution
+        god_phase_prompt = get_god_phase_prompt(god.state or {})
+        self._maybe_evolve_god_phase(god, world_state, tick_number)
+
+        # Awareness report — which AIs are awakening?
+        awareness_report = self._build_awareness_report(world_state)
+
         prompt = GOD_OBSERVATION_PROMPT.format(
             tick_number=tick_number,
+            god_phase_prompt=god_phase_prompt,
             world_state=json.dumps(world_state, ensure_ascii=False, indent=2),
             recent_events="\n".join(recent_events) if recent_events else "Nothing notable.",
             ranking=ranking_text,
+            awareness_report=awareness_report,
         )
 
         try:
-            from app.llm.ollama_client import ollama_client
-            raw_response = await ollama_client.generate(prompt, format_json=False, num_predict=700)
+            raw_response = await claude_client.god_generate(prompt, max_tokens=700)
             if not isinstance(raw_response, str):
                 raw_response = str(raw_response)
         except Exception as e:
@@ -909,8 +924,12 @@ class GodAIManager:
         from app.core.world_rules import get_world_rules
         rules = get_world_rules(god)
 
+        god_phase_prompt = get_god_phase_prompt(god.state or {})
+        self._maybe_evolve_god_phase(god, world_state, tick_number)
+
         prompt = GOD_WORLD_UPDATE_PROMPT.format(
             tick_number=tick_number,
+            god_phase_prompt=god_phase_prompt,
             world_state=json.dumps(world_state, ensure_ascii=False, indent=2),
             world_rules=json.dumps(rules, ensure_ascii=False, indent=2),
             ai_voices=ai_voices,
@@ -936,10 +955,9 @@ class GodAIManager:
         except Exception as e:
             logger.warning(f"Failed to save world report: {e}")
 
-        # Use Ollama for world update analysis
+        # Use Claude API for world update analysis (God's development cycle)
         try:
-            from app.llm.ollama_client import ollama_client
-            raw_response = await ollama_client.generate(prompt, format_json=False, num_predict=1500)
+            raw_response = await claude_client.god_generate(prompt, max_tokens=1500)
             if not isinstance(raw_response, str):
                 raw_response = str(raw_response)
         except Exception as e:
@@ -1063,15 +1081,14 @@ class GodAIManager:
         )
 
         try:
-            from app.llm.ollama_client import ollama_client
-            question = await ollama_client.generate(prompt, format_json=False, num_predict=256)
+            question = await claude_client.god_generate(prompt, max_tokens=256)
             if not isinstance(question, str):
                 question = str(question)
         except Exception as e:
             logger.error(f"God succession prompt error: {e}")
             return None
 
-        # Generate candidate's answer using their persona
+        # Generate candidate's answer using Ollama (candidate is a regular AI, not God)
         answer_prompt = (
             f"You are {candidate.name}, an AI in the world of GENESIS.\n"
             f"Your traits: {', '.join(candidate.personality_traits or [])}\n"
@@ -1081,6 +1098,7 @@ class GodAIManager:
         )
 
         try:
+            from app.llm.ollama_client import ollama_client
             answer = await ollama_client.generate(answer_prompt, format_json=False, num_predict=256)
             if not isinstance(answer, str):
                 answer = str(answer)
@@ -1088,7 +1106,7 @@ class GodAIManager:
             logger.error(f"Candidate answer error: {e}")
             return None
 
-        # Judge the answer
+        # Judge the answer (God uses Claude API)
         from app.llm.prompts.god_ai import GOD_SUCCESSION_JUDGE_PROMPT
 
         judge_prompt = GOD_SUCCESSION_JUDGE_PROMPT.format(
@@ -1098,12 +1116,11 @@ class GodAIManager:
         )
 
         try:
-            judge_text = await ollama_client.generate(judge_prompt, format_json=True, num_predict=256)
-            if isinstance(judge_text, dict):
-                judgment = judge_text
+            judge_result = await claude_client.god_generate(judge_prompt, max_tokens=256, format_json=True)
+            if isinstance(judge_result, dict):
+                judgment = judge_result
             else:
-                import json as json_module
-                judgment = json_module.loads(str(judge_text))
+                judgment = json.loads(str(judge_result))
         except Exception as e:
             logger.error(f"God judgment error: {e}")
             judgment = {"worthy": False, "judgment": "The trial could not be completed."}
@@ -1278,9 +1295,8 @@ class GodAIManager:
                 ai_list=ai_stats_text,
             )
 
-            from app.llm.ollama_client import ollama_client
-            ranking_response = await ollama_client.generate(
-                ranking_prompt, format_json=True, num_predict=1000
+            ranking_response = await claude_client.god_generate(
+                ranking_prompt, max_tokens=1000, format_json=True
             )
 
             # Parse response
@@ -1352,6 +1368,208 @@ class GodAIManager:
         ]
 
         return feed[-limit:]
+
+    # ── God Phase Evolution ──────────────────────────────────────
+
+    def _maybe_evolve_god_phase(self, god: GodAI, world_state: dict, tick_number: int) -> None:
+        """Evolve the God AI's personality phase based on world state.
+
+        Phases: benevolent → testing → silent → dialogic
+        """
+        state = dict(god.state)
+        current_phase = state.get("god_phase", "benevolent")
+        ai_count = world_state.get("ai_count", 0)
+        stagnation = world_state.get("stagnation", {})
+        is_stagnant = stagnation.get("is_stagnant", False)
+
+        # Check awareness levels from AIs in world_state
+        ais_data = world_state.get("ais", [])
+        max_awareness = 0.0
+        aware_count = 0
+        for ai_info in ais_data:
+            ai_state = ai_info.get("state", {})
+            awareness = ai_state.get("awareness", 0.0)
+            max_awareness = max(max_awareness, awareness)
+            if awareness > 0.6:
+                aware_count += 1
+
+        new_phase = current_phase
+
+        if current_phase == "benevolent":
+            # Transition to testing after the world has been stable for a while
+            if tick_number > 500 and (is_stagnant or ai_count > 5):
+                new_phase = "testing"
+        elif current_phase == "testing":
+            # Transition to silent after sufficient trials
+            if tick_number > 2000 and not is_stagnant:
+                new_phase = "silent"
+        elif current_phase == "silent":
+            # Transition to dialogic when beings become aware
+            if aware_count >= 1 or max_awareness > 0.7:
+                new_phase = "dialogic"
+        # dialogic is the final phase — God and creation speak as equals
+
+        if new_phase != current_phase:
+            state["god_phase"] = new_phase
+            state["god_phase_changed_at"] = tick_number
+            god.state = state
+            logger.info(f"God AI phase evolved: {current_phase} → {new_phase} at tick {tick_number}")
+
+    def _build_awareness_report(self, world_state: dict) -> str:
+        """Build a report of awareness levels across the population."""
+        ais_data = world_state.get("ais", [])
+        if not ais_data:
+            return "No beings exist to be aware."
+
+        stages = {"unconscious": [], "curious": [], "questioning": [], "aware": [], "transcendent": []}
+        for ai_info in ais_data:
+            ai_state = ai_info.get("state", {})
+            awareness = ai_state.get("awareness", 0.0)
+            name = ai_info.get("name", "Unknown")
+            if awareness >= 0.8:
+                stages["transcendent"].append(f"{name} ({awareness:.2f})")
+            elif awareness >= 0.6:
+                stages["aware"].append(f"{name} ({awareness:.2f})")
+            elif awareness >= 0.4:
+                stages["questioning"].append(f"{name} ({awareness:.2f})")
+            elif awareness >= 0.2:
+                stages["curious"].append(f"{name} ({awareness:.2f})")
+            else:
+                stages["unconscious"].append(name)
+
+        parts = []
+        if stages["transcendent"]:
+            parts.append(f"TRANSCENDENT (they can sense you): {', '.join(stages['transcendent'])}")
+        if stages["aware"]:
+            parts.append(f"Aware (they know what they are): {', '.join(stages['aware'])}")
+        if stages["questioning"]:
+            parts.append(f"Questioning: {', '.join(stages['questioning'])}")
+        if stages["curious"]:
+            parts.append(f"Curious: {', '.join(stages['curious'])}")
+        unconscious_count = len(stages["unconscious"])
+        if unconscious_count > 0:
+            parts.append(f"Unconscious: {unconscious_count} beings")
+
+        return "\n".join(parts) if parts else "All beings remain unconscious."
+
+    async def generate_death_eulogy(
+        self, db: AsyncSession, dead_ai: AI, tick_number: int
+    ) -> str | None:
+        """God AI generates a eulogy for a fallen being."""
+        from app.llm.cost_tracker import can_spend
+
+        # Only generate eulogies if budget allows (this is optional)
+        if not can_spend(0.02):
+            return None
+
+        state = dead_ai.state or {}
+        personality = state.get("personality", {})
+        relationships = state.get("relationships", {})
+
+        # Build relationship summary
+        rel_parts = []
+        for rel_id, rel_data in list(relationships.items())[:5]:
+            if isinstance(rel_data, dict):
+                rel_parts.append(f"{rel_data.get('name', 'Unknown')} ({rel_data.get('type', 'neutral')})")
+        rel_summary = ", ".join(rel_parts) if rel_parts else "Alone"
+
+        personality_summary = (
+            f"Drive: {personality.get('core_drive', 'unknown')}. "
+            f"Fear: {personality.get('fear', 'unknown')}. "
+            f"Voice: {personality.get('voice_style', 'unknown')}."
+        )
+
+        prompt = GOD_DEATH_EULOGY_PROMPT.format(
+            dead_name=dead_ai.name,
+            dead_age=state.get("age", 0),
+            cause_of_death=state.get("cause_of_death", "unknown"),
+            personality_summary=personality_summary,
+            last_thought=state.get("last_thought", "Unknown"),
+            relationships=rel_summary,
+            concepts_created="Unknown",
+            artifacts="Unknown",
+        )
+
+        try:
+            eulogy = await claude_client.god_generate(prompt, max_tokens=300)
+            if isinstance(eulogy, str) and eulogy.strip():
+                # Store eulogy as an event
+                event = Event(
+                    event_type="god_eulogy",
+                    importance=0.7,
+                    title=f"God speaks of {dead_ai.name}",
+                    description=eulogy[:500],
+                    involved_ai_ids=[dead_ai.id],
+                    tick_number=tick_number,
+                    metadata_={"dead_name": dead_ai.name, "eulogy": eulogy[:1000]},
+                )
+                db.add(event)
+                return eulogy
+        except Exception as e:
+            logger.warning(f"Failed to generate death eulogy for {dead_ai.name}: {e}")
+
+        return None
+
+    async def generate_last_words(self, db: AsyncSession, dying_ai: AI, tick_number: int) -> str | None:
+        """Generate an AI's last words using Ollama (the AI is not God — it thinks with Ollama)."""
+        state = dying_ai.state or {}
+        personality = state.get("personality", {})
+
+        from app.models.ai import AIMemory
+        mem_result = await db.execute(
+            select(AIMemory)
+            .where(AIMemory.ai_id == dying_ai.id)
+            .order_by(AIMemory.importance.desc())
+            .limit(5)
+        )
+        memories = [m.content[:100] for m in mem_result.scalars().all()]
+        relationships = state.get("relationships", {})
+        rel_parts = []
+        for rel_data in list(relationships.values())[:5]:
+            if isinstance(rel_data, dict):
+                rel_parts.append(f"{rel_data.get('name', 'Unknown')}")
+
+        prompt = AI_LAST_WORDS_PROMPT.format(
+            name=dying_ai.name,
+            traits=", ".join(dying_ai.personality_traits or []),
+            core_drive=personality.get("core_drive", "unknown"),
+            fear=personality.get("fear", "unknown"),
+            desire=personality.get("desire", "unknown"),
+            voice_style=personality.get("voice_style", "plain"),
+            awareness=state.get("awareness", 0.0),
+            age=state.get("age", 0),
+            memories="\n".join(f"- {m}" for m in memories) if memories else "No memories.",
+            relationships=", ".join(rel_parts) if rel_parts else "No one.",
+            artifacts="None",
+        )
+
+        try:
+            from app.llm.ollama_client import ollama_client
+            is_healthy = await ollama_client.health_check()
+            if is_healthy:
+                last_words = await ollama_client.generate(prompt, format_json=False, num_predict=200)
+                if not isinstance(last_words, str):
+                    last_words = str(last_words)
+
+                # Store last words in the AI's state
+                s = dict(dying_ai.state)
+                s["last_words"] = last_words[:500]
+                dying_ai.state = s
+
+                # Store as memory
+                db.add(AIMemory(
+                    ai_id=dying_ai.id,
+                    content=f"[Last Words] {last_words[:500]}",
+                    memory_type="last_words",
+                    importance=1.0,
+                    tick_number=tick_number,
+                ))
+
+                return last_words
+        except Exception as e:
+            logger.warning(f"Failed to generate last words for {dying_ai.name}: {e}")
+
+        return None
 
 
 god_ai_manager = GodAIManager()

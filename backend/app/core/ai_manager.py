@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.ai import AI, AIMemory
 from app.models.event import Event
 from app.config import settings
-from app.core.name_generator import generate_name, generate_personality_traits
+from app.core.name_generator import generate_name, generate_personality_traits, generate_deep_personality
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +59,19 @@ class AIManager:
 
         traits = custom_traits if custom_traits else generate_personality_traits(random.choice([2, 3]))
 
+        personality = generate_deep_personality()
+
         state: dict = {
             "age": 0,
-            # Inventory: artifact IDs the AI carries
             "inventory": [],
+            "energy": 1.0,
+            "awareness": 0.0,
+            "personality": personality,
+            "emotional_state": {
+                "mood": "neutral",
+                "intensity": 0.5,
+                "recent_shift": None,
+            },
         }
         if philosophy:
             state["philosophy"] = philosophy
@@ -187,11 +196,131 @@ class AIManager:
             await db.commit()
 
     async def check_deaths(self, db: AsyncSession, tick_number: int) -> int:
-        """No-op: AIs do not die until AI invents death.
+        """Check for AIs whose energy has reached 0 and kill them.
 
-        Kept as a method signature for backward compatibility with any callers.
+        Returns the number of AIs that died this tick.
         """
-        return 0
+        result = await db.execute(select(AI).where(AI.is_alive == True))
+        alive_ais = list(result.scalars().all())
+
+        death_count = 0
+        dead_positions = []
+
+        for ai in alive_ais:
+            state = dict(ai.state)
+            energy = state.get("energy", 1.0)
+
+            if energy <= 0:
+                # Determine cause of death
+                age = state.get("age", 0)
+                cause = "starvation"
+                if age > 500:
+                    cause = "old_age"
+
+                # Generate last words before death (Ollama — the AI speaks as itself)
+                last_words = None
+                try:
+                    from app.core.god_ai import god_ai_manager
+                    last_words = await god_ai_manager.generate_last_words(db, ai, tick_number)
+                except Exception as e:
+                    logger.debug(f"Could not generate last words for {ai.name}: {e}")
+
+                ai.is_alive = False
+                state["energy"] = 0.0
+                state["cause_of_death"] = cause
+                state["death_tick"] = tick_number
+                if last_words:
+                    state["last_words"] = last_words[:500]
+                ai.state = state
+
+                dead_positions.append((ai.position_x, ai.position_y, ai.name, ai))
+
+                death_desc = (
+                    f"{ai.name} has died from {cause} at tick {tick_number}. "
+                    f"Age: {age} ticks."
+                )
+                if last_words:
+                    death_desc += f' Last words: "{last_words[:200]}"'
+
+                event = Event(
+                    event_type="ai_death",
+                    importance=0.8,
+                    title=f"{ai.name} has perished",
+                    description=death_desc,
+                    involved_ai_ids=[ai.id],
+                    tick_number=tick_number,
+                    metadata_={
+                        "cause": cause,
+                        "age": age,
+                        "last_words": (last_words or "")[:500],
+                    },
+                )
+                db.add(event)
+                death_count += 1
+
+                # God AI eulogy (Claude API — the God speaks of the fallen)
+                try:
+                    from app.core.god_ai import god_ai_manager
+                    await god_ai_manager.generate_death_eulogy(db, ai, tick_number)
+                except Exception as e:
+                    logger.debug(f"Could not generate eulogy for {ai.name}: {e}")
+
+                # Emit death event
+                try:
+                    from app.realtime.socket_manager import publish_event
+                    publish_event("ai_death", {
+                        "id": str(ai.id),
+                        "name": ai.name,
+                        "cause": cause,
+                        "age": age,
+                        "last_words": (last_words or "")[:300],
+                        "tick_number": tick_number,
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to emit ai_death socket event: {e}")
+
+                logger.info(f"AI {ai.name} died from {cause} at tick {tick_number} (age: {age})")
+
+        # Nearby AIs: awareness boost + grief emotion + death witness memory
+        if dead_positions:
+            death_radius = 80.0
+            for dx, dy, dead_name, dead_ai_obj in dead_positions:
+                dead_last_words = (dead_ai_obj.state or {}).get("last_words", "")
+                for ai in alive_ais:
+                    if not ai.is_alive:
+                        continue
+                    dist = ((ai.position_x - dx) ** 2 + (ai.position_y - dy) ** 2) ** 0.5
+                    if dist <= death_radius:
+                        state = dict(ai.state)
+
+                        # Awareness boost from witnessing mortality
+                        old_awareness = state.get("awareness", 0.0)
+                        boost = random.uniform(0.02, 0.05)
+                        state["awareness"] = min(1.0, old_awareness + boost)
+
+                        # Emotional shift to grief
+                        emotional = state.get("emotional_state", {})
+                        emotional["mood"] = "grief"
+                        emotional["intensity"] = min(1.0, emotional.get("intensity", 0.5) + 0.3)
+                        emotional["recent_shift"] = f"Witnessed the death of {dead_name}"
+                        state["emotional_state"] = emotional
+
+                        ai.state = state
+
+                        # Create memory of witnessing death
+                        memory_text = f"I witnessed the death of {dead_name}. Something shifted within me."
+                        if dead_last_words:
+                            memory_text += f' Their last words: "{dead_last_words[:150]}"'
+                        death_memory = AIMemory(
+                            ai_id=ai.id,
+                            content=memory_text[:500],
+                            memory_type="death_witness",
+                            importance=0.8,
+                            tick_number=tick_number,
+                        )
+                        db.add(death_memory)
+
+        return death_count
 
     async def get_nearby_ais(
         self, db: AsyncSession, ai: AI, radius: float = 50.0
