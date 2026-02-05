@@ -52,6 +52,11 @@ export class WorldScene {
   private mouseNDC = new THREE.Vector2();
   private raycaster = new THREE.Raycaster();
   private onEntityClick: ((entityId: string) => void) | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+
+  // Touch tap detection
+  private touchStartPos: { x: number; y: number } | null = null;
+  private touchStartTime = 0;
 
   // Sign rendering
   private signSprites: Map<string, THREE.Sprite> = new Map();
@@ -107,6 +112,14 @@ export class WorldScene {
     canvas.addEventListener('click', this.onClick);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('resize', this.onResize);
+
+    // Touch events for mobile entity selection
+    canvas.addEventListener('touchstart', this.onTouchStart, { passive: true });
+    canvas.addEventListener('touchend', this.onTouchEnd, { passive: true });
+
+    // ResizeObserver for reliable sizing (mobile URL bar, orientation change)
+    this.resizeObserver = new ResizeObserver(() => this.onResize());
+    this.resizeObserver.observe(canvas);
 
     // Start render loop
     this.animate();
@@ -506,6 +519,42 @@ export class WorldScene {
     }
   };
 
+  private onTouchStart = (e: TouchEvent): void => {
+    if (e.touches.length === 1) {
+      this.touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      this.touchStartTime = Date.now();
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent): void => {
+    if (this.touchStartPos && e.changedTouches.length >= 1) {
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - this.touchStartPos.x;
+      const dy = touch.clientY - this.touchStartPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const duration = Date.now() - this.touchStartTime;
+
+      // Short tap with minimal movement → entity click
+      if (dist < 15 && duration < 400) {
+        const canvas = this.renderer.domElement;
+        const rect = canvas.getBoundingClientRect();
+        this.mouseNDC.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouseNDC.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+
+        if (this.buildingTool.getMode() !== 'none') {
+          this.buildingTool.execute();
+        } else if (this.onEntityClick) {
+          this.raycaster.setFromCamera(this.mouseNDC, this.camera);
+          const entityId = this.avatarSystem.raycast(this.raycaster);
+          if (entityId) {
+            this.onEntityClick(entityId);
+          }
+        }
+      }
+    }
+    this.touchStartPos = null;
+  };
+
   private onResize = (): void => {
     const canvas = this.renderer.domElement;
     const width = canvas.clientWidth;
@@ -525,7 +574,10 @@ export class WorldScene {
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('mousemove', this.onMouseMove);
     canvas.removeEventListener('click', this.onClick);
+    canvas.removeEventListener('touchstart', this.onTouchStart);
+    canvas.removeEventListener('touchend', this.onTouchEnd);
     window.removeEventListener('resize', this.onResize);
+    this.resizeObserver?.disconnect();
 
     this.voxelRenderer.dispose();
     this.avatarSystem.dispose();

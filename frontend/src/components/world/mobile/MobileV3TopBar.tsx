@@ -12,6 +12,8 @@ import type { CameraMode } from '../../../engine/Camera';
 
 interface MobileV3TopBarProps {
   tickNumber: number;
+  entityCount: number;
+  voxelCount: number;
   buildActive: boolean;
   cameraMode: CameraMode;
   onToggleBuild: () => void;
@@ -20,6 +22,8 @@ interface MobileV3TopBarProps {
 
 export function MobileV3TopBar({
   tickNumber,
+  entityCount,
+  voxelCount,
   buildActive,
   cameraMode,
   onToggleBuild,
@@ -39,8 +43,14 @@ export function MobileV3TopBar({
         {/* Left: Title */}
         <span className="text-purple-400 font-bold text-xs">GENESIS v3</span>
 
-        {/* Center: Tick */}
-        <span className="text-xs text-white/60">T:{tickNumber.toLocaleString()}</span>
+        {/* Center: Stats */}
+        <div className="flex items-center gap-2 text-[10px] text-white/50">
+          <span>T:{tickNumber.toLocaleString()}</span>
+          <span className="text-white/20">|</span>
+          <span>{entityCount} entities</span>
+          <span className="text-white/20">|</span>
+          <span>{voxelCount} voxels</span>
+        </div>
 
         {/* Right: Hamburger */}
         <button

@@ -1,12 +1,12 @@
 /**
  * MobileEventFeedView — Full-height event feed for mobile (Events tab).
  *
- * Event rows: 48px+ height
+ * Event rows: 48px+ height, tap to expand details
  * Text: 12px labels, 14px summaries (up from 9-10px desktop)
  * Live indicator, auto-scroll on new events
  */
-import { useEffect, useRef } from 'react';
-import { Swords, MessageCircle, Skull, Zap, Eye, Crown } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Swords, MessageCircle, Skull, Zap, Eye, Crown, ChevronDown } from 'lucide-react';
 import { useWorldStoreV3 } from '../../../stores/worldStoreV3';
 import type { WorldEvent } from '../../../stores/worldStoreV3';
 
@@ -87,9 +87,66 @@ function summarise(event: WorldEvent): string {
   }
 }
 
+/** Extract full detail text from event data. */
+function getDetailText(event: WorldEvent): string | null {
+  const d = event.data;
+  const parts: string[] = [];
+
+  switch (event.type) {
+    case 'conflict': {
+      if (d.winner) parts.push(`Winner: ${d.winner}`);
+      if (d.loser) parts.push(`Loser: ${d.loser}`);
+      if (d.type) parts.push(`Type: ${d.type}`);
+      if (d.description) parts.push(d.description);
+      if (d.damage !== undefined) parts.push(`Damage: ${d.damage}`);
+      break;
+    }
+    case 'speech': {
+      const name = d.entityName ?? d.name ?? 'Entity';
+      const text = d.text ?? '';
+      parts.push(`${name} says:`);
+      parts.push(text);
+      if (d.emotion) parts.push(`Emotion: ${d.emotion}`);
+      break;
+    }
+    case 'death': {
+      const name = d.name ?? d.entityName ?? 'An entity';
+      parts.push(`${name} has died`);
+      if (d.cause) parts.push(`Cause: ${d.cause}`);
+      if (d.age !== undefined) parts.push(`Age: ${d.age} ticks`);
+      break;
+    }
+    case 'god_crisis': {
+      if (d.crisis_name) parts.push(d.crisis_name);
+      if (d.description) parts.push(d.description);
+      if (d.severity) parts.push(`Severity: ${d.severity}`);
+      break;
+    }
+    case 'god_observation': {
+      const content = d.content ?? d.excerpt ?? '';
+      if (content) parts.push(content);
+      break;
+    }
+    case 'god_succession': {
+      if (d.old_god) parts.push(`Previous God: ${d.old_god}`);
+      if (d.new_god) parts.push(`New God: ${d.new_god}`);
+      if (d.reason) parts.push(`Reason: ${d.reason}`);
+      break;
+    }
+    default: {
+      const json = JSON.stringify(d, null, 2);
+      if (json !== '{}') parts.push(json);
+    }
+  }
+
+  const detail = parts.join('\n');
+  return detail.length > 0 ? detail : null;
+}
+
 export function MobileEventFeedView() {
   const recentEvents = useWorldStoreV3(s => s.recentEvents);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Auto-scroll to top (newest first) on new events
   useEffect(() => {
@@ -131,11 +188,14 @@ export function MobileEventFeedView() {
               const cfg = eventConfig[event.type];
               const Icon = cfg.icon;
               const text = summarise(event);
+              const isExpanded = expandedId === event.id;
+              const detail = isExpanded ? getDetailText(event) : null;
 
               return (
-                <div
+                <button
                   key={event.id}
-                  className={`p-3 rounded-lg ${cfg.bg} border ${cfg.border}`}
+                  onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                  className={`w-full text-left p-3 rounded-lg ${cfg.bg} border ${cfg.border} transition-colors`}
                   style={{ minHeight: 48 }}
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -144,15 +204,24 @@ export function MobileEventFeedView() {
                       {cfg.label}
                     </span>
                     {event.tick > 0 && (
-                      <span className="text-[11px] font-mono text-white/30 ml-auto">
+                      <span className="text-[11px] font-mono text-white/30 ml-auto mr-1">
                         T:{event.tick}
                       </span>
                     )}
+                    <ChevronDown
+                      size={12}
+                      className={`text-white/20 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                    />
                   </div>
-                  <p className="text-[14px] text-white/70 leading-relaxed line-clamp-3">
+                  <p className={`text-[14px] text-white/70 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
                     {text}
                   </p>
-                </div>
+                  {isExpanded && detail && (
+                    <pre className="mt-2 pt-2 border-t border-white/[0.06] text-[13px] text-white/50 leading-relaxed whitespace-pre-wrap break-words font-sans">
+                      {detail}
+                    </pre>
+                  )}
+                </button>
               );
             })
         )}

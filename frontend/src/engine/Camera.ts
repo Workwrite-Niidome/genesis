@@ -19,7 +19,9 @@ export interface CameraState {
 const MOVE_SPEED = 0.5;
 const SPRINT_MULTIPLIER = 3.0;
 const MOUSE_SENSITIVITY = 0.002;
+const TOUCH_SENSITIVITY = 0.004;
 const ZOOM_SPEED = 2.0;
+const PINCH_ZOOM_SPEED = 0.04;
 const THIRD_PERSON_DISTANCE = 8;
 const THIRD_PERSON_HEIGHT = 5;
 const SMOOTH_FACTOR = 0.1;
@@ -40,6 +42,11 @@ export class CameraController {
   private isPointerLocked = false;
   private canvas: HTMLCanvasElement | null = null;
 
+  // Touch state
+  private touchPrevPos: { x: number; y: number } | null = null;
+  private lastPinchDist: number | null = null;
+  private activeTouchCount = 0;
+
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
     this.camera.position.copy(this.targetPosition);
@@ -57,6 +64,11 @@ export class CameraController {
     document.addEventListener('keydown', this.onKeyDown);
     document.addEventListener('keyup', this.onKeyUp);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
+
+    // Touch controls for mobile
+    canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this.onTouchEnd, { passive: false });
   }
 
   /**
@@ -66,6 +78,9 @@ export class CameraController {
     if (this.canvas) {
       this.canvas.removeEventListener('click', this.onCanvasClick);
       this.canvas.removeEventListener('wheel', this.onWheel);
+      this.canvas.removeEventListener('touchstart', this.onTouchStart);
+      this.canvas.removeEventListener('touchmove', this.onTouchMove);
+      this.canvas.removeEventListener('touchend', this.onTouchEnd);
     }
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     document.removeEventListener('mousemove', this.onMouseMove);
@@ -219,6 +234,63 @@ export class CameraController {
     if (this.mode === 'observer') {
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
       this.targetPosition.addScaledVector(forward, -e.deltaY * ZOOM_SPEED * 0.01);
+    }
+  };
+
+  // ---- Touch Handlers (mobile) ----
+
+  private onTouchStart = (e: TouchEvent): void => {
+    this.activeTouchCount = e.touches.length;
+
+    if (e.touches.length === 1) {
+      this.touchPrevPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      this.lastPinchDist = null;
+    } else if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      this.lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+      this.touchPrevPos = null;
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent): void => {
+    e.preventDefault();
+
+    if (e.touches.length === 1 && this.touchPrevPos && this.activeTouchCount === 1) {
+      // Single-finger drag → rotate camera
+      const dx = e.touches[0].clientX - this.touchPrevPos.x;
+      const dy = e.touches[0].clientY - this.touchPrevPos.y;
+
+      this.yaw -= dx * TOUCH_SENSITIVITY;
+      this.pitch -= dy * TOUCH_SENSITIVITY;
+      this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
+
+      this.touchPrevPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2 && this.lastPinchDist !== null) {
+      // Two-finger pinch → zoom
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const delta = dist - this.lastPinchDist;
+
+      if (this.mode === 'observer') {
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+        this.targetPosition.addScaledVector(forward, delta * PINCH_ZOOM_SPEED);
+      }
+
+      this.lastPinchDist = dist;
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent): void => {
+    this.activeTouchCount = e.touches.length;
+    if (e.touches.length === 0) {
+      this.touchPrevPos = null;
+      this.lastPinchDist = null;
+    } else if (e.touches.length === 1) {
+      this.touchPrevPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      this.lastPinchDist = null;
     }
   };
 

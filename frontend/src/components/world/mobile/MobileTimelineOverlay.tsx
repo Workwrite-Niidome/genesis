@@ -175,27 +175,36 @@ export function MobileTimelineOverlay() {
 }
 
 // ── Sagas Tab ─────────────────────────────────────
+const SAGA_PAGE_SIZE = 10;
+
 function MobileSagasTab() {
   const [chapters, setChapters] = useState<SagaChapter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [limit, setLimit] = useState(SAGA_PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
-        const data = await api.saga.getChapters(50);
-        if (!cancelled) setChapters(Array.isArray(data) ? data : []);
+        const data = await api.saga.getChapters(limit);
+        if (!cancelled) {
+          const arr = Array.isArray(data) ? data : [];
+          setChapters(arr);
+          setHasMore(arr.length >= limit);
+        }
       } catch {
-        if (!cancelled) setChapters([]);
+        if (!cancelled) { setChapters([]); setHasMore(false); }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { setLoading(false); setLoadingMore(false); }
       }
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [limit]);
 
   if (loading && chapters.length === 0) {
     return (
@@ -223,7 +232,7 @@ function MobileSagasTab() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-3 space-y-2">
-        {chapters.map((chapter) => {
+        {chapters.slice(0, limit).map((chapter) => {
           const hex = (chapter.mood && moodHex[chapter.mood]) || '#d4a574';
           const expanded = expandedId === chapter.id;
 
@@ -318,6 +327,25 @@ function MobileSagasTab() {
             </div>
           );
         })}
+        {hasMore && (
+          <div className="flex items-center justify-center py-3">
+            {loadingMore ? (
+              <Loader2 size={16} className="text-white/30 animate-spin" />
+            ) : (
+              <button
+                onClick={() => {
+                  setLoadingMore(true);
+                  setLimit(prev => prev + SAGA_PAGE_SIZE);
+                }}
+                className="text-[13px] text-white/30 flex items-center gap-1"
+                style={{ minHeight: 44 }}
+              >
+                <ChevronDown size={14} />
+                Load more sagas
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -328,7 +356,7 @@ function MobileEventsTab() {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<EventFilter>('all');
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(20);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -360,7 +388,7 @@ function MobileEventsTab() {
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     if (scrollHeight - scrollTop - clientHeight < 100) {
       setLoadingMore(true);
-      const newLimit = limit + 50;
+      const newLimit = limit + 20;
       setLimit(newLimit);
       loadEvents(newLimit).finally(() => setLoadingMore(false));
     }
@@ -478,7 +506,7 @@ function MobileEventsTab() {
                     style={{ minHeight: 44 }}
                   >
                     <ChevronDown size={14} />
-                    Load more
+                    Load more events
                   </button>
                 )}
               </div>

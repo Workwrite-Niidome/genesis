@@ -7,6 +7,7 @@
  */
 import { useEffect } from 'react';
 import { useWorldSceneV3 } from '../../../hooks/useWorldSceneV3';
+import { useWorldStoreV3 } from '../../../stores/worldStoreV3';
 import { useMobileStoreV3 } from '../../../stores/mobileStoreV3';
 import { MobileV3TopBar } from './MobileV3TopBar';
 import { MobileV3TabBar } from './MobileV3TabBar';
@@ -16,6 +17,7 @@ import { MobileEventFeedView } from './MobileEventFeedView';
 import { MobileBuildSheet } from './MobileBuildSheet';
 import { MobileGodChatOverlay } from './MobileGodChatOverlay';
 import { MobileTimelineOverlay } from './MobileTimelineOverlay';
+import { MobileEventTicker } from './MobileEventTicker';
 import { MiniMap } from '../MiniMap';
 import { GodSuccessionOverlay } from '../GodSuccessionOverlay';
 
@@ -25,6 +27,7 @@ export function MobileWorldViewV3() {
   const miniMapVisible = useMobileStoreV3(s => s.miniMapVisible);
   const buildSheetState = useMobileStoreV3(s => s.buildSheetState);
   const setBuildSheetState = useMobileStoreV3(s => s.setBuildSheetState);
+  const recentEvents = useWorldStoreV3(s => s.recentEvents);
 
   // Sync build mode with build sheet
   useEffect(() => {
@@ -61,11 +64,18 @@ export function MobileWorldViewV3() {
       {/* Top bar */}
       <MobileV3TopBar
         tickNumber={scene.tickNumber}
+        entityCount={scene.entityCount}
+        voxelCount={scene.voxelCount}
         buildActive={scene.buildActive}
         cameraMode={scene.cameraMode}
         onToggleBuild={handleToggleBuild}
         onCameraMode={scene.handleCameraMode}
       />
+
+      {/* Compact event ticker on World tab — shows latest events over the 3D view */}
+      {activeTab === 'world' && recentEvents.length > 0 && (
+        <MobileEventTicker events={recentEvents} />
+      )}
 
       {/* Tab content — only shown when not on World tab */}
       {activeTab === 'entities' && (
