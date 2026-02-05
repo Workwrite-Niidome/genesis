@@ -6,6 +6,7 @@ import { useAIStore } from './stores/aiStore';
 import { connectSocket, disconnectSocket } from './services/socket';
 import ObserverView from './pages/ObserverView';
 import AdminView from './pages/AdminView';
+import { WorldViewV3 } from './components/world/WorldViewV3';
 
 function App() {
   const fetchState = useWorldStore((s) => s.fetchState);
@@ -39,6 +40,11 @@ function App() {
     <Routes>
       <Route path="/" element={<ObserverView />} />
       <Route path="/admin" element={<AdminView />} />
+      <Route path="/v3" element={
+        <div className="w-screen h-screen">
+          <WorldViewV3 />
+        </div>
+      } />
     </Routes>
   );
 }

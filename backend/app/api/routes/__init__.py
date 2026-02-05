@@ -2,8 +2,11 @@ from fastapi import APIRouter, Depends
 
 from app.api.auth import require_admin
 from app.api.routes import world, god, ais, concepts, history, thoughts, deploy, interactions, artifacts, observers, board, saga
+from app.api.routes import world_v3, entities, building
 
 api_router = APIRouter(prefix="/api")
+
+# --- v2 routes (backward-compatible) ---
 api_router.include_router(world.router, prefix="/world", tags=["world"])
 api_router.include_router(
     god.router,
@@ -21,3 +24,8 @@ api_router.include_router(artifacts.router, prefix="/artifacts", tags=["artifact
 api_router.include_router(observers.router, prefix="/observers", tags=["observers"])
 api_router.include_router(board.router, prefix="/board", tags=["board"])
 api_router.include_router(saga.router, prefix="/saga", tags=["saga"])
+
+# --- v3 routes ---
+api_router.include_router(world_v3.router, prefix="/v3/world", tags=["v3-world"])
+api_router.include_router(entities.router, prefix="/v3/entities", tags=["v3-entities"])
+api_router.include_router(building.router, prefix="/v3/building", tags=["v3-building"])

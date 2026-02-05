@@ -5,6 +5,8 @@ import { useThoughtStore } from '../stores/thoughtStore';
 import { useChatStore } from '../stores/chatStore';
 import { useBoardStore } from '../stores/boardStore';
 import { useSagaStore } from '../stores/sagaStore';
+import { useWorldStoreV3 } from '../stores/worldStoreV3';
+import type { SocketEntityPosition, SocketSpeechEvent, VoxelUpdate } from '../types/v3';
 
 let socket: Socket | null = null;
 
@@ -112,6 +114,35 @@ export function connectSocket(): Socket {
   socket.on('saga_chapter', (data: any) => {
     useSagaStore.getState().onNewChapter(data);
     console.log('[GENESIS] New saga chapter:', data.chapter_title);
+  });
+
+  // ── v3 events ─────────────────────────────────────────────────
+  socket.on('entity_position', (data: SocketEntityPosition | SocketEntityPosition[]) => {
+    const store = useWorldStoreV3.getState();
+    const positions = Array.isArray(data) ? data : [data];
+    store.updateEntityPositions(positions);
+  });
+
+  socket.on('voxel_update', (data: VoxelUpdate | VoxelUpdate[]) => {
+    const store = useWorldStoreV3.getState();
+    const updates = Array.isArray(data) ? data : [data];
+    store.addVoxelUpdates(updates);
+  });
+
+  socket.on('speech', (data: SocketSpeechEvent) => {
+    useWorldStoreV3.getState().addSpeechEvent(data);
+  });
+
+  socket.on('world_update', (data: any) => {
+    // v2 handler (above) + v3 handler
+    const v3Store = useWorldStoreV3.getState();
+    if (data.tick_number !== undefined) {
+      v3Store.updateTick({
+        tickNumber: data.tick_number,
+        entityCount: data.entity_count ?? v3Store.entityCount,
+        voxelCount: data.voxel_count ?? v3Store.voxelCount,
+      });
+    }
   });
 
   return socket;

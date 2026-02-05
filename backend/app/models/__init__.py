@@ -12,7 +12,12 @@ from app.models.board import BoardThread, BoardReply
 from app.models.saga import WorldSaga
 from app.models.world_feature import WorldFeature
 
+# v3 models
+from app.models.entity import Entity, EpisodicMemory, SemanticMemory, EntityRelationship
+from app.models.world import VoxelBlock, Structure, WorldEvent, Zone
+
 __all__ = [
+    # v2
     "GodAI",
     "AI",
     "AIMemory",
@@ -28,4 +33,13 @@ __all__ = [
     "BoardReply",
     "WorldSaga",
     "WorldFeature",
+    # v3
+    "Entity",
+    "EpisodicMemory",
+    "SemanticMemory",
+    "EntityRelationship",
+    "VoxelBlock",
+    "Structure",
+    "WorldEvent",
+    "Zone",
 ]
