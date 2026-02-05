@@ -52,13 +52,13 @@ function makeRng(seed: number) {
 
 // ---------- Color Stops ----------
 
-// Darkened sky colors to prevent bloom on the gradient
-const ZENITH    = hexToRgb('#030312');
-const UPPER     = hexToRgb('#0f0630');
-const MID       = hexToRgb('#2a1050');
-const HORIZON_A = hexToRgb('#5a1a4a');
-const HORIZON_B = hexToRgb('#804020');
-const BELOW     = hexToRgb('#0a0510');
+// MUCH DARKER sky colors so structures are visible
+const ZENITH    = hexToRgb('#010108');  // Almost black at top
+const UPPER     = hexToRgb('#050318');  // Very dark purple
+const MID       = hexToRgb('#100828');  // Dark purple
+const HORIZON_A = hexToRgb('#2a0c28');  // Dark magenta (was too bright)
+const HORIZON_B = hexToRgb('#301810');  // Dark amber (much darker)
+const BELOW     = hexToRgb('#050208');  // Very dark
 
 // ---------- Main Class ----------
 

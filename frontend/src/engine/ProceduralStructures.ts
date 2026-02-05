@@ -21,86 +21,113 @@ import * as THREE from 'three';
 // ---------------------------------------------------------------------------
 
 function createMaterials() {
+  // BRIGHTENED materials for better visibility against dark sky
   const stone = new THREE.MeshStandardMaterial({
-    color: 0x888888,
-    roughness: 0.9,
+    color: 0xaaaaaa,
+    roughness: 0.7,
     metalness: 0.0,
+    emissive: 0x222222,
+    emissiveIntensity: 0.3,
   });
 
   const darkStone = new THREE.MeshStandardMaterial({
-    color: 0x666666,
-    roughness: 0.9,
+    color: 0x888888,
+    roughness: 0.7,
     metalness: 0.0,
+    emissive: 0x111111,
+    emissiveIntensity: 0.2,
   });
 
   const wood = new THREE.MeshStandardMaterial({
-    color: 0x3e2723,
-    roughness: 0.8,
+    color: 0x5d4037,
+    roughness: 0.7,
     metalness: 0.0,
+    emissive: 0x2a1a10,
+    emissiveIntensity: 0.3,
   });
 
+  // BRIGHT RED for torii gate - iconic vermillion color
   const redPaint = new THREE.MeshStandardMaterial({
-    color: 0x8b0000,
+    color: 0xff3030,
     roughness: 0.3,
     metalness: 0.1,
+    emissive: 0xff2020,
+    emissiveIntensity: 0.5,
   });
 
   const redPaintLight = new THREE.MeshStandardMaterial({
-    color: 0xa01010,
+    color: 0xff4040,
     roughness: 0.3,
     metalness: 0.1,
+    emissive: 0xff3030,
+    emissiveIntensity: 0.4,
   });
 
+  // BRIGHT glowing lantern light
   const emissiveAmber = new THREE.MeshStandardMaterial({
-    color: 0xffe082,
-    emissive: 0xffe082,
-    emissiveIntensity: 2.0,
+    color: 0xffee99,
+    emissive: 0xffcc44,
+    emissiveIntensity: 3.0,
     transparent: true,
-    opacity: 0.85,
-    roughness: 0.4,
+    opacity: 0.9,
+    roughness: 0.3,
     metalness: 0.0,
   });
 
+  // BRIGHT golden ornaments
   const emissiveGold = new THREE.MeshStandardMaterial({
-    color: 0xffd700,
-    emissive: 0xffd700,
-    emissiveIntensity: 2.5,
+    color: 0xffdd00,
+    emissive: 0xffaa00,
+    emissiveIntensity: 4.0,
     roughness: 0.2,
-    metalness: 0.3,
+    metalness: 0.4,
   });
 
+  // Roof tiles - slightly brighter
   const darkTiles = new THREE.MeshStandardMaterial({
-    color: 0x1b1b1b,
-    roughness: 0.7,
-    metalness: 0.1,
-  });
-
-  const lightStone = new THREE.MeshStandardMaterial({
-    color: 0x999999,
-    roughness: 0.85,
-    metalness: 0.0,
-  });
-
-  const treeBark = new THREE.MeshStandardMaterial({
-    color: 0x4a2c0a,
-    roughness: 0.9,
-    metalness: 0.0,
-  });
-
-  const cherryBlossom = new THREE.MeshStandardMaterial({
-    color: 0xffb3c7,
-    emissive: 0xffb3c7,
-    emissiveIntensity: 0.6,
-    transparent: true,
-    opacity: 0.85,
+    color: 0x333333,
     roughness: 0.6,
+    metalness: 0.1,
+    emissive: 0x111111,
+    emissiveIntensity: 0.2,
+  });
+
+  // Path stones - brighter
+  const lightStone = new THREE.MeshStandardMaterial({
+    color: 0xbbbbbb,
+    roughness: 0.7,
+    metalness: 0.0,
+    emissive: 0x333333,
+    emissiveIntensity: 0.3,
+  });
+
+  // Tree bark - visible brown
+  const treeBark = new THREE.MeshStandardMaterial({
+    color: 0x6d4c2a,
+    roughness: 0.8,
+    metalness: 0.0,
+    emissive: 0x2a1a0a,
+    emissiveIntensity: 0.2,
+  });
+
+  // Cherry blossom - BRIGHT PINK glow
+  const cherryBlossom = new THREE.MeshStandardMaterial({
+    color: 0xffcce0,
+    emissive: 0xff88aa,
+    emissiveIntensity: 1.5,
+    transparent: true,
+    opacity: 0.9,
+    roughness: 0.5,
     metalness: 0.0,
   });
 
+  // Rocks - brighter
   const rockGray = new THREE.MeshStandardMaterial({
-    color: 0x707070,
-    roughness: 0.95,
+    color: 0x909090,
+    roughness: 0.8,
     metalness: 0.0,
+    emissive: 0x222222,
+    emissiveIntensity: 0.2,
   });
 
   return {

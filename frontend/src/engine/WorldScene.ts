@@ -138,12 +138,7 @@ export class WorldScene {
     // Procedural equirectangular sky: replaces the old sky dome mesh with a
     // canvas-rendered texture featuring stars, aurora, moon, and clouds.
     // Also sets scene.environment for PBR reflections on all materials.
-    // DEBUG: Disabled for troubleshooting
-    // this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
-
-    // DEBUG: Use a simple solid color background instead
-    this.scene.background = new THREE.Color(0x111122);
-    this.skyTexture = null;
+    this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
 
     // Post-processing pipeline
     // DEBUG: Simplified pipeline to troubleshoot rendering issues
@@ -279,13 +274,16 @@ export class WorldScene {
   // ---- Scene Setup ----
 
   private setupLighting(): void {
-    // DEBUG: Simplified lighting for troubleshooting
-    // Strong ambient light so everything is visible
-    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+    // Bright ambient light for visibility
+    const ambient = new THREE.AmbientLight(0x6666aa, 0.8);
     this.scene.add(ambient);
 
-    // Strong directional light from above
-    const directional = new THREE.DirectionalLight(0xffffff, 1.0);
+    // Hemisphere light: purple sky / warm ground
+    const hemi = new THREE.HemisphereLight(0x4444aa, 0xffaa66, 0.6);
+    this.scene.add(hemi);
+
+    // Main directional light - warm twilight tone
+    const directional = new THREE.DirectionalLight(0xffeedd, 1.2);
     directional.position.set(50, 100, 30);
     directional.castShadow = true;
     directional.shadow.mapSize.width = 2048;
@@ -298,6 +296,16 @@ export class WorldScene {
     directional.shadow.camera.bottom = -60;
     directional.shadow.bias = -0.001;
     this.scene.add(directional);
+
+    // Purple accent light
+    const purpleLight = new THREE.PointLight(0x9966ff, 1.0, 300);
+    purpleLight.position.set(-30, 25, -30);
+    this.scene.add(purpleLight);
+
+    // Cyan accent light
+    const cyanLight = new THREE.PointLight(0x00ccff, 0.8, 300);
+    cyanLight.position.set(30, 20, 30);
+    this.scene.add(cyanLight);
 
     console.log('[DEBUG] Lighting setup complete');
   }
@@ -607,7 +615,7 @@ export class WorldScene {
   // ---- Animation Loop ----
 
   // DEBUG: Set to true to bypass post-processing
-  private debugDirectRender = true;
+  private debugDirectRender = false;
 
   private animate = (): void => {
     this.animationFrameId = requestAnimationFrame(this.animate);
