@@ -241,7 +241,7 @@ export class CameraController {
       if (this.isMiddleDragging) {
         const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
         this.targetPosition.addScaledVector(right, -e.movementX * MOUSE_PAN_SPEED);
-        this.targetPosition.y += -e.movementY * MOUSE_PAN_SPEED;
+        this.targetPosition.y += e.movementY * MOUSE_PAN_SPEED;  // 上ドラッグで下、下ドラッグで上
       } else if (this.isLeftDragging) {
         const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
         const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
