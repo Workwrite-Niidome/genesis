@@ -317,6 +317,21 @@ export class WorldScene {
   }
 
   /**
+   * Pan the observer camera to a world position (x, z).
+   */
+  panTo(x: number, z: number): void {
+    this.cameraController.panTo(x, z);
+  }
+
+  /**
+   * Get the current camera world position.
+   */
+  getCameraPosition(): { x: number; y: number; z: number } {
+    const p = this.cameraController.getPosition();
+    return { x: p.x, y: p.y, z: p.z };
+  }
+
+  /**
    * Set building mode.
    */
   setBuildMode(mode: BuildMode): void {

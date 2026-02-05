@@ -8,6 +8,9 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { WorldScene } from '../../engine/WorldScene';
 import { useWorldStoreV3 } from '../../stores/worldStoreV3';
 import { EventFeed } from './EventFeed';
+import { EntityDetailPanel } from './EntityDetailPanel';
+import { MiniMap } from './MiniMap';
+import { EntityListPanel } from './EntityListPanel';
 import type { ActionProposal } from '../../types/v3';
 import type { CameraMode } from '../../engine/Camera';
 import type { BuildMode } from '../../engine/BuildingTool';
@@ -107,7 +110,23 @@ export function WorldViewV3() {
     sceneRef.current?.setCameraMode(mode);
   }, []);
 
-  const selectedEntity = selectedEntityId ? entities.get(selectedEntityId) : null;
+  // Camera position for EntityListPanel distance calculations
+  const [cameraPosition, setCameraPosition] = useState<{ x: number; y: number; z: number } | null>(null);
+
+  // Periodically sample camera position (every ~500ms) for the entity list
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (sceneRef.current) {
+        setCameraPosition(sceneRef.current.getCameraPosition());
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // MiniMap click-to-pan handler
+  const handleMiniMapPan = useCallback((worldX: number, worldZ: number) => {
+    sceneRef.current?.panTo(worldX, worldZ);
+  }, []);
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0f] overflow-hidden">
@@ -198,75 +217,14 @@ export function WorldViewV3() {
         )}
       </div>
 
-      {/* Entity Info Panel */}
-      {selectedEntity && (
-        <div className="absolute top-14 right-4 w-72 bg-black/70 backdrop-blur-sm rounded-lg p-4 text-white/80 text-sm font-mono z-10">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-purple-400 font-bold">{selectedEntity.name}</span>
-            <button
-              onClick={() => selectEntity(null)}
-              className="text-white/40 hover:text-white text-xs"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="space-y-1 text-xs">
-            <div>Position: ({selectedEntity.position.x.toFixed(1)}, {selectedEntity.position.y.toFixed(1)}, {selectedEntity.position.z.toFixed(1)})</div>
-            <div>Status: {selectedEntity.isAlive ? (selectedEntity.state.currentAction || 'idle') : 'DEAD'}</div>
-            <div>Energy: {(selectedEntity.state.energy * 100).toFixed(0)}%</div>
-            <div>Mode: {selectedEntity.state.behaviorMode}</div>
-            <div>Meta-awareness: {selectedEntity.metaAwareness.toFixed(1)}</div>
+      {/* Entity Detail Panel (rich side panel) */}
+      <EntityDetailPanel />
 
-            {/* Needs bar */}
-            <div className="mt-2 space-y-1">
-              <div className="text-white/50 text-xs">Needs:</div>
-              {selectedEntity.state.needs && Object.entries(selectedEntity.state.needs).map(([key, val]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <span className="w-24 text-white/50">{key}</span>
-                  <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-cyan-500 rounded-full"
-                      style={{ width: `${Math.min(100, val as number)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Entity list toggle + panel (top-left, after the EventFeed) */}
+      <EntityListPanel cameraPosition={cameraPosition} />
 
-            {/* Personality highlights */}
-            {selectedEntity.personality && (
-              <div className="mt-2">
-                <div className="text-white/50 text-xs mb-1">Personality:</div>
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(selectedEntity.personality)
-                    .filter(([, v]) => (v as number) > 0.7 || (v as number) < 0.3)
-                    .slice(0, 6)
-                    .map(([key, val]) => (
-                      <span
-                        key={key}
-                        className={`px-1.5 py-0.5 rounded text-xs ${(val as number) > 0.7 ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}
-                      >
-                        {key}: {(val as number).toFixed(2)}
-                      </span>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-2 flex gap-2">
-              <button
-                onClick={() => {
-                  handleCameraMode('third_person');
-                  sceneRef.current?.followEntity(selectedEntity.id);
-                }}
-                className="px-2 py-1 bg-purple-600/50 hover:bg-purple-600 rounded text-xs"
-              >
-                Follow
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Minimap (bottom-right) */}
+      <MiniMap onPanTo={handleMiniMapPan} />
 
       {/* Controls hint */}
       <div className="absolute bottom-16 right-4 text-white/30 text-xs font-mono z-10">

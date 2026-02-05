@@ -222,6 +222,22 @@ export class CameraController {
     }
   };
 
+  /**
+   * Pan the camera to look at a world position (x, z) while keeping current height.
+   */
+  panTo(x: number, z: number): void {
+    if (this.mode !== 'observer') return;
+    this.targetPosition.x = x;
+    this.targetPosition.z = z;
+  }
+
+  /**
+   * Get the current camera world position.
+   */
+  getPosition(): THREE.Vector3 {
+    return this.camera.position.clone();
+  }
+
   dispose(): void {
     this.detach();
   }
