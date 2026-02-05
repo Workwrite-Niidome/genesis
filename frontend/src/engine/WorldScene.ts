@@ -490,7 +490,7 @@ export class WorldScene {
   };
 
   private onClick = (e: MouseEvent): void => {
-    // Building mode: place/destroy
+    // Building mode: place/destroy/paint
     if (this.buildingTool.getMode() !== 'none') {
       this.buildingTool.execute();
       return;

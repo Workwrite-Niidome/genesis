@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import type { VoxelRenderer } from './VoxelRenderer';
 import type { ActionProposal } from '../types/v3';
 
-export type BuildMode = 'place' | 'destroy' | 'none';
+export type BuildMode = 'place' | 'destroy' | 'paint' | 'none';
 
 const GRID_HELPER_SIZE = 16;
 
@@ -58,7 +58,7 @@ export class BuildingTool {
   setMode(mode: BuildMode): void {
     this.mode = mode;
     if (this.ghostBlock) {
-      this.ghostBlock.visible = mode === 'place';
+      this.ghostBlock.visible = mode === 'place' || mode === 'paint';
     }
     if (mode !== 'none') {
       this.showGrid();
@@ -102,6 +102,11 @@ export class BuildingTool {
         this.ghostBlock.position.copy(hit.position);
         this.ghostBlock.visible = true;
         (this.ghostBlock.material as THREE.MeshStandardMaterial).color.set(0xff0000);
+      } else if (this.mode === 'paint') {
+        // Paint targets the existing block
+        this.ghostBlock.position.copy(hit.position);
+        this.ghostBlock.visible = true;
+        (this.ghostBlock.material as THREE.MeshStandardMaterial).color.set(this.selectedColor);
       }
     } else {
       // Raycast against ground plane (y=0)
@@ -150,6 +155,17 @@ export class BuildingTool {
         agentId: this.entityId,
         action: 'destroy_voxel',
         params: { x, y, z },
+      });
+    } else if (this.mode === 'paint') {
+      // Paint = destroy existing block then place with new color/material
+      this.onProposal({
+        agentId: this.entityId,
+        action: 'paint_voxel',
+        params: {
+          x, y, z,
+          color: this.selectedColor,
+          material: this.selectedMaterial,
+        },
       });
     }
   }

@@ -306,6 +306,20 @@ class CultureEngine:
         st = dict(cr.state); al = st.get("created_artifacts", [])
         al.append({"name": name, "type": atype, "tick": tick}); st["created_artifacts"] = al; cr.state = st
         db.add(_mem(cr.id, f"I created a {atype}: '{name}' -- {desc[:200]}", tick, [], cr.position_x, cr.position_y, cr.position_z, "artifact_created"))
+        # Emit artifact_created event via Socket.IO
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("artifact_created", {
+                "tick": tick,
+                "entity_id": str(cr.id),
+                "entity_name": cr.name,
+                "artifact_name": name,
+                "artifact_type": atype,
+                "description": desc[:200],
+                "source": "culture_engine",
+            })
+        except Exception:
+            pass
         logger.info(f"Artifact: '{name}' ({atype}) by {cr.name}")
         return data
 
@@ -338,6 +352,19 @@ class CultureEngine:
                 "members": mnames, "member_count": len(members), "color": color, "founding_concept": concept or None},
             result="accepted", position_x=founder.position_x, position_y=founder.position_y,
             position_z=founder.position_z, importance=0.9))
+        # Emit culture_event for organization formation via Socket.IO
+        try:
+            from app.realtime.socket_manager import publish_event
+            publish_event("culture_event", {
+                "tick": tick,
+                "type": "organization_formed",
+                "org_name": name,
+                "founder": founder.name,
+                "member_count": len(members),
+                "purpose": purpose[:200],
+            })
+        except Exception:
+            pass
         logger.info(f"Org formed: '{name}' by {founder.name} ({len(members)} members)")
         return {"org_id": oid, "name": name, "purpose": purpose, "founder": founder.name, "members": mnames, "color": color}
 

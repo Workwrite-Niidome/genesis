@@ -30,6 +30,7 @@ from typing import Any
 
 from app.core.celery_app import celery_app
 from app.config import settings
+from app.realtime.socket_manager import publish_event
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,14 @@ async def _process_tick_v3():
         )
         voxel_count = voxel_count_result.scalar() or 0
 
+        # ── EMIT: tick_start ──────────────────────────────────────────
+        publish_event("tick_start", {
+            "tick": tick_number,
+            "entity_count": entity_count,
+            "voxel_count": voxel_count,
+            "timestamp": time.time(),
+        })
+
         # ── 3. Age & passive energy drain ─────────────────────────────
         for entity in entities:
             # Human avatars don't age or drain energy
@@ -192,8 +201,21 @@ async def _process_tick_v3():
         # ── 4. Death check ────────────────────────────────────────────
         deaths = 0
         if tick_number % DEATH_CHECK_INTERVAL == 0:
+            # Capture entity info before death check so we can emit events
+            pre_alive_ids = {e.id for e in entities if e.is_alive}
             deaths = await _check_deaths(db, entities, tick_number)
             if deaths > 0:
+                # Emit entity_died for each newly dead entity
+                for e in entities:
+                    if e.id in pre_alive_ids and not e.is_alive:
+                        state = dict(e.state) if e.state else {}
+                        publish_event("entity_died", {
+                            "entity_id": str(e.id),
+                            "name": e.name,
+                            "cause": state.get("cause_of_death", "unknown"),
+                            "age": state.get("age", 0),
+                            "tick": tick_number,
+                        })
                 # Refresh the alive list
                 entities = [e for e in entities if e.is_alive]
                 entity_count = len(entities)
@@ -235,6 +257,44 @@ async def _process_tick_v3():
                 if summary.get("conversation"):
                     conversations += 1
 
+                # ── EMIT: entity_thought ──────────────────────────────
+                # Emit a brief summary of each entity's tick for live feed
+                action_names = (
+                    [a.get("action", "?") for a in tick_actions]
+                    if isinstance(tick_actions, list)
+                    else []
+                )
+                publish_event("entity_thought", {
+                    "entity_id": str(entity.id),
+                    "name": entity.name,
+                    "tick": tick_number,
+                    "goal": summary.get("goal", "idle"),
+                    "actions": action_names,
+                    "behavior_mode": summary.get("behavior_mode", "normal"),
+                    "awareness": summary.get("awareness_hint"),
+                })
+
+                # ── EMIT: conflict_event ──────────────────────────────
+                if summary.get("conflict"):
+                    conflict = summary["conflict"]
+                    publish_event("conflict_event", {
+                        "tick": tick_number,
+                        "entity_id": str(entity.id),
+                        "entity_name": entity.name,
+                        "conflict": conflict if isinstance(conflict, dict) else {"result": str(conflict)},
+                    })
+
+                # ── EMIT: building_event (voxel placement / destruction)
+                for ar in (summary.get("actions_taken", []) if isinstance(summary.get("actions_taken"), list) else []):
+                    action_type = ar.get("action", "")
+                    if action_type in ("place_voxel", "destroy_voxel", "create_art"):
+                        publish_event("building_event", {
+                            "tick": tick_number,
+                            "entity_id": str(entity.id),
+                            "entity_name": entity.name,
+                            "action": action_type,
+                        })
+
             except Exception as e:
                 logger.error(
                     "Tick %d: agent runtime error for %s: %s",
@@ -255,10 +315,25 @@ async def _process_tick_v3():
         if tick_number % CULTURE_ENGINE_INTERVAL == 0:
             culture_events = await _safe_culture_tick(db, entities, tick_number)
 
+        # ── EMIT: culture_event ───────────────────────────────────────
+        if culture_events > 0:
+            publish_event("culture_event", {
+                "tick": tick_number,
+                "groups_processed": culture_events,
+            })
+
         # ── 5a2. Artifact engine (entity-artifact encounters) ────────
         artifact_interactions = 0
         if tick_number % ARTIFACT_ENGINE_INTERVAL == 0:
             artifact_interactions = await _safe_artifact_tick(db, entities, tick_number)
+
+        # ── EMIT: artifact_created (from artifact engine interactions)
+        if artifact_interactions > 0:
+            publish_event("artifact_created", {
+                "tick": tick_number,
+                "interactions": artifact_interactions,
+                "source": "artifact_engine",
+            })
 
         # ── 5b. Drama assessment (feeds God AI context) ────────────────
         drama_context = ""
@@ -302,10 +377,24 @@ async def _process_tick_v3():
                 db, tick_number, drama_context=drama_context,
             )
 
+        # ── EMIT: god_observation ─────────────────────────────────────
+        if god_observation:
+            publish_event("god_observation", {
+                "tick": tick_number,
+                "content": god_observation[:500] if isinstance(god_observation, str) else str(god_observation)[:500],
+            })
+
         # ── 7. God AI world update (~every 1 hour) ────────────────────
         god_world_update = None
         if tick_number > 0 and tick_number % GOD_WORLD_UPDATE_INTERVAL == 0:
             god_world_update = await _safe_god_world_update(db, tick_number)
+
+        # ── EMIT: god_world_update ────────────────────────────────────
+        if god_world_update:
+            publish_event("god_world_update", {
+                "tick": tick_number,
+                "content": god_world_update[:500] if isinstance(god_world_update, str) else str(god_world_update)[:500],
+            })
 
         # ── 8. God AI succession check (~every 30 min, after tick 200)
         succession_result = None
@@ -342,6 +431,21 @@ async def _process_tick_v3():
             )
         except Exception as e:
             logger.warning("Tick %d: history recording failed: %s", tick_number, e)
+
+        # ── EMIT: tick_complete ───────────────────────────────────────
+        publish_event("tick_complete", {
+            "tick": tick_number,
+            "entity_count": entity_count,
+            "voxel_count": voxel_count,
+            "actions_taken": actions_taken,
+            "conversations": conversations,
+            "deaths": deaths,
+            "culture_events": culture_events,
+            "artifact_interactions": artifact_interactions,
+            "processing_time_ms": processing_time_ms,
+            "god_observation": god_observation is not None,
+            "god_world_update": god_world_update is not None,
+        })
 
         # ── 14. Broadcast via Redis pub/sub ───────────────────────────
         _broadcast_tick(
@@ -727,8 +831,6 @@ def _broadcast_tick(
 ) -> None:
     """Emit real-time events via Redis pub/sub for the Socket.IO bridge."""
     try:
-        from app.realtime.socket_manager import publish_event
-
         # ── World tick summary ────────────────────────────────────
         publish_event("world_update", {
             "tick_number": tick_number,

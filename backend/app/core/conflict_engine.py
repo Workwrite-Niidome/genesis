@@ -574,7 +574,7 @@ class ConflictEngine:
         try:
             from app.realtime.socket_manager import publish_event
 
-            publish_event("conflict", {
+            conflict_data = {
                 "tick": tick_number,
                 "type": conflict_type,
                 "participants": [
@@ -584,7 +584,10 @@ class ConflictEngine:
                 "winner": {"id": str(winner.id), "name": winner.name},
                 "loser": {"id": str(loser.id), "name": loser.name},
                 "narration": narration[:300] if narration else "",
-            })
+            }
+            # Emit as both "conflict" (legacy) and "conflict_event" (v3)
+            publish_event("conflict", conflict_data)
+            publish_event("conflict_event", conflict_data)
         except Exception as e:
             logger.debug("Failed to broadcast conflict: %s", e)
 

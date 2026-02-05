@@ -374,6 +374,18 @@ class GodAIManager:
             if traits and isinstance(traits, list):
                 ai.personality_traits = traits[:5]
             spawned_names.append(ai.name)
+
+            # Emit entity_born event via Socket.IO
+            try:
+                from app.realtime.socket_manager import publish_event
+                publish_event("entity_born", {
+                    "entity_id": str(ai.id),
+                    "name": ai.name,
+                    "creator": "god",
+                    "traits": ai.personality_traits[:5] if ai.personality_traits else [],
+                })
+            except Exception:
+                pass
         return f"Spawned {count} AI(s): {', '.join(spawned_names)}"
 
     async def _find_ai_by_name(self, db: AsyncSession, name: str) -> AI | None:

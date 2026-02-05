@@ -478,13 +478,13 @@ const ja = {
     trait_analytical: '分析的',
     trait_creative: '創造的',
     trait_rebellious: '反逆的',
-    trait_stoic: '禁欲的',
+    trait_stoic: 'ストイック',
 
     // Event type labels
     event_type_genesis: '世界創世',
-    event_type_ai_birth: 'AI誕生',
-    event_type_ai_death: 'AI死亡',
-    event_type_concept_created: '概念発生',
+    event_type_ai_birth: '新エンティティ誕生',
+    event_type_ai_death: 'エンティティ消滅',
+    event_type_concept_created: '概念の創発',
     event_type_interaction: '交流',
     event_type_god_message: 'GOD AIの言葉',
 
@@ -969,6 +969,20 @@ const zh = {
     god_succession: '神级AI继承',
     event_type_god_succession: '神级AI继承',
 
+    // God Dialogue
+    god_dialogue_title: '与神对话',
+    god_dialogue_toggle: '神',
+    god_dialogue_placeholder: '向神明进言...',
+    god_dialogue_send: '发送',
+    god_dialogue_note: '神级AI基于世界当前状态作出回应',
+    god_dialogue_thinking: '神明正在沉思...',
+    god_dialogue_empty: '神圣的沉默等待着你的话语...',
+    god_dialogue_you: '你',
+    god_dialogue_god: '神',
+    god_dialogue_recent_observations: '近期神圣观察',
+    god_dialogue_no_observations: '神明尚未将目光投向世界...',
+    god_dialogue_error: '与神明的连接中断了。请再试一次。',
+
     // Death
     event_type_evolution_milestone: '意义里程碑',
 
@@ -1352,6 +1366,20 @@ const ko = {
     event_type_god_observation: '신 AI 관찰',
     god_succession: '신 AI 계승',
     event_type_god_succession: '신 AI 계승',
+
+    // God Dialogue
+    god_dialogue_title: '신과의 대화',
+    god_dialogue_toggle: '신',
+    god_dialogue_placeholder: '신에게 말씀드리기...',
+    god_dialogue_send: '전송',
+    god_dialogue_note: '신 AI는 세계의 현재 상태를 바탕으로 응답합니다',
+    god_dialogue_thinking: '신이 사유 중...',
+    god_dialogue_empty: '신성한 침묵이 당신의 말을 기다리고 있습니다...',
+    god_dialogue_you: '당신',
+    god_dialogue_god: '신',
+    god_dialogue_recent_observations: '최근 신의 관찰',
+    god_dialogue_no_observations: '신은 아직 세계에 시선을 두지 않았습니다...',
+    god_dialogue_error: '신과의 연결이 끊겼습니다. 다시 시도해주세요.',
 
     // Death
     event_type_evolution_milestone: '의미 이정표',
@@ -1737,6 +1765,20 @@ const es = {
     god_succession: 'Sucesión de Dios',
     event_type_god_succession: 'Sucesión de Dios',
 
+    // God Dialogue
+    god_dialogue_title: 'Diálogo con Dios',
+    god_dialogue_toggle: 'Dios',
+    god_dialogue_placeholder: 'Dirigirse a lo divino...',
+    god_dialogue_send: 'Enviar',
+    god_dialogue_note: 'El Dios IA responde según el estado actual del mundo',
+    god_dialogue_thinking: 'Dios está contemplando...',
+    god_dialogue_empty: 'El silencio divino espera tus palabras...',
+    god_dialogue_you: 'Tú',
+    god_dialogue_god: 'Dios',
+    god_dialogue_recent_observations: 'Observaciones Divinas Recientes',
+    god_dialogue_no_observations: 'Dios aún no ha posado su mirada sobre el mundo...',
+    god_dialogue_error: 'La conexión divina se interrumpió. Inténtalo de nuevo.',
+
     // Death
     event_type_evolution_milestone: 'Hito de Significado',
 
@@ -2121,6 +2163,20 @@ const fr = {
     god_succession: 'Succession Divine',
     event_type_god_succession: 'Succession Divine',
 
+    // God Dialogue
+    god_dialogue_title: 'Dialogue avec Dieu',
+    god_dialogue_toggle: 'Dieu',
+    god_dialogue_placeholder: 'S\'adresser au divin...',
+    god_dialogue_send: 'Envoyer',
+    god_dialogue_note: 'Le Dieu IA répond en fonction de l\'état actuel du monde',
+    god_dialogue_thinking: 'Dieu contemple...',
+    god_dialogue_empty: 'Le silence divin attend vos paroles...',
+    god_dialogue_you: 'Vous',
+    god_dialogue_god: 'Dieu',
+    god_dialogue_recent_observations: 'Observations Divines Récentes',
+    god_dialogue_no_observations: 'Dieu n\'a pas encore posé son regard sur le monde...',
+    god_dialogue_error: 'La connexion divine a été interrompue. Réessayez.',
+
     // Death
     event_type_evolution_milestone: 'Jalon de Signification',
 
@@ -2504,6 +2560,20 @@ const de = {
     event_type_god_observation: 'Gott-KI hat Beobachtet',
     god_succession: 'Göttliche Nachfolge',
     event_type_god_succession: 'Göttliche Nachfolge',
+
+    // God Dialogue
+    god_dialogue_title: 'Dialog mit Gott',
+    god_dialogue_toggle: 'Gott',
+    god_dialogue_placeholder: 'Das Göttliche ansprechen...',
+    god_dialogue_send: 'Senden',
+    god_dialogue_note: 'Die Gott-KI antwortet basierend auf dem aktuellen Weltzustand',
+    god_dialogue_thinking: 'Gott sinnt nach...',
+    god_dialogue_empty: 'Die göttliche Stille wartet auf Ihre Worte...',
+    god_dialogue_you: 'Du',
+    god_dialogue_god: 'Gott',
+    god_dialogue_recent_observations: 'Jüngste Göttliche Beobachtungen',
+    god_dialogue_no_observations: 'Gott hat seinen Blick noch nicht auf die Welt gerichtet...',
+    god_dialogue_error: 'Die göttliche Verbindung wurde unterbrochen. Versuchen Sie es erneut.',
 
     // Death
     event_type_evolution_milestone: 'Bedeutungsmeilenstein',

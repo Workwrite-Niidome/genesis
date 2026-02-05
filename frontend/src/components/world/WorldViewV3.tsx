@@ -14,17 +14,12 @@ import { EntityListPanel } from './EntityListPanel';
 import { GodSuccessionOverlay } from './GodSuccessionOverlay';
 import { TimelinePanel, TimelineToggleButton } from './TimelinePanel';
 import { GodChatPanel, GodChatToggle } from './GodChatPanel';
+import { BuildingTool } from './BuildingTool';
 import type { ActionProposal } from '../../types/v3';
 import type { CameraMode } from '../../engine/Camera';
 import type { BuildMode } from '../../engine/BuildingTool';
 
-const BUILD_COLORS = [
-  '#4fc3f7', '#81c784', '#ff8a65', '#ce93d8',
-  '#fff176', '#ef5350', '#26c6da', '#ab47bc',
-  '#8d6e63', '#78909c', '#ffffff', '#212121',
-];
-
-const BUILD_MATERIALS = ['solid', 'glass', 'emissive', 'liquid'] as const;
+type MaterialType = 'solid' | 'emissive' | 'transparent' | 'glass';
 
 export function WorldViewV3() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,9 +37,10 @@ export function WorldViewV3() {
   const voxelCount = useWorldStoreV3(s => s.voxelCount);
 
   // Build tool state
+  const [buildActive, setBuildActive] = useState(false);
   const [buildMode, setBuildMode] = useState<BuildMode>('none');
-  const [buildColor, setBuildColor] = useState('#4fc3f7');
-  const [buildMaterial, setBuildMaterial] = useState<typeof BUILD_MATERIALS[number]>('solid');
+  const [buildColor, setBuildColor] = useState('#FF0000');
+  const [buildMaterial, setBuildMaterial] = useState<MaterialType>('solid');
   const [cameraMode, setCameraMode] = useState<CameraMode>('observer');
 
   // Timeline panel state
@@ -52,6 +48,29 @@ export function WorldViewV3() {
 
   // God dialogue panel state
   const [showGodChat, setShowGodChat] = useState(false);
+
+  // ── Build mode helpers ───────────────────────────────────────
+  const openBuildMode = useCallback(() => {
+    setBuildActive(true);
+    setBuildMode('place');
+  }, []);
+
+  const closeBuildMode = useCallback(() => {
+    setBuildActive(false);
+    setBuildMode('none');
+  }, []);
+
+  const handleSetBuildMode = useCallback((mode: BuildMode) => {
+    setBuildMode(mode);
+  }, []);
+
+  const handleSetBuildColor = useCallback((color: string) => {
+    setBuildColor(color);
+  }, []);
+
+  const handleSetBuildMaterial = useCallback((material: MaterialType) => {
+    setBuildMaterial(material);
+  }, []);
 
   // Initialize scene
   useEffect(() => {
@@ -70,25 +89,66 @@ export function WorldViewV3() {
           if (token) headers['Authorization'] = `Bearer ${token}`;
 
           if (proposal.action === 'place_voxel') {
-            await fetch(`${API_BASE}/v3/building/place`, {
+            const resp = await fetch(`${API_BASE}/v3/building/place`, {
               method: 'POST',
               headers,
               body: JSON.stringify({
-                entity_id: proposal.agent_id,
-                position: proposal.params.position,
+                agent_id: proposal.agentId,
+                x: proposal.params.x,
+                y: proposal.params.y,
+                z: proposal.params.z,
                 color: proposal.params.color || '#888888',
                 material: proposal.params.material || 'solid',
               }),
             });
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              console.warn('Place voxel rejected:', err);
+            }
           } else if (proposal.action === 'destroy_voxel') {
-            await fetch(`${API_BASE}/v3/building/destroy`, {
+            const resp = await fetch(`${API_BASE}/v3/building/destroy`, {
               method: 'POST',
               headers,
               body: JSON.stringify({
-                entity_id: proposal.agent_id,
-                position: proposal.params.position,
+                agent_id: proposal.agentId,
+                x: proposal.params.x,
+                y: proposal.params.y,
+                z: proposal.params.z,
               }),
             });
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              console.warn('Destroy voxel rejected:', err);
+            }
+          } else if (proposal.action === 'paint_voxel') {
+            // Paint = destroy existing block then place with new color/material.
+            // Fire both sequentially so the position is freed before re-placing.
+            const destroyResp = await fetch(`${API_BASE}/v3/building/destroy`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                agent_id: proposal.agentId,
+                x: proposal.params.x,
+                y: proposal.params.y,
+                z: proposal.params.z,
+              }),
+            });
+            if (destroyResp.ok) {
+              await fetch(`${API_BASE}/v3/building/place`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                  agent_id: proposal.agentId,
+                  x: proposal.params.x,
+                  y: proposal.params.y,
+                  z: proposal.params.z,
+                  color: proposal.params.color || '#888888',
+                  material: proposal.params.material || 'solid',
+                }),
+              });
+            } else {
+              console.warn('Paint failed at destroy step');
+            }
           }
         } catch (err) {
           console.warn('Building action failed:', err);
@@ -128,12 +188,14 @@ export function WorldViewV3() {
     sceneRef.current.handleSpeechEvent(latest);
   }, [recentSpeech]);
 
-  // Build mode sync
+  // Build mode sync: push React state into the Three.js engine
   useEffect(() => {
     if (!sceneRef.current) return;
     sceneRef.current.setBuildMode(buildMode);
     sceneRef.current.setBuildColor(buildColor);
-    sceneRef.current.setBuildMaterial(buildMaterial);
+    // Map 'transparent' to 'glass' for the engine (which uses solid/glass/emissive/liquid)
+    const engineMaterial = buildMaterial === 'transparent' ? 'glass' : buildMaterial;
+    sceneRef.current.setBuildMaterial(engineMaterial as 'solid' | 'glass' | 'emissive' | 'liquid');
   }, [buildMode, buildColor, buildMaterial]);
 
   // Camera follow on entity select
@@ -167,6 +229,25 @@ export function WorldViewV3() {
     sceneRef.current?.panTo(worldX, worldZ);
   }, []);
 
+  // ── Global keyboard: B to open build mode ──────────────────
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if ((e.key === 'b' || e.key === 'B') && !buildActive) {
+        openBuildMode();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [buildActive, openBuildMode]);
+
   return (
     <div className="relative w-full h-full bg-[#0a0a0f] overflow-hidden">
       {/* 3D Canvas */}
@@ -191,6 +272,21 @@ export function WorldViewV3() {
           <span>Voxels:{voxelCount}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Build mode toggle button */}
+          <button
+            onClick={() => buildActive ? closeBuildMode() : openBuildMode()}
+            className={`
+              px-2.5 py-1 rounded text-xs font-mono font-bold transition-all duration-150
+              ${buildActive
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+              }
+            `}
+            title="Toggle Build Mode (B)"
+          >
+            {buildActive ? 'Building' : 'Build'}
+          </button>
+          <div className="w-px h-4 bg-white/20 mx-1" />
           {/* God dialogue toggle */}
           <GodChatToggle
             isOpen={showGodChat}
@@ -221,51 +317,17 @@ export function WorldViewV3() {
       {/* Real-time event feed */}
       <EventFeed />
 
-      {/* Build Tool Panel */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2 z-10">
-        {/* Mode buttons */}
-        <button
-          onClick={() => setBuildMode(buildMode === 'place' ? 'none' : 'place')}
-          className={`px-3 py-1 rounded text-xs font-mono ${buildMode === 'place' ? 'bg-green-600 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
-        >
-          Build
-        </button>
-        <button
-          onClick={() => setBuildMode(buildMode === 'destroy' ? 'none' : 'destroy')}
-          className={`px-3 py-1 rounded text-xs font-mono ${buildMode === 'destroy' ? 'bg-red-600 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
-        >
-          Break
-        </button>
-
-        {/* Color palette */}
-        {buildMode === 'place' && (
-          <>
-            <div className="w-px h-6 bg-white/20 mx-1" />
-            <div className="flex gap-1">
-              {BUILD_COLORS.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setBuildColor(color)}
-                  className={`w-5 h-5 rounded border ${buildColor === color ? 'border-white scale-125' : 'border-white/20'}`}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
-            </div>
-            <div className="w-px h-6 bg-white/20 mx-1" />
-            <div className="flex gap-1">
-              {BUILD_MATERIALS.map((mat) => (
-                <button
-                  key={mat}
-                  onClick={() => setBuildMaterial(mat)}
-                  className={`px-2 py-1 rounded text-xs font-mono ${buildMaterial === mat ? 'bg-cyan-600 text-white' : 'bg-white/10 text-white/60'}`}
-                >
-                  {mat}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      {/* Building Tool Panel (floating, bottom-center) */}
+      <BuildingTool
+        active={buildActive}
+        buildMode={buildMode}
+        buildColor={buildColor}
+        buildMaterial={buildMaterial}
+        onSetBuildMode={handleSetBuildMode}
+        onSetBuildColor={handleSetBuildColor}
+        onSetBuildMaterial={handleSetBuildMaterial}
+        onClose={closeBuildMode}
+      />
 
       {/* Entity Detail Panel (rich side panel) */}
       <EntityDetailPanel />
@@ -280,7 +342,7 @@ export function WorldViewV3() {
       <div className="absolute bottom-16 right-4 text-white/30 text-xs font-mono z-10">
         <div>WASD: Move | Space/C: Up/Down</div>
         <div>Right-drag: Look | Scroll: Zoom</div>
-        <div>Click entity: Select</div>
+        <div>Click entity: Select | B: Build</div>
       </div>
 
       {/* God Dialogue Panel (left side) */}

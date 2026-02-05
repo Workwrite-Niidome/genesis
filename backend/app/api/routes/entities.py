@@ -154,10 +154,24 @@ async def list_entities(
 
 @router.get("/{entity_id}")
 async def get_entity(entity_id: str, db: AsyncSession = Depends(get_db)):
-    """Get detailed entity info including all fields."""
+    """Get detailed entity info including all fields.
+
+    Includes ``observer_count`` indicating how many observers are currently
+    watching this entity.
+    """
     uid = _parse_entity_id(entity_id)
     entity = await _get_entity_or_404(db, uid)
-    return _serialize_entity(entity)
+
+    data = _serialize_entity(entity)
+
+    # Attach live observer count from Redis
+    try:
+        from app.realtime.observer_tracker import observer_tracker
+        data["observer_count"] = observer_tracker.get_observer_count(str(uid))
+    except Exception:
+        data["observer_count"] = 0
+
+    return data
 
 
 # ---------------------------------------------------------------------------

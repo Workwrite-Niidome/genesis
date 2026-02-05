@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import redis
 import redis.asyncio as aioredis
@@ -13,8 +14,63 @@ logger = logging.getLogger(__name__)
 # Redis channel for cross-process socket events
 REDIS_CHANNEL = "genesis:socket_events"
 
+# ---------------------------------------------------------------------------
+# Known event types — every event the system can emit.
+# The subscriber forwards all events regardless; this list is for
+# documentation and optional client-side filtering.
+# ---------------------------------------------------------------------------
+KNOWN_EVENT_TYPES = frozenset({
+    # Tick lifecycle
+    "tick_start",
+    "tick_complete",
+
+    # Entity events
+    "entity_thought",
+    "entity_died",
+    "entity_born",
+    "entity_position",
+
+    # God AI events
+    "god_observation",
+    "god_world_update",
+    "god_succession_summary",
+    "god_observation_summary",
+    "god_world_update_summary",
+
+    # Culture & social events
+    "culture_event",
+    "conflict_event",
+
+    # Artifact events
+    "artifact_created",
+
+    # Building / voxel events
+    "building_event",
+
+    # Observer events
+    "observer_count",
+    "observer_focus",
+    "observer_unfocus",
+    "entity_observer_count",
+    "chat_message",
+
+    # Legacy / dashboard events
+    "world_update",
+    "ai_position",
+    "thought",
+    "event",
+    "interaction",
+    "ai_death",
+    "concept_created",
+    "organization_formed",
+    "conflict",
+})
+
 # Connection pool for sync Redis publisher (reused across all publish_event calls)
 _redis_pool = redis.ConnectionPool.from_url(settings.REDIS_URL, decode_responses=True)
+
+# Thread pool for running sync Redis publish from async context without blocking
+_publish_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="sio_pub")
 
 # Create Socket.IO server
 sio = socketio.AsyncServer(
@@ -32,16 +88,47 @@ socket_app = socketio.ASGIApp(sio)
 async def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
 
+    # Register observer session so online counts are accurate
+    try:
+        from app.realtime.observer_tracker import observer_tracker
+        from urllib.parse import parse_qs
+
+        observer_id = None
+        display_name = "Anonymous"
+
+        # Check query string for observer info
+        query_string = environ.get("QUERY_STRING", "")
+        qs = parse_qs(query_string)
+        if "observer_id" in qs:
+            observer_id = qs["observer_id"][0]
+        if "display_name" in qs:
+            display_name = qs["display_name"][0]
+
+        if not observer_id:
+            observer_id = f"tmp_{sid}"
+
+        observer_tracker.register_session(sid, observer_id, display_name)
+
+        # Broadcast updated online count
+        total = observer_tracker.get_total_online()
+        publish_event("observer_count", {"total_online": total})
+    except Exception as exc:
+        logger.warning(f"Observer connect registration failed: {exc}")
+
 
 @sio.event
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
-    # Clean up observer tracking
+    # Clean up observer tracking (focus + session)
     try:
         from app.realtime.observer_tracker import observer_tracker
         observer_tracker.disconnect(sid)
-    except ImportError:
-        pass
+
+        # Broadcast updated online count
+        total = observer_tracker.get_total_online()
+        publish_event("observer_count", {"total_online": total})
+    except Exception as exc:
+        logger.warning(f"Observer disconnect cleanup failed: {exc}")
     # Clean up avatar session if this was a human player
     try:
         from app.realtime.avatar_handler import cleanup_avatar_session
@@ -51,7 +138,7 @@ async def disconnect(sid):
 
 
 def publish_event(event_type: str, data: dict | list) -> None:
-    """Publish a socket event to Redis channel.
+    """Publish a socket event to Redis channel (synchronous).
 
     Uses sync redis client with connection pool so it works from any process
     context (Celery worker, FastAPI, asyncio, etc.) without creating new
@@ -59,10 +146,23 @@ def publish_event(event_type: str, data: dict | list) -> None:
     """
     try:
         r = redis.Redis(connection_pool=_redis_pool)
-        message = json.dumps({"event": event_type, "data": data})
+        message = json.dumps({"event": event_type, "data": data}, default=str)
         r.publish(REDIS_CHANNEL, message)
     except Exception as e:
         logger.warning(f"Failed to publish socket event '{event_type}': {e}")
+
+
+async def async_publish_event(event_type: str, data: dict | list) -> None:
+    """Publish a socket event from an async context without blocking the event loop.
+
+    Delegates the synchronous Redis publish call to a thread pool executor.
+    Safe to call from any async function (tick engine, agent runtime, etc.).
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(_publish_executor, publish_event, event_type, data)
+    except Exception as e:
+        logger.warning(f"Failed to async-publish socket event '{event_type}': {e}")
 
 
 async def start_event_subscriber() -> None:
