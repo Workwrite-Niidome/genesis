@@ -6,6 +6,7 @@ from app.api.routes import world_v3, entities, building, agents, avatar, history
 from app.api.routes import auth_oauth
 from app.api.routes import translation
 from app.api.routes import chat
+from app.api.routes import world_templates
 
 api_router = APIRouter(prefix="/api")
 
@@ -45,3 +46,4 @@ api_router.include_router(avatar.router, prefix="/v3/avatar", tags=["v3-avatar"]
 api_router.include_router(history_v3.router, prefix="/v3/world/history", tags=["v3-history"])
 api_router.include_router(translation.router, prefix="/v3/translate", tags=["v3-translation"])
 api_router.include_router(chat.router, prefix="/v3/chat", tags=["v3-chat"])
+api_router.include_router(world_templates.router, prefix="/v3/world", tags=["v3-world-templates"])

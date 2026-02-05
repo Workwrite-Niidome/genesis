@@ -46,6 +46,26 @@ async def startup():
     asyncio.create_task(start_event_subscriber())
     logger.info("GENESIS backend started (with Socket.IO event subscriber)")
 
+    # Auto-generate world template if the world is empty (< 100 voxels)
+    asyncio.create_task(_auto_generate_world_template())
+
+
+async def _auto_generate_world_template():
+    """Background task: check if the world needs a template and generate it."""
+    from app.db.database import async_session
+
+    try:
+        async with async_session() as db:
+            from app.v3.systems.world_templates import auto_generate_if_empty
+            result = await auto_generate_if_empty(db)
+            if result:
+                logger.info(
+                    "World template auto-generated on startup: %d voxels placed",
+                    result.get("placed", 0),
+                )
+    except Exception as exc:
+        logger.warning("World template auto-generation skipped: %s", exc)
+
 
 @app.get("/health")
 async def health_check():
