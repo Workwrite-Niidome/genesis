@@ -10,7 +10,7 @@ import { useWorldStoreV3 } from '../../stores/worldStoreV3';
 import type { EntityV3 } from '../../types/v3';
 
 // ── Constants ────────────────────────────────────────────────
-const MAP_SIZE = 200;          // px (both width and height)
+const DEFAULT_MAP_SIZE = 200;  // px (both width and height)
 const PADDING = 16;            // world-space padding around entity spread
 const DOT_RADIUS = 4;
 const GRID_LINES = 6;
@@ -19,9 +19,12 @@ const PULSE_SPEED = 4;         // rad/s for rampage pulse
 interface MiniMapProps {
   /** Called when the user clicks a world-space position on the map. */
   onPanTo?: (worldX: number, worldZ: number) => void;
+  /** Size in px (both width and height). Defaults to 200. */
+  size?: number;
 }
 
-export function MiniMap({ onPanTo }: MiniMapProps) {
+export function MiniMap({ onPanTo, size = DEFAULT_MAP_SIZE }: MiniMapProps) {
+  const MAP_SIZE = size;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
 
@@ -66,14 +69,14 @@ export function MiniMap({ onPanTo }: MiniMapProps) {
     const cx = ((wx - minX) / (maxX - minX)) * MAP_SIZE;
     const cy = ((wz - minZ) / (maxZ - minZ)) * MAP_SIZE;
     return [cx, cy];
-  }, []);
+  }, [MAP_SIZE]);
 
   const canvasToWorld = useCallback((cx: number, cy: number): [number, number] => {
     const { minX, maxX, minZ, maxZ } = boundsRef.current;
     const wx = (cx / MAP_SIZE) * (maxX - minX) + minX;
     const wz = (cy / MAP_SIZE) * (maxZ - minZ) + minZ;
     return [wx, wz];
-  }, []);
+  }, [MAP_SIZE]);
 
   // ── Draw loop ──────────────────────────────────────────────
   const draw = useCallback(() => {
