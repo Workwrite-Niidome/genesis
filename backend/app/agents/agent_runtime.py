@@ -220,8 +220,9 @@ class AgentRuntime:
         # 7. Satisfy needs based on actions taken
         self._satisfy_needs_from_actions(needs, plan)
 
-        # 8. Check conversation trigger
+        # 8. Check conflict / conversation trigger
         conversation_result = None
+        conflict_result = None
         if await self._should_converse(entity, perception, state, tick_number):
             nearby = perception.get("nearby_entities", [])
             if nearby:
@@ -229,11 +230,29 @@ class AgentRuntime:
                     nearby[0].get("id"), all_entities
                 )
                 if other_entity is not None:
-                    conversation_result = await conversation_manager.run_conversation(
-                        db, entity, other_entity, tick_number
-                    )
-                    # Record conversation tick
-                    state["last_conversation_ticks"][str(other_entity.id)] = tick_number
+                    # Check for conflict BEFORE conversation
+                    try:
+                        from app.core.conflict_engine import conflict_engine
+                        rel_data = await self._relationships.get_relationship(
+                            db, entity.id, other_entity.id
+                        )
+                        should_fight, conflict_type = conflict_engine.should_conflict(
+                            entity, other_entity, rel_data
+                        )
+                        if should_fight:
+                            conflict_result = await conflict_engine.resolve_conflict(
+                                db, entity, other_entity, conflict_type, tick_number,
+                            )
+                            state["last_conversation_ticks"][str(other_entity.id)] = tick_number
+                    except Exception as e:
+                        logger.debug("Conflict check failed for %s: %s", entity.name, e)
+
+                    # If no conflict, try conversation
+                    if conflict_result is None:
+                        conversation_result = await conversation_manager.run_conversation(
+                            db, entity, other_entity, tick_number
+                        )
+                        state["last_conversation_ticks"][str(other_entity.id)] = tick_number
 
         # 9. Update memory with significant events
         await self._update_memory(db, entity, plan, perception, tick_number)
@@ -277,6 +296,7 @@ class AgentRuntime:
             "tick": tick_number,
             "actions_taken": actions_taken,
             "conversation": conversation_result,
+            "conflict": conflict_result,
             "needs": dict(needs),
             "behavior_mode": behavior_mode,
             "goal": goal_name,
@@ -958,11 +978,19 @@ class AgentRuntime:
     def _get_observer_count(self, entity: Any) -> int:
         """Get the number of human observers currently watching this entity.
 
-        In the full implementation this would query the observer tracking
-        system. For now, we read from the entity's state.
+        Primary source: entity.state["observer_count"] (synced from Redis each tick).
+        Fallback: direct Redis query.
         """
         state = entity.state or {}
-        return state.get("observer_count", 0)
+        count = state.get("observer_count", 0)
+        if count > 0:
+            return count
+        # Fallback: direct Redis query
+        try:
+            from app.realtime.observer_tracker import observer_tracker
+            return observer_tracker.get_observer_count(str(entity.id))
+        except Exception:
+            return 0
 
     async def _update_meta_awareness(
         self,

@@ -9,6 +9,7 @@ from app.api.routes import api_router
 from app.db.database import engine, Base
 from app.realtime.socket_manager import socket_app, start_event_subscriber
 import app.realtime.avatar_handler  # noqa: F401 — registers Socket.IO event handlers
+import app.realtime.observer_tracker  # noqa: F401 — registers Socket.IO event handlers
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,

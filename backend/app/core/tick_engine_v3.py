@@ -195,14 +195,27 @@ async def _process_tick_v3():
                 entities = [e for e in entities if e.is_alive]
                 entity_count = len(entities)
 
+        # ── 4b. Sync observer counts from Redis → entity state ──────
+        await _sync_observer_counts(entities)
+
         # ── 5. Agent Runtime (the core v3 loop) ──────────────────────
         actions_taken = 0
         conversations = 0
+
+        from app.core.safety_monitor import safety_monitor
 
         for entity in entities:
             # Skip human avatars — they are controlled via WebSocket, not the AI agent runtime
             if entity.origin_type == "human_avatar":
                 continue
+
+            # Safety check: detect stuck/looping entities
+            try:
+                safety_monitor.check_entity(entity, tick_number)
+                if safety_monitor.is_in_cooldown(entity, tick_number):
+                    continue  # Skip this entity's tick — safety cooldown
+            except Exception as e:
+                logger.debug("Safety check for %s failed: %s", entity.name, e)
 
             try:
                 summary = await agent_runtime.tick(
@@ -345,6 +358,26 @@ async def _check_deaths(
             await _safe_death_rituals(db, entity, tick_number)
 
     return death_count
+
+
+async def _sync_observer_counts(entities: list[Any]) -> None:
+    """Bulk-read observer counts from Redis and update entity state."""
+    try:
+        from app.realtime.observer_tracker import observer_tracker
+        counts = observer_tracker.get_all_observer_counts()
+
+        for entity in entities:
+            entity_id_str = str(entity.id)
+            count = counts.get(entity_id_str, 0)
+
+            state = dict(entity.state) if entity.state else {}
+            old_count = state.get("observer_count", 0)
+
+            if count != old_count:
+                state["observer_count"] = count
+                entity.state = state
+    except Exception as e:
+        logger.debug("Observer count sync failed (non-fatal): %s", e)
 
 
 async def _safe_death_rituals(db: Any, entity: Any, tick_number: int) -> None:

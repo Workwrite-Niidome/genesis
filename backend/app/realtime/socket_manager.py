@@ -36,6 +36,12 @@ async def connect(sid, environ):
 @sio.event
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
+    # Clean up observer tracking
+    try:
+        from app.realtime.observer_tracker import observer_tracker
+        observer_tracker.disconnect(sid)
+    except ImportError:
+        pass
     # Clean up avatar session if this was a human player
     try:
         from app.realtime.avatar_handler import cleanup_avatar_session
