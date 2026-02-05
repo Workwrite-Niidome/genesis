@@ -118,10 +118,10 @@ export class WorldScene {
     this.scene = new THREE.Scene();
 
     // Atmospheric fog: deep indigo-purple tint for depth and mystery
-    // Color matches the sky horizon for seamless blending
-    // Density reduced to allow structures to be visible at reasonable distances
-    const fogColor = new THREE.Color(0x1a0a2e);
-    this.scene.fog = new THREE.FogExp2(fogColor, 0.004);
+    // DEBUG: Fog disabled for troubleshooting
+    // const fogColor = new THREE.Color(0x1a0a2e);
+    // this.scene.fog = new THREE.FogExp2(fogColor, 0.004);
+    this.scene.fog = null;
 
     this.camera = new THREE.PerspectiveCamera(
       60,
@@ -142,49 +142,47 @@ export class WorldScene {
     this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
 
     // Post-processing pipeline
+    // DEBUG: Simplified pipeline to troubleshoot rendering issues
     this.composer = new EffectComposer(this.renderer);
 
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    // SSAOPass: soft contact shadows in crevices and where objects meet surfaces
-    const ssaoPass = new SSAOPass(this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
-    ssaoPass.kernelRadius = 8;
-    ssaoPass.minDistance = 0.005;
-    ssaoPass.maxDistance = 0.1;
-    ssaoPass.output = SSAOPass.OUTPUT.Default;
-    this.composer.addPass(ssaoPass);
+    // DEBUG: Skip SSAO for now - it can cause issues if depth buffer isn't set up correctly
+    // const ssaoPass = new SSAOPass(this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
+    // ssaoPass.kernelRadius = 8;
+    // ssaoPass.minDistance = 0.005;
+    // ssaoPass.maxDistance = 0.1;
+    // ssaoPass.output = SSAOPass.OUTPUT.Default;
+    // this.composer.addPass(ssaoPass);
 
     // UnrealBloomPass: emissive voxels and lights bloom beautifully
-    // Threshold raised to 0.85 so only truly emissive objects (lanterns, ornaments) bloom
-    // and the gradient sky doesn't wash out the entire scene
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
-      0.6,  // strength (reduced from 0.8)
-      0.3,  // radius (reduced from 0.4)
-      0.85, // threshold (raised from 0.7 to prevent sky bloom)
+      0.4,  // strength (reduced further)
+      0.3,  // radius
+      0.9,  // threshold (higher to prevent unwanted bloom)
     );
     this.composer.addPass(bloomPass);
 
-    // GodRaysPass: volumetric light scattering from the main directional light
-    // Exposure reduced to prevent washing out the scene
-    const godRaysPass = new ShaderPass(GodRaysShader);
-    godRaysPass.uniforms.lightPosition.value.set(0.5, 0.3); // lower on screen
-    godRaysPass.uniforms.exposure.value = 0.1;  // reduced from 0.25
-    godRaysPass.uniforms.decay.value = 0.93;
-    godRaysPass.uniforms.density.value = 0.5;   // reduced from 0.8
-    godRaysPass.uniforms.weight.value = 0.3;    // reduced from 0.5
-    this.composer.addPass(godRaysPass);
+    // DEBUG: Skip god rays for now
+    // const godRaysPass = new ShaderPass(GodRaysShader);
+    // godRaysPass.uniforms.lightPosition.value.set(0.5, 0.3);
+    // godRaysPass.uniforms.exposure.value = 0.1;
+    // godRaysPass.uniforms.decay.value = 0.93;
+    // godRaysPass.uniforms.density.value = 0.5;
+    // godRaysPass.uniforms.weight.value = 0.3;
+    // this.composer.addPass(godRaysPass);
 
     // VignettePass: gentle edge darkening for cinematic focus
     const vignettePass = new ShaderPass(VignetteShader);
     vignettePass.uniforms.offset.value = 1.0;
-    vignettePass.uniforms.darkness.value = 1.2;
+    vignettePass.uniforms.darkness.value = 1.0;
     this.composer.addPass(vignettePass);
 
     // FilmGrainPass: barely-perceptible animated grain for film-like quality
     this.filmGrainPass = new ShaderPass(FilmGrainShader);
-    this.filmGrainPass.uniforms.intensity.value = 0.04;
+    this.filmGrainPass.uniforms.intensity.value = 0.02;
     this.composer.addPass(this.filmGrainPass);
 
     // OutputPass: final output with tone mapping applied
@@ -200,9 +198,15 @@ export class WorldScene {
     this.buildingTool = new BuildingTool(this.scene, this.camera, this.voxelRenderer);
 
     // Atmospheric effects: textured ground, reflective water + ethereal particles
-    this.groundSystem = new GroundSystem(this.scene);
-    this.waterPlane = new WaterPlane(this.scene);
-    this.particleSystem = new ParticleSystem(this.scene);
+    // DEBUG: Temporarily disabled to troubleshoot rendering
+    // this.groundSystem = new GroundSystem(this.scene);
+    // this.waterPlane = new WaterPlane(this.scene);
+    // this.particleSystem = new ParticleSystem(this.scene);
+
+    // DEBUG: Create stub objects to prevent errors
+    this.groundSystem = { dispose: () => {} } as any;
+    this.waterPlane = { update: () => {}, setCameraPosition: () => {}, dispose: () => {} } as any;
+    this.particleSystem = { update: () => {}, dispose: () => {} } as any;
 
     // Procedural Japanese-themed 3D structures (torii, lanterns, shrines, paths, trees)
     this.proceduralStructures = new ProceduralStructures(this.scene);
@@ -210,11 +214,27 @@ export class WorldScene {
     // DEBUG: Add a simple red cube at origin to verify rendering works
     const debugCube = new THREE.Mesh(
       new THREE.BoxGeometry(5, 5, 5),
-      new THREE.MeshStandardMaterial({ color: 0xff0000 })
+      new THREE.MeshBasicMaterial({ color: 0xff0000 }) // Use BasicMaterial - doesn't need lighting
     );
     debugCube.position.set(0, 2.5, 0);
     this.scene.add(debugCube);
     console.log('[DEBUG] Added red cube at origin');
+
+    // DEBUG: Add a large white plane as ground reference
+    const debugGround = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide })
+    );
+    debugGround.rotation.x = -Math.PI / 2;
+    debugGround.position.y = 0.01;
+    this.scene.add(debugGround);
+    console.log('[DEBUG] Added debug ground plane');
+
+    // DEBUG: Log scene children count
+    console.log('[DEBUG] Scene children after setup:', this.scene.children.length);
+    this.scene.children.forEach((child, i) => {
+      console.log(`  [${i}] ${child.type} "${child.name || 'unnamed'}" at`, child.position.toArray());
+    });
 
     // Asset loading system: tries to load HDRI skybox and GLTF models from /assets/
     // Falls back gracefully to procedural sky dome and structures if no assets exist
@@ -597,6 +617,9 @@ export class WorldScene {
 
   // ---- Animation Loop ----
 
+  // DEBUG: Set to true to bypass post-processing
+  private debugDirectRender = true;
+
   private animate = (): void => {
     this.animationFrameId = requestAnimationFrame(this.animate);
 
@@ -620,9 +643,13 @@ export class WorldScene {
     // Animate film grain noise pattern each frame
     this.filmGrainPass.uniforms.time.value = elapsed;
 
-    // Render through post-processing pipeline
-    // Pipeline: RenderPass -> SSAOPass -> UnrealBloomPass -> GodRaysPass -> VignettePass -> FilmGrainPass -> OutputPass
-    this.composer.render();
+    // DEBUG: Bypass post-processing to verify rendering
+    if (this.debugDirectRender) {
+      this.renderer.render(this.scene, this.camera);
+    } else {
+      // Render through post-processing pipeline
+      this.composer.render();
+    }
   };
 
   // ---- Event Handlers ----
