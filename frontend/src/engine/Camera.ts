@@ -19,6 +19,7 @@ export interface CameraState {
 const MOVE_SPEED = 1.5;
 const SPRINT_MULTIPLIER = 3.0;
 const MOUSE_SENSITIVITY = 0.003;
+const MOUSE_PAN_SPEED = 0.15;
 const TOUCH_SENSITIVITY = 0.004;
 const ZOOM_SPEED = 3.0;
 const PINCH_ZOOM_SPEED = 0.04;
@@ -42,8 +43,9 @@ export class CameraController {
   private isPointerLocked = false;
   private canvas: HTMLCanvasElement | null = null;
 
-  // Mouse drag state (for left-click drag rotation in observer mode)
+  // Mouse drag state
   private isLeftDragging = false;
+  private isMiddleDragging = false;
 
   // Touch state
   private touchPrevPos: { x: number; y: number } | null = null;
@@ -63,6 +65,7 @@ export class CameraController {
 
     canvas.addEventListener('click', this.onCanvasClick);
     canvas.addEventListener('mousedown', this.onMouseDown);
+    canvas.addEventListener('contextmenu', this.onContextMenu);
     document.addEventListener('mouseup', this.onMouseUp);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     document.addEventListener('mousemove', this.onMouseMove);
@@ -83,6 +86,7 @@ export class CameraController {
     if (this.canvas) {
       this.canvas.removeEventListener('click', this.onCanvasClick);
       this.canvas.removeEventListener('mousedown', this.onMouseDown);
+      this.canvas.removeEventListener('contextmenu', this.onContextMenu);
       this.canvas.removeEventListener('wheel', this.onWheel);
       this.canvas.removeEventListener('touchstart', this.onTouchStart);
       this.canvas.removeEventListener('touchmove', this.onTouchMove);
@@ -208,25 +212,44 @@ export class CameraController {
     }
   };
 
+  private onContextMenu = (e: Event): void => {
+    e.preventDefault();
+  };
+
   private onPointerLockChange = (): void => {
     this.isPointerLocked = document.pointerLockElement === this.canvas;
   };
 
   private onMouseDown = (e: MouseEvent): void => {
-    if (e.button === 0) this.isLeftDragging = true; // left button
+    if (e.button === 0) this.isLeftDragging = true;
+    if (e.button === 1) { e.preventDefault(); this.isMiddleDragging = true; }
+    if (e.button === 2) e.preventDefault();
   };
 
   private onMouseUp = (e: MouseEvent): void => {
     if (e.button === 0) this.isLeftDragging = false;
+    if (e.button === 1) this.isMiddleDragging = false;
   };
 
   private onMouseMove = (e: MouseEvent): void => {
-    // Allow rotation with: left-drag, right-drag, or pointer lock
-    const canRotate =
-      this.isPointerLocked ||
-      (this.mode === 'observer' && (this.isLeftDragging || !!(e.buttons & 2)));
+    if (this.mode === 'observer') {
+      // Left-drag or middle-drag → pan (translate camera in XZ plane)
+      const canPan = this.isLeftDragging || this.isMiddleDragging;
+      // Right-drag → rotate
+      const canRotate = !!(e.buttons & 2);
 
-    if (canRotate) {
+      if (canPan) {
+        const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+        this.targetPosition.addScaledVector(right, -e.movementX * MOUSE_PAN_SPEED);
+        this.targetPosition.addScaledVector(forward, e.movementY * MOUSE_PAN_SPEED);
+      } else if (canRotate) {
+        this.yaw -= e.movementX * MOUSE_SENSITIVITY;
+        this.pitch -= e.movementY * MOUSE_SENSITIVITY;
+        this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
+      }
+    } else if (this.isPointerLocked) {
+      // Participant mode: pointer lock rotates
       this.yaw -= e.movementX * MOUSE_SENSITIVITY;
       this.pitch -= e.movementY * MOUSE_SENSITIVITY;
       this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
