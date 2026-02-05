@@ -49,5 +49,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=genesis-frontend --branch=main
+          command: pages deploy dist --project-name=genesis-frontend --branch=master
           workingDirectory: frontend
