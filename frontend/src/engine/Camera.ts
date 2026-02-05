@@ -16,15 +16,15 @@ export interface CameraState {
   followEntityId: string | null;
 }
 
-const MOVE_SPEED = 0.5;
+const MOVE_SPEED = 1.5;
 const SPRINT_MULTIPLIER = 3.0;
-const MOUSE_SENSITIVITY = 0.002;
+const MOUSE_SENSITIVITY = 0.003;
 const TOUCH_SENSITIVITY = 0.004;
-const ZOOM_SPEED = 2.0;
+const ZOOM_SPEED = 3.0;
 const PINCH_ZOOM_SPEED = 0.04;
 const THIRD_PERSON_DISTANCE = 8;
 const THIRD_PERSON_HEIGHT = 5;
-const SMOOTH_FACTOR = 0.1;
+const SMOOTH_FACTOR = 0.15;
 
 export class CameraController {
   private camera: THREE.PerspectiveCamera;
@@ -160,10 +160,10 @@ export class CameraController {
 
     this.velocity.set(0, 0, 0);
 
-    if (this.keys.has('KeyW')) this.velocity.add(forward);
-    if (this.keys.has('KeyS')) this.velocity.sub(forward);
-    if (this.keys.has('KeyD')) this.velocity.add(right);
-    if (this.keys.has('KeyA')) this.velocity.sub(right);
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) this.velocity.add(forward);
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) this.velocity.sub(forward);
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) this.velocity.add(right);
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) this.velocity.sub(right);
     if (this.keys.has('Space')) this.velocity.y += 1;
     if (this.keys.has('KeyC') || this.keys.has('ControlLeft')) this.velocity.y -= 1;
 
