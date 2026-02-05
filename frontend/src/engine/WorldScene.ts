@@ -1,15 +1,15 @@
 /**
  * GENESIS v3 WorldScene
  *
- * WebGPU-first renderer with WebGL fallback.
- * Clean, simple, and performant.
+ * Minimal, reliable 3D scene.
+ * Step 1: Just render a cube. Make sure it works.
  */
 import * as THREE from 'three';
-import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
 import { BuildingTool, type BuildMode } from './BuildingTool';
+import { VoxelTemplates } from './VoxelTemplates';
 import type {
   EntityV3, Voxel, VoxelUpdate, StructureInfo,
   ActionProposal, SocketEntityPosition,
@@ -24,14 +24,11 @@ export interface WorldSceneOptions {
 }
 
 export class WorldScene {
-  // Three.js core
-  private renderer!: THREE.WebGLRenderer | WebGPURenderer;
+  private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private clock: THREE.Clock;
-
-  // Renderer type
-  private isWebGPU = false;
+  private canvas: HTMLCanvasElement;
 
   // Subsystems
   voxelRenderer: VoxelRenderer;
@@ -45,34 +42,67 @@ export class WorldScene {
   private raycaster = new THREE.Raycaster();
   private onEntityClick: ((entityId: string) => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private canvas: HTMLCanvasElement;
 
-  // Touch tap detection
+  // Touch
   private touchStartPos: { x: number; y: number } | null = null;
   private touchStartTime = 0;
 
-  // Initialization promise
-  private initPromise: Promise<void>;
+  // Template loaded flag
+  private templateLoaded = false;
 
   constructor(options: WorldSceneOptions) {
     const { canvas, labelContainer, onProposal, onEntityClick } = options;
     this.canvas = canvas;
 
-    // Scene setup
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0a1a);
+    console.log('[WorldScene] Initializing...');
 
-    // Camera
+    // === Renderer (WebGL only - simple and reliable) ===
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    this.renderer.setClearColor(0x1a1a2e);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    console.log('[WorldScene] Renderer created');
+
+    // === Scene ===
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x1a1a2e);
+
+    // === Camera ===
     this.camera = new THREE.PerspectiveCamera(
       60,
       canvas.clientWidth / canvas.clientHeight,
       0.1,
-      1000,
+      500,
     );
+    this.camera.position.set(0, 15, 40);
+    this.camera.lookAt(0, 0, 0);
 
     this.clock = new THREE.Clock();
 
-    // Initialize subsystems (before renderer - they don't need it)
+    // === Lighting ===
+    this.setupLighting();
+
+    // === Ground plane (simple reference) ===
+    const groundGeo = new THREE.PlaneGeometry(200, 200);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x2a2a3a,
+      roughness: 0.9,
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.5;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    console.log('[WorldScene] Ground added');
+
+    // === Subsystems ===
     this.voxelRenderer = new VoxelRenderer(this.scene);
     this.avatarSystem = new AvatarSystem(this.scene);
     this.avatarSystem.setLabelContainer(labelContainer);
@@ -85,180 +115,104 @@ export class WorldScene {
     }
     this.onEntityClick = onEntityClick || null;
 
-    // Initialize renderer (async for WebGPU)
-    this.initPromise = this.initRenderer(canvas);
+    console.log('[WorldScene] Subsystems initialized');
 
-    // Setup lighting
-    this.setupLighting();
+    // === Load initial template ===
+    this.loadInitialTemplate();
 
-    // Input events
+    // === Events ===
     canvas.addEventListener('mousemove', this.onMouseMove);
     canvas.addEventListener('click', this.onClick);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('resize', this.onResize);
-
-    // Touch events
     canvas.addEventListener('touchstart', this.onTouchStart, { passive: true });
     canvas.addEventListener('touchend', this.onTouchEnd, { passive: true });
 
-    // ResizeObserver
     this.resizeObserver = new ResizeObserver(() => this.onResize());
     this.resizeObserver.observe(canvas);
-  }
 
-  /**
-   * Initialize renderer - WebGPU if available, WebGL fallback.
-   */
-  private async initRenderer(canvas: HTMLCanvasElement): Promise<void> {
-    // Check WebGPU support
-    if (navigator.gpu) {
-      try {
-        const adapter = await navigator.gpu.requestAdapter();
-        if (adapter) {
-          console.log('[WorldScene] WebGPU supported, initializing...');
-
-          const renderer = new WebGPURenderer({
-            canvas,
-            antialias: true,
-          });
-
-          await renderer.init();
-
-          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-          renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-
-          this.renderer = renderer;
-          this.isWebGPU = true;
-          console.log('[WorldScene] WebGPU renderer initialized');
-
-          // Start render loop
-          this.animate();
-          return;
-        }
-      } catch (e) {
-        console.warn('[WorldScene] WebGPU init failed, falling back to WebGL:', e);
-      }
-    }
-
-    // Fallback to WebGL
-    console.log('[WorldScene] Using WebGL renderer');
-
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: false,
-    });
-
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
-
-    this.renderer = renderer;
-    this.isWebGPU = false;
-
-    // Start render loop
+    // === Start render loop ===
     this.animate();
+
+    console.log('[WorldScene] Initialization complete');
   }
 
-  /**
-   * Setup scene lighting.
-   */
   private setupLighting(): void {
-    // Ambient light - soft blue-purple tint
-    const ambient = new THREE.AmbientLight(0x4444aa, 0.6);
+    // Ambient - make sure everything is visible
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambient);
 
-    // Hemisphere light - sky/ground colors
-    const hemi = new THREE.HemisphereLight(0x6666ff, 0x444422, 0.4);
+    // Hemisphere
+    const hemi = new THREE.HemisphereLight(0x8888ff, 0x444422, 0.5);
     this.scene.add(hemi);
 
-    // Main directional light - warm tone
-    const directional = new THREE.DirectionalLight(0xffeedd, 1.0);
-    directional.position.set(50, 80, 30);
-    directional.castShadow = true;
-    directional.shadow.mapSize.width = 2048;
-    directional.shadow.mapSize.height = 2048;
-    directional.shadow.camera.near = 0.5;
-    directional.shadow.camera.far = 200;
-    directional.shadow.camera.left = -50;
-    directional.shadow.camera.right = 50;
-    directional.shadow.camera.top = 50;
-    directional.shadow.camera.bottom = -50;
-    directional.shadow.bias = -0.001;
-    this.scene.add(directional);
+    // Main directional light
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(30, 50, 30);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 150;
+    sun.shadow.camera.left = -50;
+    sun.shadow.camera.right = 50;
+    sun.shadow.camera.top = 50;
+    sun.shadow.camera.bottom = -50;
+    this.scene.add(sun);
 
-    // Add simple ground plane for reference
-    const groundGeo = new THREE.PlaneGeometry(200, 200);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x222233,
-      roughness: 0.9,
-      metalness: 0.1,
-    });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.5;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-
-    // Simple fog for atmosphere
-    this.scene.fog = new THREE.FogExp2(0x0a0a1a, 0.008);
+    console.log('[WorldScene] Lighting setup complete');
   }
 
-  // ---- Public API ----
+  private loadInitialTemplate(): void {
+    console.log('[WorldScene] Loading initial template...');
 
-  /**
-   * Wait for renderer initialization.
-   */
-  async ready(): Promise<void> {
-    return this.initPromise;
-  }
+    const voxels = VoxelTemplates.generateInitialWorld();
+    console.log('[WorldScene] Generated', voxels.length, 'voxels');
 
-  /**
-   * Check if using WebGPU.
-   */
-  isUsingWebGPU(): boolean {
-    return this.isWebGPU;
-  }
-
-  /**
-   * Load initial world voxels.
-   */
-  loadVoxels(voxels: Voxel[]): void {
     this.voxelRenderer.loadWorld(voxels);
+    this.templateLoaded = true;
+
+    console.log('[WorldScene] Template loaded, voxel count:', this.voxelRenderer.getVoxelCount());
   }
 
-  /**
-   * Apply incremental voxel updates from server.
-   */
+  // === Public API ===
+
+  async ready(): Promise<void> {
+    // No async init needed for WebGL
+    return Promise.resolve();
+  }
+
+  isUsingWebGPU(): boolean {
+    return false;
+  }
+
+  loadVoxels(voxels: Voxel[]): void {
+    // Only load if we have voxels from server (override template)
+    if (voxels.length > 0) {
+      console.log('[WorldScene] Loading', voxels.length, 'voxels from server');
+      this.voxelRenderer.loadWorld(voxels);
+    } else if (!this.templateLoaded) {
+      // Fallback to template if not already loaded
+      this.loadInitialTemplate();
+    }
+  }
+
   applyVoxelUpdates(updates: VoxelUpdate[]): void {
     this.voxelRenderer.applyUpdates(updates);
   }
 
-  /**
-   * Update all entities from server state.
-   */
   updateEntities(entities: EntityV3[]): void {
     const currentIds = new Set(entities.map(e => e.id));
-
-    // Remove entities no longer present
     for (const id of Array.from(this.avatarSystem.getAllPositions().keys())) {
       if (!currentIds.has(id)) {
         this.avatarSystem.removeEntity(id);
       }
     }
-
-    // Upsert all entities
     for (const entity of entities) {
       this.avatarSystem.upsertEntity(entity);
     }
   }
 
-  /**
-   * Update entity positions from socket event.
-   */
   updateEntityPositions(positions: SocketEntityPosition[]): void {
     for (const pos of positions) {
       this.avatarSystem.upsertEntity({
@@ -278,9 +232,6 @@ export class WorldScene {
     }
   }
 
-  /**
-   * Show speech bubble for an entity.
-   */
   handleSpeechEvent(event: SocketSpeechEvent): void {
     const entityPos = this.avatarSystem.getEntityPosition(event.entityId);
     if (entityPos) {
@@ -290,71 +241,44 @@ export class WorldScene {
     }
   }
 
-  /**
-   * Load structures (for sign rendering).
-   */
   loadStructures(_structures: StructureInfo[]): void {
-    // TODO: Implement sign rendering
+    // TODO
   }
 
-  /**
-   * Set camera mode.
-   */
   setCameraMode(mode: CameraMode): void {
     this.cameraController.setMode(mode);
   }
 
-  /**
-   * Follow an entity with the camera.
-   */
   followEntity(entityId: string): void {
     this.cameraController.followEntity(entityId, 'third_person');
   }
 
-  /**
-   * Pan the observer camera to a world position.
-   */
   panTo(x: number, z: number): void {
     this.cameraController.panTo(x, z);
   }
 
-  /**
-   * Get the current camera world position.
-   */
   getCameraPosition(): { x: number; y: number; z: number } {
     const p = this.cameraController.getPosition();
     return { x: p.x, y: p.y, z: p.z };
   }
 
-  /**
-   * Set building mode.
-   */
   setBuildMode(mode: BuildMode): void {
     this.buildingTool.setMode(mode);
   }
 
-  /**
-   * Set build color.
-   */
   setBuildColor(color: string): void {
     this.buildingTool.setColor(color);
   }
 
-  /**
-   * Set build material.
-   */
   setBuildMaterial(material: 'solid' | 'glass' | 'emissive' | 'liquid'): void {
     this.buildingTool.setMaterial(material);
   }
 
-  /**
-   * Set the human player's entity ID.
-   */
   setPlayerEntityId(entityId: string): void {
     this.buildingTool.setEntityId(entityId);
   }
 
-  // ---- Animation Loop ----
+  // === Animation Loop ===
 
   private animate = (): void => {
     this.animationFrameId = requestAnimationFrame(this.animate);
@@ -374,14 +298,14 @@ export class WorldScene {
     this.renderer.render(this.scene, this.camera);
   };
 
-  // ---- Event Handlers ----
+  // === Event Handlers ===
 
   private onMouseMove = (e: MouseEvent): void => {
     this.mouseNDC.x = (e.clientX / this.canvas.clientWidth) * 2 - 1;
     this.mouseNDC.y = -(e.clientY / this.canvas.clientHeight) * 2 + 1;
   };
 
-  private onClick = (_e: MouseEvent): void => {
+  private onClick = (): void => {
     if (this.buildingTool.getMode() !== 'none') {
       this.buildingTool.execute();
       return;
@@ -440,7 +364,7 @@ export class WorldScene {
     this.renderer.setSize(width, height);
   };
 
-  // ---- Cleanup ----
+  // === Cleanup ===
 
   dispose(): void {
     if (this.animationFrameId !== null) {
