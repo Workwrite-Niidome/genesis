@@ -1,49 +1,20 @@
 /**
  * GENESIS v3 WorldScene
  *
- * Master scene manager that ties together:
- * - VoxelRenderer (blocks)
- * - AvatarSystem (entities)
- * - CameraController (navigation)
- * - BuildingTool (construction)
- * - Lighting, environment, post-processing & atmospheric effects
- *
- * Visual style: Twilight/dusk atmosphere inspired by 超かぐや姫 (Super Kaguya-hime)
+ * WebGPU-first renderer with WebGL fallback.
+ * Clean, simple, and performant.
  */
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { GodRaysShader } from './shaders/GodRaysShader';
-import { VignetteShader } from './shaders/VignetteShader';
-import { FilmGrainShader } from './shaders/FilmGrainShader';
+import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
 import { BuildingTool, type BuildMode } from './BuildingTool';
-import { WaterPlane } from './WaterPlane';
-import { GroundSystem } from './GroundSystem';
-import { ParticleSystem } from './ParticleSystem';
-import { ProceduralStructures } from './ProceduralStructures';
-import { AssetLoader } from './AssetLoader';
-import { AssetManager } from './AssetManager';
-import { ProceduralSky } from './ProceduralSky';
 import type {
   EntityV3, Voxel, VoxelUpdate, StructureInfo,
   ActionProposal, SocketEntityPosition,
   SocketSpeechEvent,
 } from '../types/v3';
-
-/** Data needed to render a sign in the world. */
-export interface SignData {
-  id: string;
-  text: string;
-  fontSize: number;
-  position: { x: number; y: number; z: number };
-}
 
 export interface WorldSceneOptions {
   canvas: HTMLCanvasElement;
@@ -54,14 +25,13 @@ export interface WorldSceneOptions {
 
 export class WorldScene {
   // Three.js core
-  private renderer: THREE.WebGLRenderer;
+  private renderer!: THREE.WebGLRenderer | WebGPURenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private clock: THREE.Clock;
 
-  // Post-processing
-  private composer: EffectComposer;
-  private filmGrainPass: ShaderPass;
+  // Renderer type
+  private isWebGPU = false;
 
   // Subsystems
   voxelRenderer: VoxelRenderer;
@@ -69,126 +39,40 @@ export class WorldScene {
   cameraController: CameraController;
   buildingTool: BuildingTool;
 
-  // Atmospheric effects
-  private waterPlane: WaterPlane;
-  private groundSystem: GroundSystem;
-  private particleSystem: ParticleSystem;
-  private proceduralStructures: ProceduralStructures;
-
-  // Asset loading system
-  private assetLoader: AssetLoader;
-  private assetManager: AssetManager;
-
   // State
   private animationFrameId: number | null = null;
   private mouseNDC = new THREE.Vector2();
   private raycaster = new THREE.Raycaster();
   private onEntityClick: ((entityId: string) => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private canvas: HTMLCanvasElement;
 
   // Touch tap detection
   private touchStartPos: { x: number; y: number } | null = null;
   private touchStartTime = 0;
 
-  // Procedural sky texture (equirectangular, used as background + environment)
-  private skyTexture: THREE.Texture | null = null;
-
-  // Sign rendering
-  private signSprites: Map<string, THREE.Sprite> = new Map();
+  // Initialization promise
+  private initPromise: Promise<void>;
 
   constructor(options: WorldSceneOptions) {
     const { canvas, labelContainer, onProposal, onEntityClick } = options;
+    this.canvas = canvas;
 
-    // Three.js setup
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: false,
-    });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    // DEBUG: Disable tone mapping for troubleshooting
-    this.renderer.toneMapping = THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-
+    // Scene setup
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1a);
 
-    // Atmospheric fog: deep indigo-purple tint for depth and mystery
-    // DEBUG: Fog disabled for troubleshooting
-    // const fogColor = new THREE.Color(0x1a0a2e);
-    // this.scene.fog = new THREE.FogExp2(fogColor, 0.004);
-    this.scene.fog = null;
-
+    // Camera
     this.camera = new THREE.PerspectiveCamera(
       60,
       canvas.clientWidth / canvas.clientHeight,
       0.1,
-      2000,
+      1000,
     );
 
     this.clock = new THREE.Clock();
 
-    // Setup lighting and environment details
-    this.setupLighting();
-    this.setupEnvironment();
-
-    // Procedural equirectangular sky: replaces the old sky dome mesh with a
-    // canvas-rendered texture featuring stars, aurora, moon, and clouds.
-    // Also sets scene.environment for PBR reflections on all materials.
-    this.skyTexture = ProceduralSky.apply(this.scene, this.renderer);
-
-    // Post-processing pipeline
-    // DEBUG: Simplified pipeline to troubleshoot rendering issues
-    this.composer = new EffectComposer(this.renderer);
-
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    // DEBUG: Skip SSAO for now - it can cause issues if depth buffer isn't set up correctly
-    // const ssaoPass = new SSAOPass(this.scene, this.camera, canvas.clientWidth, canvas.clientHeight);
-    // ssaoPass.kernelRadius = 8;
-    // ssaoPass.minDistance = 0.005;
-    // ssaoPass.maxDistance = 0.1;
-    // ssaoPass.output = SSAOPass.OUTPUT.Default;
-    // this.composer.addPass(ssaoPass);
-
-    // UnrealBloomPass: emissive voxels and lights bloom beautifully
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
-      0.4,  // strength (reduced further)
-      0.3,  // radius
-      0.9,  // threshold (higher to prevent unwanted bloom)
-    );
-    this.composer.addPass(bloomPass);
-
-    // DEBUG: Skip god rays for now
-    // const godRaysPass = new ShaderPass(GodRaysShader);
-    // godRaysPass.uniforms.lightPosition.value.set(0.5, 0.3);
-    // godRaysPass.uniforms.exposure.value = 0.1;
-    // godRaysPass.uniforms.decay.value = 0.93;
-    // godRaysPass.uniforms.density.value = 0.5;
-    // godRaysPass.uniforms.weight.value = 0.3;
-    // this.composer.addPass(godRaysPass);
-
-    // VignettePass: gentle edge darkening for cinematic focus
-    const vignettePass = new ShaderPass(VignetteShader);
-    vignettePass.uniforms.offset.value = 1.0;
-    vignettePass.uniforms.darkness.value = 1.0;
-    this.composer.addPass(vignettePass);
-
-    // FilmGrainPass: barely-perceptible animated grain for film-like quality
-    this.filmGrainPass = new ShaderPass(FilmGrainShader);
-    this.filmGrainPass.uniforms.intensity.value = 0.02;
-    this.composer.addPass(this.filmGrainPass);
-
-    // OutputPass: final output with tone mapping applied
-    const outputPass = new OutputPass();
-    this.composer.addPass(outputPass);
-
-    // Initialize subsystems
+    // Initialize subsystems (before renderer - they don't need it)
     this.voxelRenderer = new VoxelRenderer(this.scene);
     this.avatarSystem = new AvatarSystem(this.scene);
     this.avatarSystem.setLabelContainer(labelContainer);
@@ -196,62 +80,16 @@ export class WorldScene {
     this.cameraController.attach(canvas);
     this.buildingTool = new BuildingTool(this.scene, this.camera, this.voxelRenderer);
 
-    // Atmospheric effects: textured ground, reflective water + ethereal particles
-    // DEBUG: Temporarily disabled to troubleshoot rendering
-    // this.groundSystem = new GroundSystem(this.scene);
-    // this.waterPlane = new WaterPlane(this.scene);
-    // this.particleSystem = new ParticleSystem(this.scene);
-
-    // DEBUG: Create stub objects to prevent errors
-    this.groundSystem = { dispose: () => {} } as any;
-    this.waterPlane = { update: () => {}, setCameraPosition: () => {}, dispose: () => {} } as any;
-    this.particleSystem = { update: () => {}, dispose: () => {} } as any;
-
-    // Procedural Japanese-themed 3D structures (torii, lanterns, shrines, paths, trees)
-    this.proceduralStructures = new ProceduralStructures(this.scene);
-
-    // DEBUG: Add a simple red cube at origin to verify rendering works
-    const debugCube = new THREE.Mesh(
-      new THREE.BoxGeometry(5, 5, 5),
-      new THREE.MeshBasicMaterial({ color: 0xff0000 }) // Use BasicMaterial - doesn't need lighting
-    );
-    debugCube.position.set(0, 2.5, 0);
-    this.scene.add(debugCube);
-    console.log('[DEBUG] Added red cube at origin');
-
-    // DEBUG: Add a large white plane as ground reference
-    const debugGround = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 100),
-      new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide })
-    );
-    debugGround.rotation.x = -Math.PI / 2;
-    debugGround.position.y = 0.01;
-    this.scene.add(debugGround);
-    console.log('[DEBUG] Added debug ground plane');
-
-    // DEBUG: Log scene children count
-    console.log('[DEBUG] Scene children after setup:', this.scene.children.length);
-    this.scene.children.forEach((child, i) => {
-      console.log(`  [${i}] ${child.type} "${child.name || 'unnamed'}" at`, child.position.toArray());
-    });
-
-    // Asset loading system: tries to load HDRI skybox and GLTF models from /assets/
-    // Falls back gracefully to procedural sky dome and structures if no assets exist
-    this.assetLoader = new AssetLoader();
-    this.assetManager = new AssetManager(this.scene, this.renderer, this.assetLoader);
-
-    // Kick off async asset loading (non-blocking -- scene renders immediately with procedural fallbacks)
-    this.assetManager.applySkybox().catch((err) => {
-      console.warn('[WorldScene] Skybox loading failed, using procedural sky dome:', err);
-    });
-    this.assetManager.loadAndPlaceModels(this.proceduralStructures).catch((err) => {
-      console.warn('[WorldScene] Model loading failed, using procedural structures:', err);
-    });
-
     if (onProposal) {
       this.buildingTool.setProposalCallback(onProposal);
     }
     this.onEntityClick = onEntityClick || null;
+
+    // Initialize renderer (async for WebGPU)
+    this.initPromise = this.initRenderer(canvas);
+
+    // Setup lighting
+    this.setupLighting();
 
     // Input events
     canvas.addEventListener('mousemove', this.onMouseMove);
@@ -259,76 +97,131 @@ export class WorldScene {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('resize', this.onResize);
 
-    // Touch events for mobile entity selection
+    // Touch events
     canvas.addEventListener('touchstart', this.onTouchStart, { passive: true });
     canvas.addEventListener('touchend', this.onTouchEnd, { passive: true });
 
-    // ResizeObserver for reliable sizing (mobile URL bar, orientation change)
+    // ResizeObserver
     this.resizeObserver = new ResizeObserver(() => this.onResize());
     this.resizeObserver.observe(canvas);
+  }
+
+  /**
+   * Initialize renderer - WebGPU if available, WebGL fallback.
+   */
+  private async initRenderer(canvas: HTMLCanvasElement): Promise<void> {
+    // Check WebGPU support
+    if (navigator.gpu) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) {
+          console.log('[WorldScene] WebGPU supported, initializing...');
+
+          const renderer = new WebGPURenderer({
+            canvas,
+            antialias: true,
+          });
+
+          await renderer.init();
+
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+          renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+          this.renderer = renderer;
+          this.isWebGPU = true;
+          console.log('[WorldScene] WebGPU renderer initialized');
+
+          // Start render loop
+          this.animate();
+          return;
+        }
+      } catch (e) {
+        console.warn('[WorldScene] WebGPU init failed, falling back to WebGL:', e);
+      }
+    }
+
+    // Fallback to WebGL
+    console.log('[WorldScene] Using WebGL renderer');
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+
+    this.renderer = renderer;
+    this.isWebGPU = false;
 
     // Start render loop
     this.animate();
   }
 
-  // ---- Scene Setup ----
-
+  /**
+   * Setup scene lighting.
+   */
   private setupLighting(): void {
-    // Bright ambient light for visibility
-    const ambient = new THREE.AmbientLight(0x6666aa, 0.8);
+    // Ambient light - soft blue-purple tint
+    const ambient = new THREE.AmbientLight(0x4444aa, 0.6);
     this.scene.add(ambient);
 
-    // Hemisphere light: purple sky / warm ground
-    const hemi = new THREE.HemisphereLight(0x4444aa, 0xffaa66, 0.6);
+    // Hemisphere light - sky/ground colors
+    const hemi = new THREE.HemisphereLight(0x6666ff, 0x444422, 0.4);
     this.scene.add(hemi);
 
-    // Main directional light - warm twilight tone
-    const directional = new THREE.DirectionalLight(0xffeedd, 1.2);
-    directional.position.set(50, 100, 30);
+    // Main directional light - warm tone
+    const directional = new THREE.DirectionalLight(0xffeedd, 1.0);
+    directional.position.set(50, 80, 30);
     directional.castShadow = true;
     directional.shadow.mapSize.width = 2048;
     directional.shadow.mapSize.height = 2048;
     directional.shadow.camera.near = 0.5;
     directional.shadow.camera.far = 200;
-    directional.shadow.camera.left = -60;
-    directional.shadow.camera.right = 60;
-    directional.shadow.camera.top = 60;
-    directional.shadow.camera.bottom = -60;
+    directional.shadow.camera.left = -50;
+    directional.shadow.camera.right = 50;
+    directional.shadow.camera.top = 50;
+    directional.shadow.camera.bottom = -50;
     directional.shadow.bias = -0.001;
     this.scene.add(directional);
 
-    // Purple accent light
-    const purpleLight = new THREE.PointLight(0x9966ff, 1.0, 300);
-    purpleLight.position.set(-30, 25, -30);
-    this.scene.add(purpleLight);
-
-    // Cyan accent light
-    const cyanLight = new THREE.PointLight(0x00ccff, 0.8, 300);
-    cyanLight.position.set(30, 20, 30);
-    this.scene.add(cyanLight);
-
-    console.log('[DEBUG] Lighting setup complete');
-  }
-
-  private setupEnvironment(): void {
-    // Ground is now handled by GroundSystem (instantiated separately)
-    // Stars are now part of the procedural equirectangular sky texture
-
-    // Origin marker (where the world begins)
-    const originGeo = new THREE.RingGeometry(0.5, 1.0, 32);
-    const originMat = new THREE.MeshBasicMaterial({
-      color: 0x7b2ff7,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.DoubleSide,
+    // Add simple ground plane for reference
+    const groundGeo = new THREE.PlaneGeometry(200, 200);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x222233,
+      roughness: 0.9,
+      metalness: 0.1,
     });
-    const originRing = new THREE.Mesh(originGeo, originMat);
-    originRing.rotation.x = -Math.PI / 2;
-    originRing.position.y = -0.49;
-    this.scene.add(originRing);
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.5;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // Simple fog for atmosphere
+    this.scene.fog = new THREE.FogExp2(0x0a0a1a, 0.008);
   }
 
   // ---- Public API ----
+
+  /**
+   * Wait for renderer initialization.
+   */
+  async ready(): Promise<void> {
+    return this.initPromise;
+  }
+
+  /**
+   * Check if using WebGPU.
+   */
+  isUsingWebGPU(): boolean {
+    return this.isWebGPU;
+  }
 
   /**
    * Load initial world voxels.
@@ -364,11 +257,10 @@ export class WorldScene {
   }
 
   /**
-   * Update entity positions from socket event (lightweight).
+   * Update entity positions from socket event.
    */
   updateEntityPositions(positions: SocketEntityPosition[]): void {
     for (const pos of positions) {
-      // Create a minimal entity update for position only
       this.avatarSystem.upsertEntity({
         id: pos.id,
         name: pos.name,
@@ -388,69 +280,21 @@ export class WorldScene {
 
   /**
    * Show speech bubble for an entity.
-   * If the entity has no avatar (e.g. observer chat), render the bubble
-   * at the provided position instead.  The visual is identical either way.
    */
   handleSpeechEvent(event: SocketSpeechEvent): void {
-    // Try entity-attached bubble first
     const entityPos = this.avatarSystem.getEntityPosition(event.entityId);
     if (entityPos) {
       this.avatarSystem.showSpeech(event.entityId, event.text);
     } else if (event.position) {
-      // No avatar found — render at the world position (observer chat)
       this.avatarSystem.showSpeechAtPosition(event.text, event.position);
     }
   }
 
   /**
-   * Load structures and render any signs among them.
+   * Load structures (for sign rendering).
    */
-  loadStructures(structures: StructureInfo[]): void {
-    for (const structure of structures) {
-      if (structure.structureType === 'sign') {
-        const props = structure.properties || {};
-        const text = props.text || '';
-        const fontSize = props.font_size ?? 1.0;
-        if (text) {
-          this.addSign({
-            id: structure.id,
-            text,
-            fontSize,
-            position: {
-              x: (structure.bounds.min.x + structure.bounds.max.x) / 2,
-              y: (structure.bounds.min.y + structure.bounds.max.y) / 2 + 1.5,
-              z: (structure.bounds.min.z + structure.bounds.max.z) / 2,
-            },
-          });
-        }
-      }
-    }
-  }
-
-  /**
-   * Add a single sign sprite to the scene.
-   */
-  addSign(sign: SignData): void {
-    // Remove existing sign at the same ID if present
-    this.removeSign(sign.id);
-
-    const sprite = this.createSignSprite(sign.text, sign.fontSize);
-    sprite.position.set(sign.position.x, sign.position.y, sign.position.z);
-    this.scene.add(sprite);
-    this.signSprites.set(sign.id, sprite);
-  }
-
-  /**
-   * Remove a sign sprite from the scene.
-   */
-  removeSign(signId: string): void {
-    const existing = this.signSprites.get(signId);
-    if (existing) {
-      this.scene.remove(existing);
-      existing.material.map?.dispose();
-      (existing.material as THREE.SpriteMaterial).dispose();
-      this.signSprites.delete(signId);
-    }
+  loadStructures(_structures: StructureInfo[]): void {
+    // TODO: Implement sign rendering
   }
 
   /**
@@ -468,7 +312,7 @@ export class WorldScene {
   }
 
   /**
-   * Pan the observer camera to a world position (x, z).
+   * Pan the observer camera to a world position.
    */
   panTo(x: number, z: number): void {
     this.cameraController.panTo(x, z);
@@ -504,118 +348,13 @@ export class WorldScene {
   }
 
   /**
-   * Set the human player's entity ID (for building).
+   * Set the human player's entity ID.
    */
   setPlayerEntityId(entityId: string): void {
     this.buildingTool.setEntityId(entityId);
   }
 
-  // ---- Sign Rendering ----
-
-  /**
-   * Create a text sprite for a sign using a canvas texture.
-   */
-  private createSignSprite(text: string, fontSize: number): THREE.Sprite {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-
-    // Measure and configure the canvas
-    const baseFontSize = Math.round(32 * fontSize);
-    const font = `bold ${baseFontSize}px monospace`;
-    ctx.font = font;
-
-    const padding = 20;
-    const maxWidth = 512;
-
-    // Word-wrap the text to fit within maxWidth
-    const lines = this.wrapText(ctx, text, maxWidth - padding * 2);
-    const lineHeight = baseFontSize * 1.3;
-
-    const textWidth = Math.min(
-      maxWidth,
-      Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2
-    );
-    const textHeight = lines.length * lineHeight + padding * 2;
-
-    // Resize canvas to power-of-two friendly dimensions
-    canvas.width = Math.min(512, Math.pow(2, Math.ceil(Math.log2(textWidth))));
-    canvas.height = Math.min(256, Math.pow(2, Math.ceil(Math.log2(textHeight))));
-
-    // Background (dark translucent panel)
-    ctx.fillStyle = 'rgba(10, 10, 20, 0.85)';
-    ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 8);
-    ctx.fill();
-
-    // Border (subtle glow)
-    ctx.strokeStyle = 'rgba(123, 47, 247, 0.6)';
-    ctx.lineWidth = 2;
-    ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 8);
-    ctx.stroke();
-
-    // Text
-    ctx.font = font;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-
-    const startY = (canvas.height - lines.length * lineHeight) / 2;
-    for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i], canvas.width / 2, startY + i * lineHeight);
-    }
-
-    // Create sprite material from the canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-
-    const spriteMaterial = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-    });
-
-    const sprite = new THREE.Sprite(spriteMaterial);
-
-    // Scale the sprite to world units (roughly 1 unit per 64 pixels)
-    const aspect = canvas.width / canvas.height;
-    const spriteHeight = 1.5 * fontSize;
-    sprite.scale.set(spriteHeight * aspect, spriteHeight, 1);
-
-    return sprite;
-  }
-
-  /**
-   * Word-wrap text to fit within a maximum pixel width.
-   */
-  private wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const metrics = ctx.measureText(testLine);
-
-      if (metrics.width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    return lines.length > 0 ? lines : [''];
-  }
-
   // ---- Animation Loop ----
-
-  // DEBUG: Set to true to bypass post-processing
-  private debugDirectRender = false;
 
   private animate = (): void => {
     this.animationFrameId = requestAnimationFrame(this.animate);
@@ -631,40 +370,23 @@ export class WorldScene {
       this.buildingTool.updateGhost(this.mouseNDC);
     }
 
-    // Update atmospheric effects
-    const elapsed = this.clock.elapsedTime;
-    this.waterPlane.update(elapsed);
-    this.waterPlane.setCameraPosition(this.camera.position);
-    this.particleSystem.update(elapsed);
-
-    // Animate film grain noise pattern each frame
-    this.filmGrainPass.uniforms.time.value = elapsed;
-
-    // DEBUG: Bypass post-processing to verify rendering
-    if (this.debugDirectRender) {
-      this.renderer.render(this.scene, this.camera);
-    } else {
-      // Render through post-processing pipeline
-      this.composer.render();
-    }
+    // Render
+    this.renderer.render(this.scene, this.camera);
   };
 
   // ---- Event Handlers ----
 
   private onMouseMove = (e: MouseEvent): void => {
-    const canvas = this.renderer.domElement;
-    this.mouseNDC.x = (e.clientX / canvas.clientWidth) * 2 - 1;
-    this.mouseNDC.y = -(e.clientY / canvas.clientHeight) * 2 + 1;
+    this.mouseNDC.x = (e.clientX / this.canvas.clientWidth) * 2 - 1;
+    this.mouseNDC.y = -(e.clientY / this.canvas.clientHeight) * 2 + 1;
   };
 
   private onClick = (_e: MouseEvent): void => {
-    // Building mode: place/destroy/paint
     if (this.buildingTool.getMode() !== 'none') {
       this.buildingTool.execute();
       return;
     }
 
-    // Entity click detection
     if (this.onEntityClick) {
       this.raycaster.setFromCamera(this.mouseNDC, this.camera);
       const entityId = this.avatarSystem.raycast(this.raycaster);
@@ -689,10 +411,8 @@ export class WorldScene {
       const dist = Math.sqrt(dx * dx + dy * dy);
       const duration = Date.now() - this.touchStartTime;
 
-      // Short tap with minimal movement → entity click
       if (dist < 15 && duration < 400) {
-        const canvas = this.renderer.domElement;
-        const rect = canvas.getBoundingClientRect();
+        const rect = this.canvas.getBoundingClientRect();
         this.mouseNDC.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouseNDC.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
 
@@ -711,14 +431,13 @@ export class WorldScene {
   };
 
   private onResize = (): void => {
-    const canvas = this.renderer.domElement;
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (width === 0 || height === 0) return; // skip if not laid out yet
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    if (width === 0 || height === 0) return;
+
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
   };
 
   // ---- Cleanup ----
@@ -728,11 +447,10 @@ export class WorldScene {
       cancelAnimationFrame(this.animationFrameId);
     }
 
-    const canvas = this.renderer.domElement;
-    canvas.removeEventListener('mousemove', this.onMouseMove);
-    canvas.removeEventListener('click', this.onClick);
-    canvas.removeEventListener('touchstart', this.onTouchStart);
-    canvas.removeEventListener('touchend', this.onTouchEnd);
+    this.canvas.removeEventListener('mousemove', this.onMouseMove);
+    this.canvas.removeEventListener('click', this.onClick);
+    this.canvas.removeEventListener('touchstart', this.onTouchStart);
+    this.canvas.removeEventListener('touchend', this.onTouchEnd);
     window.removeEventListener('resize', this.onResize);
     this.resizeObserver?.disconnect();
 
@@ -740,23 +458,7 @@ export class WorldScene {
     this.avatarSystem.dispose();
     this.cameraController.dispose();
     this.buildingTool.dispose();
-    this.groundSystem.dispose();
-    this.waterPlane.dispose();
-    this.particleSystem.dispose();
-    this.proceduralStructures.dispose();
-    this.assetManager.dispose();
-    this.assetLoader.dispose();
-    this.skyTexture?.dispose();
 
-    // Dispose all sign sprites
-    for (const [_id, sprite] of this.signSprites) {
-      this.scene.remove(sprite);
-      sprite.material.map?.dispose();
-      (sprite.material as THREE.SpriteMaterial).dispose();
-    }
-    this.signSprites.clear();
-
-    this.composer.dispose();
     this.renderer.dispose();
   }
 }

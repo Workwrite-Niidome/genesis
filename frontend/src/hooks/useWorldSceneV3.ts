@@ -7,6 +7,7 @@
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { WorldScene } from '../engine/WorldScene';
+import { VoxelTemplates } from '../engine/VoxelTemplates';
 import { useWorldStoreV3 } from '../stores/worldStoreV3';
 import { api } from '../services/api';
 import type { ActionProposal, Voxel, EntityV3 } from '../types/v3';
@@ -201,55 +202,67 @@ export function useWorldSceneV3(): WorldSceneV3 {
     const scene = sceneRef.current;
     const store = useWorldStoreV3.getState();
 
-    api.v3.getWorldState().then((state: any) => {
-      store.setWorldState({
-        tickNumber: state.tick,
-        entityCount: state.entity_count,
-        voxelCount: state.voxel_count,
-        isPaused: state.is_paused,
-        timeSpeed: state.time_speed,
-        godEntityId: state.god?.id || null,
-        godPhase: state.god?.state?.god_phase || 'genesis',
-      });
-    }).catch((err) => console.warn('[GENESIS] Failed to load world state:', err));
+    // Wait for WebGPU/WebGL renderer to be ready
+    scene.ready().then(() => {
+      console.log('[GENESIS] Renderer ready, using WebGPU:', scene.isUsingWebGPU());
 
-    // Load voxels in chunks to respect API's 200x200x200 volume limit
-    const CHUNK = 100; // half-extent per axis → 200 range
-    const voxelChunks: Array<{ min_x: number; max_x: number; min_z: number; max_z: number }> = [];
-    for (let cx = -100; cx < 100; cx += CHUNK * 2) {
-      for (let cz = -100; cz < 100; cz += CHUNK * 2) {
-        voxelChunks.push({
-          min_x: cx, max_x: cx + CHUNK * 2,
-          min_z: cz, max_z: cz + CHUNK * 2,
+      api.v3.getWorldState().then((state: any) => {
+        store.setWorldState({
+          tickNumber: state.tick,
+          entityCount: state.entity_count,
+          voxelCount: state.voxel_count,
+          isPaused: state.is_paused,
+          timeSpeed: state.time_speed,
+          godEntityId: state.god?.id || null,
+          godPhase: state.god?.state?.god_phase || 'genesis',
         });
-      }
-    }
+      }).catch((err) => console.warn('[GENESIS] Failed to load world state:', err));
 
-    const allVoxels: Voxel[] = [];
-    Promise.all(
-      voxelChunks.map((chunk) =>
-        api.v3.getVoxels({
-          min_x: chunk.min_x, max_x: chunk.max_x,
-          min_y: -10, max_y: 100,
-          min_z: chunk.min_z, max_z: chunk.max_z,
-        }).then((voxels: any[]) => {
-          if (voxels && voxels.length > 0) {
-            for (const v of voxels) {
-              allVoxels.push({
-                x: v.x, y: v.y, z: v.z,
-                color: v.color || '#888888',
-                material: v.material || 'solid',
-                hasCollision: v.has_collision !== false,
-              });
-            }
-          }
-        }).catch((err) => console.warn('[GENESIS] Failed to load voxel chunk:', chunk, err))
-      )
-    ).then(() => {
-      if (allVoxels.length > 0) {
-        scene.loadVoxels(allVoxels);
+      // Load voxels in chunks to respect API's 200x200x200 volume limit
+      const CHUNK = 100;
+      const voxelChunks: Array<{ min_x: number; max_x: number; min_z: number; max_z: number }> = [];
+      for (let cx = -100; cx < 100; cx += CHUNK * 2) {
+        for (let cz = -100; cz < 100; cz += CHUNK * 2) {
+          voxelChunks.push({
+            min_x: cx, max_x: cx + CHUNK * 2,
+            min_z: cz, max_z: cz + CHUNK * 2,
+          });
+        }
       }
-    });
+
+      const allVoxels: Voxel[] = [];
+      Promise.all(
+        voxelChunks.map((chunk) =>
+          api.v3.getVoxels({
+            min_x: chunk.min_x, max_x: chunk.max_x,
+            min_y: -10, max_y: 100,
+            min_z: chunk.min_z, max_z: chunk.max_z,
+          }).then((voxels: any[]) => {
+            if (voxels && voxels.length > 0) {
+              for (const v of voxels) {
+                allVoxels.push({
+                  x: v.x, y: v.y, z: v.z,
+                  color: v.color || '#888888',
+                  material: v.material || 'solid',
+                  hasCollision: v.has_collision !== false,
+                });
+              }
+            }
+          }).catch((err) => console.warn('[GENESIS] Failed to load voxel chunk:', chunk, err))
+        )
+      ).then(() => {
+        if (allVoxels.length > 0) {
+          console.log('[GENESIS] Loaded', allVoxels.length, 'voxels from server');
+          scene.loadVoxels(allVoxels);
+        } else {
+          // No voxels from server - load the initial template
+          console.log('[GENESIS] No voxels from server, loading initial world template');
+          const templateVoxels = VoxelTemplates.generateInitialWorld();
+          console.log('[GENESIS] Generated', templateVoxels.length, 'template voxels');
+          scene.loadVoxels(templateVoxels);
+        }
+      });
+    }).catch((err) => console.error('[GENESIS] Renderer init failed:', err));
 
     // Load ALL entities (including dead ones) so the world isn't empty
     api.v3.getEntities(false, 200).then((data: any) => {
