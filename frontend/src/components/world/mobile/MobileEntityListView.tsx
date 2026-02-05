@@ -6,7 +6,7 @@
  * Tap entity → selectEntity + switch to World tab + open entity sheet.
  */
 import { useState, useMemo, useCallback } from 'react';
-import { Search, ArrowUpDown } from 'lucide-react';
+import { Search, ArrowUpDown, Skull } from 'lucide-react';
 import { useWorldStoreV3 } from '../../../stores/worldStoreV3';
 import { useMobileStoreV3 } from '../../../stores/mobileStoreV3';
 import type { EntityV3 } from '../../../types/v3';
@@ -45,14 +45,15 @@ export function MobileEntityListView() {
   }, [entities]);
 
   const sortedEntities = useMemo(() => {
-    const alive: EntityV3[] = [];
+    const list: EntityV3[] = [];
     for (const e of entities.values()) {
-      if (!e.isAlive) continue;
       if (query && !e.name.toLowerCase().includes(query.toLowerCase())) continue;
-      alive.push(e);
+      list.push(e);
     }
 
-    alive.sort((a, b) => {
+    list.sort((a, b) => {
+      // Alive entities first
+      if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
       if (sortKey === 'name') return a.name.localeCompare(b.name);
       if (sortKey === 'mode') {
         const ma = MODE_ORDER[a.state.behaviorMode] ?? 2;
@@ -62,7 +63,7 @@ export function MobileEntityListView() {
       return 0;
     });
 
-    return alive;
+    return list;
   }, [entities, query, sortKey]);
 
   const cycleSort = useCallback(() => {
@@ -100,19 +101,20 @@ export function MobileEntityListView() {
 
       {/* Count */}
       <div className="px-4 py-1.5 text-[12px] font-mono text-white/30 flex-shrink-0">
-        {sortedEntities.length}/{aliveCount} entities
+        {sortedEntities.length} entities ({aliveCount} alive)
       </div>
 
       {/* Entity rows */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {sortedEntities.length === 0 ? (
           <div className="text-center py-12 text-white/25 text-[13px]">
-            {query ? 'No matches' : 'No alive entities'}
+            {query ? 'No matches' : 'No entities found'}
           </div>
         ) : (
           sortedEntities.map((entity) => {
             const isSelected = entity.id === selectedEntityId;
             const mode = entity.state.behaviorMode;
+            const dead = !entity.isAlive;
 
             return (
               <button
@@ -122,15 +124,19 @@ export function MobileEntityListView() {
                   isSelected
                     ? 'bg-purple-500/15 border-l-2 border-purple-400'
                     : 'hover:bg-white/[0.04] border-l-2 border-transparent'
-                }`}
+                } ${dead ? 'opacity-50' : ''}`}
                 style={{ minHeight: 48 }}
               >
-                {/* Mode dot */}
-                <div
-                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${modeDotClass(mode)} ${
-                    mode === 'rampage' ? 'animate-pulse' : ''
-                  }`}
-                />
+                {/* Mode dot / skull */}
+                {dead ? (
+                  <Skull size={12} className="text-gray-500 flex-shrink-0" />
+                ) : (
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${modeDotClass(mode)} ${
+                      mode === 'rampage' ? 'animate-pulse' : ''
+                    }`}
+                  />
+                )}
 
                 {/* Name + action */}
                 <div className="flex-1 min-w-0">
@@ -141,16 +147,20 @@ export function MobileEntityListView() {
                   >
                     {entity.name}
                   </div>
-                  {entity.state.currentAction && (
+                  {dead ? (
+                    <div className="text-[12px] text-gray-500 truncate">
+                      deceased
+                    </div>
+                  ) : entity.state.currentAction ? (
                     <div className="text-[12px] text-white/30 truncate">
                       {entity.state.currentAction}
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Energy indicator */}
                 <span className="text-[12px] font-mono text-white/25 flex-shrink-0">
-                  {Math.round(entity.state.energy * 100)}%
+                  {dead ? 'DEAD' : `${Math.round(entity.state.energy * 100)}%`}
                 </span>
               </button>
             );

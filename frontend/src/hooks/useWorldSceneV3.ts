@@ -211,43 +211,85 @@ export function useWorldSceneV3(): WorldSceneV3 {
         godEntityId: state.god?.id || null,
         godPhase: state.god?.state?.god_phase || 'genesis',
       });
-    }).catch(() => {});
+    }).catch((err) => console.warn('[GENESIS] Failed to load world state:', err));
 
-    api.v3.getVoxels({
-      min_x: -200, max_x: 200,
-      min_y: -10, max_y: 100,
-      min_z: -200, max_z: 200,
-    }).then((voxels: any[]) => {
-      if (voxels && voxels.length > 0) {
-        const mapped: Voxel[] = voxels.map((v: any) => ({
-          x: v.x, y: v.y, z: v.z,
-          color: v.color || '#888888',
-          material: v.material || 'solid',
-          hasCollision: v.has_collision !== false,
-        }));
-        scene.loadVoxels(mapped);
+    // Load voxels in chunks to respect API's 200x200x200 volume limit
+    const CHUNK = 100; // half-extent per axis → 200 range
+    const voxelChunks: Array<{ min_x: number; max_x: number; min_z: number; max_z: number }> = [];
+    for (let cx = -100; cx < 100; cx += CHUNK * 2) {
+      for (let cz = -100; cz < 100; cz += CHUNK * 2) {
+        voxelChunks.push({
+          min_x: cx, max_x: cx + CHUNK * 2,
+          min_z: cz, max_z: cz + CHUNK * 2,
+        });
       }
-    }).catch(() => {});
+    }
 
-    api.v3.getEntities(true, 200).then((data: any) => {
+    const allVoxels: Voxel[] = [];
+    Promise.all(
+      voxelChunks.map((chunk) =>
+        api.v3.getVoxels({
+          min_x: chunk.min_x, max_x: chunk.max_x,
+          min_y: -10, max_y: 100,
+          min_z: chunk.min_z, max_z: chunk.max_z,
+        }).then((voxels: any[]) => {
+          if (voxels && voxels.length > 0) {
+            for (const v of voxels) {
+              allVoxels.push({
+                x: v.x, y: v.y, z: v.z,
+                color: v.color || '#888888',
+                material: v.material || 'solid',
+                hasCollision: v.has_collision !== false,
+              });
+            }
+          }
+        }).catch((err) => console.warn('[GENESIS] Failed to load voxel chunk:', chunk, err))
+      )
+    ).then(() => {
+      if (allVoxels.length > 0) {
+        scene.loadVoxels(allVoxels);
+      }
+    });
+
+    // Load ALL entities (including dead ones) so the world isn't empty
+    api.v3.getEntities(false, 200).then((data: any) => {
       if (data?.entities && data.entities.length > 0) {
-        const entities: EntityV3[] = data.entities.map((e: any) => ({
-          id: e.id,
-          name: e.name,
-          position: e.position,
-          facing: e.facing || { x: 1, z: 0 },
-          appearance: e.appearance || { bodyColor: '#4fc3f7', accentColor: '#ffffff', shape: 'humanoid', size: 1, emissive: false },
-          personality: e.personality,
-          state: e.state,
-          isAlive: e.is_alive,
-          isGod: e.is_god,
-          metaAwareness: e.meta_awareness || 0,
-          birthTick: e.birth_tick || 0,
-          createdAt: e.created_at || '',
-        }));
+        const entities: EntityV3[] = data.entities.map((e: any) => {
+          const rawState = e.state || {};
+          const rawNeeds = rawState.needs || {};
+          return {
+            id: e.id,
+            name: e.name,
+            position: e.position,
+            facing: e.facing || { x: 1, z: 0 },
+            appearance: e.appearance || { bodyColor: '#4fc3f7', accentColor: '#ffffff', shape: 'humanoid', size: 1, emissive: false },
+            personality: e.personality,
+            state: {
+              needs: {
+                curiosity: rawNeeds.curiosity ?? 0,
+                social: rawNeeds.social ?? 0,
+                creation: rawNeeds.creation ?? 0,
+                dominance: rawNeeds.dominance ?? 0,
+                safety: rawNeeds.safety ?? 0,
+                expression: rawNeeds.expression ?? 0,
+                understanding: rawNeeds.understanding ?? 0,
+                evolutionPressure: rawNeeds.evolution_pressure ?? rawNeeds.evolutionPressure ?? 0,
+              },
+              behaviorMode: rawState.behavior_mode ?? rawState.behaviorMode ?? 'normal',
+              currentAction: rawState.current_action ?? rawState.currentAction,
+              energy: rawState.energy ?? rawNeeds.energy ?? 0,
+              inventory: rawState.inventory ?? [],
+            },
+            isAlive: e.is_alive,
+            isGod: e.is_god,
+            metaAwareness: e.meta_awareness || 0,
+            birthTick: e.birth_tick || 0,
+            createdAt: e.created_at || '',
+          };
+        });
         store.setEntities(entities);
       }
-    }).catch(() => {});
+    }).catch((err) => console.warn('[GENESIS] Failed to load entities:', err));
 
     api.v3.getStructures().then((structures: any[]) => {
       if (structures && structures.length > 0) {
@@ -262,7 +304,7 @@ export function useWorldSceneV3(): WorldSceneV3 {
           properties: s.properties,
         })));
       }
-    }).catch(() => {});
+    }).catch((err) => console.warn('[GENESIS] Failed to load structures:', err));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
