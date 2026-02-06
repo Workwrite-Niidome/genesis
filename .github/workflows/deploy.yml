@@ -5,18 +5,13 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/workwrite-niidome/genesis
-
 jobs:
-  # ============ Build and Push Images ============
-  build:
-    name: Build Docker Images
+  # ============ Build and Transfer Images ============
+  build-and-deploy:
+    name: Build and Deploy
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout
@@ -25,40 +20,43 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Backend
+      - name: Build Backend Image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          push: true
-          tags: ${{ env.IMAGE_PREFIX }}/backend:latest,${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          load: true
+          tags: genesis-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
 
-      - name: Build and push Frontend
+      - name: Build Frontend Image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          push: true
-          tags: ${{ env.IMAGE_PREFIX }}/frontend:latest,${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+          load: true
+          tags: genesis-frontend:latest
           build-args: |
             NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
 
-  # ============ Deploy to VPS ============
-  deploy:
-    name: Deploy to VPS
-    runs-on: ubuntu-latest
-    needs: build
+      - name: Save images to tar
+        run: |
+          docker save genesis-backend:latest | gzip > /tmp/backend.tar.gz
+          docker save genesis-frontend:latest | gzip > /tmp/frontend.tar.gz
+          ls -lh /tmp/backend.tar.gz /tmp/frontend.tar.gz
 
-    steps:
+      - name: Transfer images to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "/tmp/backend.tar.gz,/tmp/frontend.tar.gz"
+          target: "/tmp"
+          strip_components: 1
+          timeout: 30m
+
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -66,18 +64,26 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
-          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,IMAGE_PREFIX
+          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL
           script: |
             set -e
 
             echo "=== Disk Space ==="
             df -h / | tail -1
 
-            # Restart Docker daemon (previous interrupted pull left it stuck)
-            echo "=== Restarting Docker daemon ==="
-            sudo systemctl restart docker
-            sleep 10
-            echo "Docker restarted"
+            # Restart Docker if needed
+            if ! timeout 30 docker info > /dev/null 2>&1; then
+              echo "Docker unresponsive, restarting..."
+              sudo systemctl restart docker
+              sleep 10
+            fi
+
+            # Load images from tar files (bypasses GHCR pull issues)
+            echo "=== Loading backend image ==="
+            gunzip -c /tmp/backend.tar.gz | docker load
+            echo "=== Loading frontend image ==="
+            gunzip -c /tmp/frontend.tar.gz | docker load
+            rm -f /tmp/backend.tar.gz /tmp/frontend.tar.gz
 
             # Update code
             cd ~/genesis || {
@@ -101,19 +107,6 @@ jobs:
             echo "CLAUDE_API_KEY=${CLAUDE_API_KEY}" >> .env
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
-
-            # Login to GHCR
-            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u github --password-stdin
-
-            # Pull latest images
-            echo "=== Pulling backend image ==="
-            docker pull ${IMAGE_PREFIX}/backend:latest
-            echo "=== Pulling frontend image ==="
-            docker pull ${IMAGE_PREFIX}/frontend:latest
-
-            # Tag images for docker-compose
-            docker tag ${IMAGE_PREFIX}/backend:latest genesis-backend:latest
-            docker tag ${IMAGE_PREFIX}/frontend:latest genesis-frontend:latest
 
             # Stop existing services
             echo "=== Restarting services ==="
@@ -151,4 +144,3 @@ jobs:
           TWITTER_CLIENT_SECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
-          IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
