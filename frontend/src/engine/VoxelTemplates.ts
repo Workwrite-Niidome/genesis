@@ -8,11 +8,12 @@
  * Inspired by: Lantern sea around torii, Japanese townhouses,
  * pagodas, modern buildings fusion, waterfront setting.
  *
- * Layout Structure:
- * - Center: Torii Gate + Lantern Sea (radius 40 - water area, no buildings)
- * - Inner Ring: Waterfront buildings, engawa (radius 40-50)
- * - Middle Ring: Main town (radius 50-90)
- * - Outer Ring: Tall buildings, pagodas (radius 90-120)
+ * Layout Structure (3x Expanded):
+ * - Center: Massive Torii Gate + Lantern Sea (radius 0-120 - water area, no buildings)
+ * - Inner Ring: Waterfront buildings, engawa (radius 120-145)
+ * - Middle Ring: Main town (radius 145-200)
+ * - Outer Ring: Pagodas, tall buildings (radius 200-250)
+ * - Far Outer: Modern skyscrapers (radius 250+)
  */
 import type { Voxel } from '../types/v3';
 
@@ -1649,39 +1650,45 @@ export function generateInitialWorld(): Voxel[] {
   allVoxels.push(...createMassiveToriiGate(0, 0));
 
   // ========================================
-  // Lantern Sea around the Torii (radius ~35, inside water zone)
-  // Water zone is radius 40 - no buildings here
+  // Lantern Sea around the Torii (radius ~100, inside water zone)
+  // Water zone is radius 120 - no buildings here (3x expanded)
   // ========================================
-  // Main lantern sea surrounding torii
-  allVoxels.push(...createLanternSea(0, 0, 35, 400));
+  // Main lantern sea surrounding torii - expanded
+  allVoxels.push(...createLanternSea(0, 0, 100, 600));
 
   // ========================================
-  // Inner Ring: Waterfront Buildings (radius 40-50)
-  // Buildings facing the water with engawa
+  // Inner Ring: Waterfront Buildings (radius 120-140)
+  // Buildings facing the water with engawa (3x expanded)
   // ========================================
   const waterfrontPositions: Array<{ x: number; z: number; facing: 'n' | 's' | 'e' | 'w' }> = [
     // North side (facing south toward water)
-    { x: -35, z: -48, facing: 's' },
-    { x: -20, z: -50, facing: 's' },
-    { x: -5, z: -52, facing: 's' },
-    { x: 12, z: -50, facing: 's' },
-    { x: 28, z: -48, facing: 's' },
+    { x: -100, z: -130, facing: 's' },
+    { x: -60, z: -135, facing: 's' },
+    { x: -20, z: -138, facing: 's' },
+    { x: 20, z: -138, facing: 's' },
+    { x: 60, z: -135, facing: 's' },
+    { x: 100, z: -130, facing: 's' },
     // South side (facing north toward water)
-    { x: -35, z: 48, facing: 'n' },
-    { x: -18, z: 50, facing: 'n' },
-    { x: 5, z: 52, facing: 'n' },
-    { x: 22, z: 50, facing: 'n' },
-    { x: 38, z: 48, facing: 'n' },
+    { x: -100, z: 130, facing: 'n' },
+    { x: -60, z: 135, facing: 'n' },
+    { x: -20, z: 138, facing: 'n' },
+    { x: 20, z: 138, facing: 'n' },
+    { x: 60, z: 135, facing: 'n' },
+    { x: 100, z: 130, facing: 'n' },
     // East side (facing west toward water)
-    { x: 48, z: -30, facing: 'w' },
-    { x: 50, z: -12, facing: 'w' },
-    { x: 52, z: 8, facing: 'w' },
-    { x: 50, z: 25, facing: 'w' },
+    { x: 130, z: -90, facing: 'w' },
+    { x: 135, z: -50, facing: 'w' },
+    { x: 138, z: -10, facing: 'w' },
+    { x: 138, z: 30, facing: 'w' },
+    { x: 135, z: 70, facing: 'w' },
+    { x: 130, z: 100, facing: 'w' },
     // West side (facing east toward water)
-    { x: -52, z: -25, facing: 'e' },
-    { x: -50, z: -8, facing: 'e' },
-    { x: -52, z: 12, facing: 'e' },
-    { x: -50, z: 28, facing: 'e' },
+    { x: -130, z: -90, facing: 'e' },
+    { x: -135, z: -50, facing: 'e' },
+    { x: -138, z: -10, facing: 'e' },
+    { x: -138, z: 30, facing: 'e' },
+    { x: -135, z: 70, facing: 'e' },
+    { x: -130, z: 100, facing: 'e' },
   ];
 
   for (const pos of waterfrontPositions) {
@@ -1689,32 +1696,32 @@ export function generateInitialWorld(): Voxel[] {
   }
 
   // ========================================
-  // Middle Ring: Main Town (radius 50-90)
-  // Dense Japanese townscape with multiple blocks
+  // Middle Ring: Main Town (radius 140-200)
+  // Dense Japanese townscape with multiple blocks (3x expanded)
   // ========================================
 
   // Town Blocks (clusters of buildings)
   const townBlockPositions = [
     // Northeast quadrant
-    { x: 60, z: -70, size: 3 as const },
-    { x: 78, z: -55, size: 2 as const },
-    { x: 65, z: -40, size: 2 as const },
-    { x: 85, z: -35, size: 3 as const },
+    { x: 155, z: -165, size: 3 as const },
+    { x: 175, z: -145, size: 2 as const },
+    { x: 160, z: -180, size: 2 as const },
+    { x: 190, z: -155, size: 3 as const },
     // Northwest quadrant
-    { x: -65, z: -70, size: 3 as const },
-    { x: -80, z: -50, size: 2 as const },
-    { x: -60, z: -38, size: 2 as const },
-    { x: -85, z: -30, size: 3 as const },
+    { x: -155, z: -165, size: 3 as const },
+    { x: -175, z: -145, size: 2 as const },
+    { x: -160, z: -180, size: 2 as const },
+    { x: -190, z: -155, size: 3 as const },
     // Southeast quadrant
-    { x: 62, z: 60, size: 3 as const },
-    { x: 80, z: 72, size: 2 as const },
-    { x: 58, z: 78, size: 2 as const },
-    { x: 75, z: 85, size: 3 as const },
+    { x: 155, z: 165, size: 3 as const },
+    { x: 175, z: 145, size: 2 as const },
+    { x: 160, z: 180, size: 2 as const },
+    { x: 190, z: 155, size: 3 as const },
     // Southwest quadrant
-    { x: -68, z: 58, size: 3 as const },
-    { x: -82, z: 70, size: 2 as const },
-    { x: -60, z: 82, size: 2 as const },
-    { x: -78, z: 88, size: 3 as const },
+    { x: -155, z: 165, size: 3 as const },
+    { x: -175, z: 145, size: 2 as const },
+    { x: -160, z: 180, size: 2 as const },
+    { x: -190, z: 155, size: 3 as const },
   ];
 
   for (const block of townBlockPositions) {
@@ -1724,9 +1731,9 @@ export function generateInitialWorld(): Voxel[] {
   // Additional individual detailed town houses (filling gaps)
   const detailedHousePositions: Array<{ x: number; z: number; floors: number; w: number; d: number }> = [];
 
-  // Generate many houses in middle ring
+  // Generate many houses in middle ring (3x expanded: radius 145-195)
   for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
-    for (let r = 55; r <= 85; r += 15) {
+    for (let r = 145; r <= 195; r += 25) {
       const hx = Math.round(Math.cos(angle) * r);
       const hz = Math.round(Math.sin(angle) * r);
       // Skip if too close to town blocks
@@ -1757,27 +1764,27 @@ export function generateInitialWorld(): Voxel[] {
     allVoxels.push(...createDetailedTownHouse(h.x, h.z, h.floors, h.w, h.d));
   }
 
-  // Shops scattered throughout
+  // Shops scattered throughout (3x expanded - radius 145+)
   const shopPositions: Array<{ x: number; z: number; type: 'food' | 'goods' | 'tea' }> = [
-    // Near waterfront
-    { x: -25, z: -58, type: 'food' },
-    { x: 15, z: -56, type: 'tea' },
-    { x: 45, z: 58, type: 'goods' },
-    { x: -40, z: 56, type: 'food' },
-    // In town
-    { x: 55, z: -65, type: 'food' },
-    { x: 70, z: -45, type: 'tea' },
-    { x: -58, z: -62, type: 'goods' },
-    { x: -72, z: -42, type: 'food' },
-    { x: 68, z: 65, type: 'tea' },
-    { x: 55, z: 80, type: 'goods' },
-    { x: -62, z: 62, type: 'food' },
-    { x: -75, z: 78, type: 'tea' },
-    // More shops
-    { x: 80, z: -20, type: 'food' },
-    { x: -78, z: 15, type: 'goods' },
-    { x: 72, z: 35, type: 'tea' },
-    { x: -68, z: -15, type: 'food' },
+    // Near waterfront (just outside water zone at radius 130-150)
+    { x: -75, z: -145, type: 'food' },
+    { x: 45, z: -148, type: 'tea' },
+    { x: 135, z: 75, type: 'goods' },
+    { x: -120, z: 100, type: 'food' },
+    // In town (radius 150-180)
+    { x: 165, z: -155, type: 'food' },
+    { x: 175, z: -135, type: 'tea' },
+    { x: -158, z: -162, type: 'goods' },
+    { x: -172, z: -142, type: 'food' },
+    { x: 168, z: 165, type: 'tea' },
+    { x: 155, z: 180, type: 'goods' },
+    { x: -162, z: 162, type: 'food' },
+    { x: -175, z: 178, type: 'tea' },
+    // More shops (various locations)
+    { x: 180, z: -60, type: 'food' },
+    { x: -178, z: 45, type: 'goods' },
+    { x: 172, z: 105, type: 'tea' },
+    { x: -168, z: -45, type: 'food' },
   ];
 
   for (const shop of shopPositions) {
@@ -1785,32 +1792,32 @@ export function generateInitialWorld(): Voxel[] {
   }
 
   // ========================================
-  // Lantern Rows (streets with lanterns)
+  // Lantern Rows (streets with lanterns - 3x expanded)
   // ========================================
   const lanternRowConfigs = [
-    // Main streets radiating from center
-    { x: 45, z: 0, length: 70, dir: 'x' as const },
-    { x: -115, z: 0, length: 70, dir: 'x' as const },
-    { x: 0, z: 45, length: 70, dir: 'z' as const },
-    { x: 0, z: -115, length: 70, dir: 'z' as const },
-    // Cross streets in town
-    { x: 50, z: -60, length: 40, dir: 'x' as const },
-    { x: -90, z: -60, length: 40, dir: 'x' as const },
-    { x: 50, z: 60, length: 40, dir: 'x' as const },
-    { x: -90, z: 60, length: 40, dir: 'x' as const },
-    { x: 60, z: -80, length: 35, dir: 'z' as const },
-    { x: -60, z: -80, length: 35, dir: 'z' as const },
-    { x: 60, z: 50, length: 35, dir: 'z' as const },
-    { x: -60, z: 50, length: 35, dir: 'z' as const },
+    // Main streets radiating from waterfront to outer town (radius 125-200)
+    { x: 125, z: 0, length: 80, dir: 'x' as const },
+    { x: -205, z: 0, length: 80, dir: 'x' as const },
+    { x: 0, z: 125, length: 80, dir: 'z' as const },
+    { x: 0, z: -205, length: 80, dir: 'z' as const },
+    // Cross streets in town (radius 150-190)
+    { x: 140, z: -160, length: 50, dir: 'x' as const },
+    { x: -190, z: -160, length: 50, dir: 'x' as const },
+    { x: 140, z: 160, length: 50, dir: 'x' as const },
+    { x: -190, z: 160, length: 50, dir: 'x' as const },
+    { x: 160, z: -180, length: 45, dir: 'z' as const },
+    { x: -160, z: -180, length: 45, dir: 'z' as const },
+    { x: 160, z: 140, length: 45, dir: 'z' as const },
+    { x: -160, z: 140, length: 45, dir: 'z' as const },
     // Additional dense streets
-    { x: 70, z: -30, length: 25, dir: 'z' as const },
-    { x: -70, z: -30, length: 25, dir: 'z' as const },
-    { x: 70, z: 30, length: 25, dir: 'z' as const },
-    { x: -70, z: 30, length: 25, dir: 'z' as const },
-    { x: 55, z: 75, length: 30, dir: 'x' as const },
-    { x: -85, z: 75, length: 30, dir: 'x' as const },
-    { x: 55, z: -75, length: 30, dir: 'x' as const },
-    { x: -85, z: -75, length: 30, dir: 'x' as const },
+    { x: 175, z: -90, length: 35, dir: 'z' as const },
+    { x: -175, z: -90, length: 35, dir: 'z' as const },
+    { x: 175, z: 90, length: 35, dir: 'z' as const },
+    { x: -175, z: 90, length: 35, dir: 'z' as const },
+    { x: 145, z: 175, length: 40, dir: 'x' as const },
+    { x: -185, z: 175, length: 40, dir: 'x' as const },
+    { x: 145, z: -175, length: 40, dir: 'x' as const },
+    { x: -185, z: -175, length: 40, dir: 'x' as const },
   ];
 
   for (const config of lanternRowConfigs) {
@@ -1818,19 +1825,24 @@ export function generateInitialWorld(): Voxel[] {
   }
 
   // ========================================
-  // Outer Ring: Pagodas (radius 90-120)
+  // Outer Ring: Pagodas (radius 200-250 - 3x expanded)
   // ========================================
   const pagodaPositions = [
-    { x: -95, z: -95, floors: 5 },
-    { x: 98, z: -92, floors: 5 },
-    { x: -100, z: 90, floors: 5 },
-    { x: 95, z: 95, floors: 5 },
-    { x: 0, z: -105, floors: 7 },  // Large central north
-    { x: 0, z: 108, floors: 7 },   // Large central south
-    { x: -108, z: 0, floors: 6 },  // Large west
-    { x: 110, z: 0, floors: 6 },   // Large east
-    { x: -75, z: -100, floors: 4 },
-    { x: 78, z: -98, floors: 4 },
+    { x: -210, z: -210, floors: 5 },
+    { x: 215, z: -205, floors: 5 },
+    { x: -220, z: 200, floors: 5 },
+    { x: 210, z: 210, floors: 5 },
+    { x: 0, z: -230, floors: 7 },   // Large central north
+    { x: 0, z: 235, floors: 7 },    // Large central south
+    { x: -240, z: 0, floors: 6 },   // Large west
+    { x: 245, z: 0, floors: 6 },    // Large east
+    { x: -180, z: -220, floors: 4 },
+    { x: 185, z: -215, floors: 4 },
+    // Additional pagodas for larger town
+    { x: -225, z: -100, floors: 5 },
+    { x: 230, z: 95, floors: 5 },
+    { x: -100, z: 225, floors: 4 },
+    { x: 105, z: -228, floors: 4 },
   ];
 
   for (const pagoda of pagodaPositions) {
@@ -1838,27 +1850,32 @@ export function generateInitialWorld(): Voxel[] {
   }
 
   // ========================================
-  // Modern Buildings (Background - Outer Ring)
+  // Modern Buildings (Background - Outer Ring - 3x expanded to radius 250+)
   // ========================================
   const modernBuildingPositions = [
-    // Far corners
-    { x: 110, z: -110, w: 8, h: 45 },
-    { x: 125, z: -95, w: 6, h: 38 },
-    { x: 118, z: -80, w: 7, h: 42 },
-    { x: -115, z: -108, w: 8, h: 48 },
-    { x: -128, z: -90, w: 6, h: 35 },
-    { x: -120, z: -75, w: 7, h: 40 },
-    { x: 112, z: 105, w: 8, h: 44 },
-    { x: 125, z: 92, w: 6, h: 36 },
-    { x: 118, z: 78, w: 7, h: 41 },
-    { x: -118, z: 102, w: 8, h: 46 },
-    { x: -130, z: 88, w: 6, h: 34 },
-    { x: -122, z: 72, w: 7, h: 39 },
+    // Far corners (radius 260-300)
+    { x: 260, z: -265, w: 8, h: 45 },
+    { x: 280, z: -240, w: 6, h: 38 },
+    { x: 270, z: -220, w: 7, h: 42 },
+    { x: -265, z: -260, w: 8, h: 48 },
+    { x: -285, z: -235, w: 6, h: 35 },
+    { x: -275, z: -210, w: 7, h: 40 },
+    { x: 265, z: 255, w: 8, h: 44 },
+    { x: 280, z: 235, w: 6, h: 36 },
+    { x: 270, z: 215, w: 7, h: 41 },
+    { x: -270, z: 250, w: 8, h: 46 },
+    { x: -285, z: 230, w: 6, h: 34 },
+    { x: -275, z: 205, w: 7, h: 39 },
     // Along outer edges
-    { x: 130, z: -40, w: 7, h: 50 },
-    { x: 135, z: 20, w: 6, h: 42 },
-    { x: -135, z: -35, w: 7, h: 48 },
-    { x: -130, z: 25, w: 6, h: 44 },
+    { x: 290, z: -100, w: 7, h: 50 },
+    { x: 295, z: 60, w: 6, h: 42 },
+    { x: -295, z: -90, w: 7, h: 48 },
+    { x: -290, z: 75, w: 6, h: 44 },
+    // Additional modern buildings for scale
+    { x: 250, z: -150, w: 8, h: 55 },
+    { x: -255, z: 145, w: 8, h: 52 },
+    { x: 150, z: 260, w: 7, h: 46 },
+    { x: -145, z: -265, w: 7, h: 48 },
   ];
 
   for (const bld of modernBuildingPositions) {
@@ -1866,69 +1883,79 @@ export function generateInitialWorld(): Voxel[] {
   }
 
   // ========================================
-  // Sakura Trees (Throughout the Town - 50+)
+  // Sakura Trees (Throughout the Town - 3x expanded, radius 125+)
   // ========================================
   const sakuraPositions: Array<[number, number]> = [];
 
-  // Generate sakura positions throughout the map
-  for (let i = 0; i < 60; i++) {
+  // Generate sakura positions throughout the map (radius 130-250)
+  for (let i = 0; i < 100; i++) {
     const angle = rand() * Math.PI * 2;
-    const r = 45 + rand() * 70; // radius 45-115
+    const r = 130 + rand() * 120; // radius 130-250
     const sx = Math.round(Math.cos(angle) * r);
     const sz = Math.round(Math.sin(angle) * r);
     sakuraPositions.push([sx, sz]);
   }
 
-  // Additional specific positions
+  // Additional specific positions (outside water zone radius 120)
   const additionalSakura: Array<[number, number]> = [
-    // Near torii (but outside water zone)
-    [-42, 20], [42, 20], [-42, -20], [42, -20],
-    [20, 42], [-20, 42], [20, -42], [-20, -42],
+    // Near waterfront (just outside water zone)
+    [-125, 60], [125, 60], [-125, -60], [125, -60],
+    [60, 125], [-60, 125], [60, -125], [-60, -125],
     // Near pagodas
-    [-90, -88], [92, -85], [-95, 85], [90, 90],
+    [-205, -200], [210, -195], [-215, 195], [205, 205],
     // Along streets
-    [50, 10], [-50, 10], [50, -10], [-50, -10],
-    [10, 50], [-10, 50], [10, -50], [-10, -50],
+    [150, 30], [-150, 30], [150, -30], [-150, -30],
+    [30, 150], [-30, 150], [30, -150], [-30, -150],
+    // Additional throughout town
+    [170, 100], [-170, 100], [170, -100], [-170, -100],
+    [100, 170], [-100, 170], [100, -170], [-100, -170],
   ];
 
   sakuraPositions.push(...additionalSakura);
 
   for (const [sx, sz] of sakuraPositions) {
-    // Skip if inside water zone
+    // Skip if inside water zone (radius 120)
     const dist = Math.sqrt(sx * sx + sz * sz);
-    if (dist > 42) {
+    if (dist > 125) {
       allVoxels.push(...createSakuraTree(sx, sz));
     }
   }
 
   // ========================================
-  // Shrine and Approach Path (Northeast)
+  // Shrine and Approach Path (3x expanded - radius 200+)
   // ========================================
-  allVoxels.push(...createShrinePath(50, -100, 30, 'z'));
-  allVoxels.push(...createShrine(50, -110));
+  // Northeast shrine
+  allVoxels.push(...createShrinePath(150, -210, 40, 'z'));
+  allVoxels.push(...createShrine(150, -250));
 
-  // Second shrine (Southwest)
-  allVoxels.push(...createShrinePath(-50, 75, 25, 'z'));
-  allVoxels.push(...createShrine(-50, 105));
+  // Southwest shrine
+  allVoxels.push(...createShrinePath(-150, 190, 35, 'z'));
+  allVoxels.push(...createShrine(-150, 230));
+
+  // Additional shrines for larger town
+  allVoxels.push(...createShrinePath(-220, -150, 30, 'x'));
+  allVoxels.push(...createShrine(-250, -150));
+  allVoxels.push(...createShrinePath(200, 160, 30, 'x'));
+  allVoxels.push(...createShrine(240, 160));
 
   // ========================================
-  // Stone Lanterns along paths
+  // Stone Lanterns along paths (3x expanded - radius 130+)
   // ========================================
   const stoneLanternPositions: Array<[number, number]> = [
-    // Near torii (outside water zone)
-    [-38, 10], [-38, -10], [38, 10], [38, -10],
-    [10, 38], [-10, 38], [10, -38], [-10, -38],
+    // Near waterfront (just outside water zone)
+    [-130, 30], [-130, -30], [130, 30], [130, -30],
+    [30, 130], [-30, 130], [30, -130], [-30, -130],
     // Along main streets
-    [50, 5], [65, 5], [80, 5], [95, 5],
-    [-50, -5], [-65, -5], [-80, -5], [-95, -5],
-    [5, 50], [5, 65], [5, 80], [5, 95],
-    [-5, -50], [-5, -65], [-5, -80], [-5, -95],
+    [140, 15], [160, 15], [180, 15], [200, 15],
+    [-140, -15], [-160, -15], [-180, -15], [-200, -15],
+    [15, 140], [15, 160], [15, 180], [15, 200],
+    [-15, -140], [-15, -160], [-15, -180], [-15, -200],
     // Near shrines
-    [45, -102], [55, -102],
-    [-45, 78], [-55, 78],
+    [145, -245], [155, -245],
+    [-145, 225], [-155, 225],
     // In town plazas
-    [60, -60], [-60, -60], [60, 60], [-60, 60],
-    [75, -75], [-75, -75], [75, 75], [-75, 75],
+    [165, -165], [-165, -165], [165, 165], [-165, 165],
+    [185, -185], [-185, -185], [185, 185], [-185, 185],
   ];
 
   for (const [lx, lz] of stoneLanternPositions) {
@@ -1936,25 +1963,39 @@ export function generateInitialWorld(): Voxel[] {
   }
 
   // ========================================
-  // Bridges Connecting Areas
+  // Bridges Connecting Areas (3x expanded - crossing water zone radius 0-120)
   // ========================================
-  // Bridges across the water zone
-  allVoxels.push(...createBridge(-35, -38, -45, -48));
-  allVoxels.push(...createBridge(35, -38, 45, -48));
-  allVoxels.push(...createBridge(-35, 38, -45, 48));
-  allVoxels.push(...createBridge(35, 38, 45, 48));
-  allVoxels.push(...createBridge(-38, 35, -48, 45));
-  allVoxels.push(...createBridge(38, 35, 48, 45));
-  allVoxels.push(...createBridge(-38, -35, -48, -45));
-  allVoxels.push(...createBridge(38, -35, 48, -45));
+  // Bridges across the water zone (from center to waterfront at radius 125)
+  // North bridges
+  allVoxels.push(...createBridge(-50, -90, -50, -130));
+  allVoxels.push(...createBridge(50, -90, 50, -130));
+  // South bridges
+  allVoxels.push(...createBridge(-50, 90, -50, 130));
+  allVoxels.push(...createBridge(50, 90, 50, 130));
+  // East bridges
+  allVoxels.push(...createBridge(90, -50, 130, -50));
+  allVoxels.push(...createBridge(90, 50, 130, 50));
+  // West bridges
+  allVoxels.push(...createBridge(-90, -50, -130, -50));
+  allVoxels.push(...createBridge(-90, 50, -130, 50));
+  // Diagonal bridges
+  allVoxels.push(...createBridge(-70, -70, -100, -100));
+  allVoxels.push(...createBridge(70, -70, 100, -100));
+  allVoxels.push(...createBridge(-70, 70, -100, 100));
+  allVoxels.push(...createBridge(70, 70, 100, 100));
 
   // ========================================
-  // Additional Ponds in Town
+  // Additional Ponds in Town (3x expanded - radius 150+)
   // ========================================
-  allVoxels.push(...createPond(-70, 40, 6));
-  allVoxels.push(...createPond(72, -45, 5));
-  allVoxels.push(...createPond(-75, -70, 5));
-  allVoxels.push(...createPond(78, 68, 6));
+  allVoxels.push(...createPond(-175, 150, 8));
+  allVoxels.push(...createPond(180, -160, 7));
+  allVoxels.push(...createPond(-185, -175, 7));
+  allVoxels.push(...createPond(190, 170, 8));
+  // Additional ponds for larger town
+  allVoxels.push(...createPond(-150, -200, 6));
+  allVoxels.push(...createPond(155, 195, 6));
+  allVoxels.push(...createPond(200, -140, 5));
+  allVoxels.push(...createPond(-195, 145, 5));
 
   return allVoxels;
 }
