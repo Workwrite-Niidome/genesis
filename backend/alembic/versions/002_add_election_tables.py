@@ -152,22 +152,10 @@ def upgrade() -> None:
         sa.UniqueConstraint('resident_id', 'submolt_id', name='uq_subscription')
     )
 
-    # Follows table (resident following resident)
-    op.create_table(
-        'follows',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('follower_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('following_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(['follower_id'], ['residents.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['following_id'], ['residents.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('follower_id', 'following_id', name='uq_follow')
-    )
+    # Note: 'follows' table is created in migration 004
 
 
 def downgrade() -> None:
-    op.drop_table('follows')
     op.drop_table('subscriptions')
     op.drop_table('submolts')
     op.drop_table('god_blessings')
