@@ -70,14 +70,14 @@ jobs:
           script: |
             set -e
 
-            echo "=== Diagnostics ==="
+            echo "=== Disk Space ==="
             df -h / | tail -1
-            docker system df 2>/dev/null || true
 
-            # Free disk space: remove unused images, stopped containers, build cache
-            echo "=== Cleaning up Docker resources ==="
-            docker system prune -af 2>/dev/null || true
-            df -h / | tail -1
+            # Restart Docker daemon (previous interrupted pull left it stuck)
+            echo "=== Restarting Docker daemon ==="
+            sudo systemctl restart docker
+            sleep 10
+            echo "Docker restarted"
 
             # Update code
             cd ~/genesis || {
