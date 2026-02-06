@@ -3,11 +3,16 @@
  *
  * Beautiful voxel structures for the initial world.
  * All structures are pure voxel data - rendered by VoxelRenderer.
- * Enhanced with Japanese fantasy anime-inspired architecture.
+ * Enhanced with "Cho-Kaguya-hime" Cyberpunk Japanese Fantasy style.
+ *
+ * Inspired by: Lantern sea around torii, Japanese townhouses,
+ * pagodas, modern buildings fusion, waterfront setting.
  */
 import type { Voxel } from '../types/v3';
 
-// Colors - より鮮やかで美しい色彩
+// ========================================
+// Basic Colors
+// ========================================
 const RED = '#e63946';           // 鳥居の赤 (明るく)
 const DARK_RED = '#9d0208';      // 濃い赤アクセント
 const GOLD = '#ffc300';          // 黄金の装飾 (輝き)
@@ -20,8 +25,24 @@ const PINK = '#ff85a1';          // 桜色 (鮮やか)
 const LIGHT_PINK = '#ffc2d1';    // 薄いピンク
 const WATER = '#4cc9f0';         // 水色 (明るく)
 const LANTERN_LIGHT = '#ffd60a'; // 灯籠の光 (明るく)
-const LEAF_GREEN = '#40916c';    // 木の葉の緑 (将来使用)
 const BARK = '#6f4e37';          // 木の樹皮
+
+// ========================================
+// Cyberpunk Japanese Colors (New)
+// ========================================
+const LANTERN_GOLD = '#ffcc66';   // 灯籠の暖かい金色 (emissive)
+const PAPER_WHITE = '#fff8e8';    // 障子の和紙色
+const WOOD_RED = '#8b2500';       // 赤い木造柱
+const ROOF_GRAY = '#3a3a3a';      // 瓦屋根のグレー
+const WINDOW_WARM = '#ffdd99';    // 暖かい窓の光 (emissive)
+const SAKURA_PINK = '#ffb7c5';    // 桜のピンク
+const NEON_CYAN = '#00ffff';      // サイバーパンク シアン (emissive)
+const NEON_PINK = '#ff66aa';      // サイバーパンク ピンク (emissive)
+const NEON_PURPLE = '#aa66ff';    // サイバーパンク パープル (emissive)
+const DEEP_WATER = '#1a5276';     // 深い水面
+const BUILDING_GRAY = '#2c3e50';  // 近代ビルのグレー
+const BUILDING_DARK = '#1a252f';  // 近代ビルの濃いグレー
+const GLASS_BLUE = '#5dade2';     // ガラス窓のブルー
 
 // Emissive colors for bloom effects - アニメ風の発光色
 const EMISSIVE_RED = '#ff3333';     // 発光する赤（鳥居用）
@@ -32,8 +53,16 @@ const EMISSIVE_CYAN = '#00ffff';    // 発光するシアン（アクセント�
 const PAGODA_RED = '#c41e3a';       // 塔の赤
 const PAGODA_DARK = '#8b0000';      // 塔の濃い赤
 
-// 未使用変数の警告を回避
-void LEAF_GREEN;
+// ========================================
+// Helper: Seeded random for consistent generation
+// ========================================
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
 
 /**
  * Grand Torii Gate at origin.
@@ -70,6 +99,89 @@ function createToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
 
   // Golden ornament on top
   voxels.push({ x: offsetX, y: 14, z: offsetZ, color: GOLD, material: 'emissive', hasCollision: true });
+
+  return voxels;
+}
+
+/**
+ * MASSIVE Glowing Torii Gate - 超巨大な発光鳥居
+ * Central landmark of the cyberpunk Japanese town.
+ */
+function createMassiveToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
+  const voxels: Voxel[] = [];
+  const height = 30;
+  const pillarSpacing = 12;
+
+  // Giant Pillars with emissive outline
+  for (let y = 0; y < height; y++) {
+    // Left pillar - 3x3 core
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        voxels.push({
+          x: offsetX - pillarSpacing + dx, y, z: offsetZ + dz,
+          color: RED, material: 'solid', hasCollision: true
+        });
+      }
+    }
+    // Right pillar - 3x3 core
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        voxels.push({
+          x: offsetX + pillarSpacing + dx, y, z: offsetZ + dz,
+          color: RED, material: 'solid', hasCollision: true
+        });
+      }
+    }
+
+    // Emissive edges every 3 blocks
+    if (y % 3 === 0) {
+      voxels.push({ x: offsetX - pillarSpacing - 2, y, z: offsetZ, color: EMISSIVE_RED, material: 'emissive', hasCollision: false });
+      voxels.push({ x: offsetX + pillarSpacing + 2, y, z: offsetZ, color: EMISSIVE_RED, material: 'emissive', hasCollision: false });
+      voxels.push({ x: offsetX - pillarSpacing, y, z: offsetZ - 2, color: NEON_CYAN, material: 'emissive', hasCollision: false });
+      voxels.push({ x: offsetX + pillarSpacing, y, z: offsetZ - 2, color: NEON_CYAN, material: 'emissive', hasCollision: false });
+    }
+  }
+
+  // Top beam (kasagi) - massive
+  for (let x = -pillarSpacing - 5; x <= pillarSpacing + 5; x++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      voxels.push({ x: offsetX + x, y: height, z: offsetZ + dz, color: RED, material: 'solid', hasCollision: true });
+      voxels.push({ x: offsetX + x, y: height + 1, z: offsetZ + dz, color: DARK_RED, material: 'solid', hasCollision: true });
+      voxels.push({ x: offsetX + x, y: height + 2, z: offsetZ + dz, color: DARK_RED, material: 'solid', hasCollision: true });
+    }
+    // Emissive top edge
+    voxels.push({ x: offsetX + x, y: height + 3, z: offsetZ, color: EMISSIVE_RED, material: 'emissive', hasCollision: false });
+  }
+
+  // Curved beam ends
+  for (let i = 0; i < 4; i++) {
+    voxels.push({ x: offsetX - pillarSpacing - 6 - i, y: height + 2 + i, z: offsetZ, color: DARK_RED, material: 'solid', hasCollision: true });
+    voxels.push({ x: offsetX + pillarSpacing + 6 + i, y: height + 2 + i, z: offsetZ, color: DARK_RED, material: 'solid', hasCollision: true });
+    voxels.push({ x: offsetX - pillarSpacing - 6 - i, y: height + 3 + i, z: offsetZ, color: EMISSIVE_RED, material: 'emissive', hasCollision: false });
+    voxels.push({ x: offsetX + pillarSpacing + 6 + i, y: height + 3 + i, z: offsetZ, color: EMISSIVE_RED, material: 'emissive', hasCollision: false });
+  }
+
+  // Lower beam (nuki) with golden glow
+  for (let x = -pillarSpacing; x <= pillarSpacing; x++) {
+    voxels.push({ x: offsetX + x, y: height - 8, z: offsetZ, color: RED, material: 'solid', hasCollision: true });
+    voxels.push({ x: offsetX + x, y: height - 9, z: offsetZ, color: EMISSIVE_GOLD, material: 'emissive', hasCollision: false });
+  }
+
+  // Central golden ornaments
+  for (let dy = 0; dy < 5; dy++) {
+    voxels.push({ x: offsetX, y: height + 4 + dy, z: offsetZ, color: EMISSIVE_GOLD, material: 'emissive', hasCollision: true });
+  }
+
+  // Floating cyan orbs around the torii
+  const orbPositions = [
+    [-pillarSpacing - 3, height - 5], [pillarSpacing + 3, height - 5],
+    [-pillarSpacing - 3, height - 15], [pillarSpacing + 3, height - 15],
+    [-pillarSpacing - 3, 10], [pillarSpacing + 3, 10],
+    [0, height + 6],
+  ];
+  for (const [ox, oy] of orbPositions) {
+    voxels.push({ x: offsetX + ox, y: oy, z: offsetZ, color: NEON_CYAN, material: 'emissive', hasCollision: false });
+  }
 
   return voxels;
 }
@@ -133,6 +245,423 @@ function createGlowingToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
   voxels.push({ x: offsetX + 7, y: 8, z: offsetZ, color: EMISSIVE_CYAN, material: 'emissive', hasCollision: false });
   voxels.push({ x: offsetX - 7, y: 4, z: offsetZ, color: EMISSIVE_CYAN, material: 'emissive', hasCollision: false });
   voxels.push({ x: offsetX + 7, y: 4, z: offsetZ, color: EMISSIVE_CYAN, material: 'emissive', hasCollision: false });
+
+  return voxels;
+}
+
+/**
+ * Japanese Townhouse (Machiya) - 日本風の町家
+ * Red wooden pillars, shoji windows with warm light, tile roof.
+ * @param x - X position
+ * @param z - Z position
+ * @param size - 1=small, 2=medium, 3=large
+ */
+function createJapaneseTownHouse(x: number, z: number, size: 1 | 2 | 3 = 2): Voxel[] {
+  const voxels: Voxel[] = [];
+
+  const width = 4 + size * 2;
+  const depth = 3 + size * 2;
+  const height = 4 + size * 2;
+
+  // Foundation/Platform
+  for (let dx = -1; dx <= width + 1; dx++) {
+    for (let dz = -1; dz <= depth + 1; dz++) {
+      voxels.push({
+        x: x + dx, y: 0, z: z + dz,
+        color: DARK_STONE, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Floor
+  for (let dx = 0; dx <= width; dx++) {
+    for (let dz = 0; dz <= depth; dz++) {
+      voxels.push({
+        x: x + dx, y: 1, z: z + dz,
+        color: DARK_WOOD, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Walls with red wooden pillars and shoji windows
+  for (let dy = 2; dy <= height; dy++) {
+    // Back wall
+    for (let dx = 0; dx <= width; dx++) {
+      const isPillar = dx === 0 || dx === width || dx === Math.floor(width / 2);
+      if (isPillar) {
+        voxels.push({
+          x: x + dx, y: dy, z: z,
+          color: WOOD_RED, material: 'solid', hasCollision: true,
+        });
+      } else if (dy >= 3 && dy <= height - 1) {
+        // Shoji window (glowing)
+        voxels.push({
+          x: x + dx, y: dy, z: z,
+          color: WINDOW_WARM, material: 'emissive', hasCollision: true,
+        });
+      } else {
+        voxels.push({
+          x: x + dx, y: dy, z: z,
+          color: PAPER_WHITE, material: 'solid', hasCollision: true,
+        });
+      }
+    }
+
+    // Front wall (with entrance gap)
+    for (let dx = 0; dx <= width; dx++) {
+      const isPillar = dx === 0 || dx === width;
+      const isEntrance = dx >= Math.floor(width / 2) - 1 && dx <= Math.floor(width / 2) + 1 && dy <= 3;
+
+      if (isEntrance) continue;
+
+      if (isPillar) {
+        voxels.push({
+          x: x + dx, y: dy, z: z + depth,
+          color: WOOD_RED, material: 'solid', hasCollision: true,
+        });
+      } else if (dy >= 3 && dy <= height - 1) {
+        voxels.push({
+          x: x + dx, y: dy, z: z + depth,
+          color: WINDOW_WARM, material: 'emissive', hasCollision: true,
+        });
+      } else {
+        voxels.push({
+          x: x + dx, y: dy, z: z + depth,
+          color: PAPER_WHITE, material: 'solid', hasCollision: true,
+        });
+      }
+    }
+
+    // Side walls
+    for (let dz = 1; dz < depth; dz++) {
+      const isPillar = dz === 1 || dz === depth - 1;
+      // Left wall
+      if (isPillar) {
+        voxels.push({ x, y: dy, z: z + dz, color: WOOD_RED, material: 'solid', hasCollision: true });
+      } else if (dy >= 3 && dy <= height - 1) {
+        voxels.push({ x, y: dy, z: z + dz, color: WINDOW_WARM, material: 'emissive', hasCollision: true });
+      } else {
+        voxels.push({ x, y: dy, z: z + dz, color: PAPER_WHITE, material: 'solid', hasCollision: true });
+      }
+      // Right wall
+      if (isPillar) {
+        voxels.push({ x: x + width, y: dy, z: z + dz, color: WOOD_RED, material: 'solid', hasCollision: true });
+      } else if (dy >= 3 && dy <= height - 1) {
+        voxels.push({ x: x + width, y: dy, z: z + dz, color: WINDOW_WARM, material: 'emissive', hasCollision: true });
+      } else {
+        voxels.push({ x: x + width, y: dy, z: z + dz, color: PAPER_WHITE, material: 'solid', hasCollision: true });
+      }
+    }
+  }
+
+  // Tile Roof (kawara)
+  const roofOverhang = 2;
+  for (let layer = 0; layer <= 2; layer++) {
+    const roofY = height + 1 + layer;
+    const shrink = layer;
+    for (let dx = -roofOverhang + shrink; dx <= width + roofOverhang - shrink; dx++) {
+      for (let dz = -roofOverhang + shrink; dz <= depth + roofOverhang - shrink; dz++) {
+        voxels.push({
+          x: x + dx, y: roofY, z: z + dz,
+          color: ROOF_GRAY, material: 'solid', hasCollision: true,
+        });
+      }
+    }
+  }
+
+  // Roof ridge ornament
+  for (let dx = 1; dx < width; dx++) {
+    voxels.push({
+      x: x + dx, y: height + 4, z: z + Math.floor(depth / 2),
+      color: ROOF_GRAY, material: 'solid', hasCollision: true,
+    });
+  }
+
+  // Hanging lantern at entrance
+  voxels.push({
+    x: x + Math.floor(width / 2), y: height, z: z + depth + 1,
+    color: LANTERN_GOLD, material: 'emissive', hasCollision: false,
+  });
+
+  return voxels;
+}
+
+/**
+ * Floating Lantern (Toro-Nagashi style) - 水面に浮かぶランタン
+ * Single lantern floating on water.
+ */
+function createFloatingLantern(x: number, z: number, seed: number): Voxel[] {
+  const voxels: Voxel[] = [];
+  const rand = seededRandom(seed);
+
+  // Water base (y = 0)
+  voxels.push({
+    x, y: 0, z,
+    color: DEEP_WATER, material: 'liquid', hasCollision: false,
+  });
+
+  // Lantern base (floating)
+  voxels.push({
+    x, y: 1, z,
+    color: DARK_WOOD, material: 'solid', hasCollision: false,
+  });
+
+  // Lantern body (emissive)
+  const lanternColor = rand() > 0.5 ? LANTERN_GOLD : EMISSIVE_GOLD;
+  voxels.push({
+    x, y: 2, z,
+    color: lanternColor, material: 'emissive', hasCollision: false,
+  });
+
+  return voxels;
+}
+
+/**
+ * Lantern Sea (Toro-Nagashi) - 灯籠流し
+ * Creates hundreds of floating lanterns around a center point.
+ * @param centerX - Center X position
+ * @param centerZ - Center Z position
+ * @param radius - Radius of the lantern sea
+ * @param count - Number of lanterns
+ */
+function createLanternSea(centerX: number, centerZ: number, radius: number, count: number): Voxel[] {
+  const voxels: Voxel[] = [];
+  const rand = seededRandom(centerX * 1000 + centerZ);
+
+  // Water surface
+  for (let dx = -radius; dx <= radius; dx += 2) {
+    for (let dz = -radius; dz <= radius; dz += 2) {
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= radius) {
+        voxels.push({
+          x: centerX + dx, y: 0, z: centerZ + dz,
+          color: DEEP_WATER, material: 'liquid', hasCollision: false,
+        });
+      }
+    }
+  }
+
+  // Place lanterns (limited to avoid performance issues)
+  const actualCount = Math.min(count, 500);
+  const placed = new Set<string>();
+  let attempts = 0;
+
+  while (placed.size < actualCount && attempts < actualCount * 3) {
+    const angle = rand() * Math.PI * 2;
+    const r = rand() * (radius - 2) + 2;
+    const lx = Math.round(centerX + Math.cos(angle) * r);
+    const lz = Math.round(centerZ + Math.sin(angle) * r);
+    const key = `${lx},${lz}`;
+
+    if (!placed.has(key)) {
+      placed.add(key);
+      voxels.push(...createFloatingLantern(lx, lz, lx * 100 + lz));
+    }
+    attempts++;
+  }
+
+  return voxels;
+}
+
+/**
+ * Street Lanterns (Chochin) - 提灯が連なる通り
+ * Creates a row of hanging paper lanterns along a street.
+ */
+function createStreetLanterns(
+  startX: number,
+  startZ: number,
+  length: number,
+  direction: 'x' | 'z'
+): Voxel[] {
+  const voxels: Voxel[] = [];
+  const spacing = 3;
+  const height = 4;
+
+  for (let i = 0; i < length; i += spacing) {
+    const x = direction === 'x' ? startX + i : startX;
+    const z = direction === 'z' ? startZ + i : startZ;
+
+    // Support post
+    for (let y = 0; y < height; y++) {
+      voxels.push({
+        x, y, z,
+        color: DARK_WOOD, material: 'solid', hasCollision: true,
+      });
+    }
+
+    // Horizontal wire
+    const wireLength = 2;
+    for (let w = -wireLength; w <= wireLength; w++) {
+      const wx = direction === 'x' ? x : x + w;
+      const wz = direction === 'z' ? z : z + w;
+      voxels.push({
+        x: wx, y: height, z: wz,
+        color: DARK_WOOD, material: 'solid', hasCollision: false,
+      });
+    }
+
+    // Lanterns hanging from wire
+    for (let w = -wireLength; w <= wireLength; w++) {
+      if (w === 0) continue; // Skip center post
+      const wx = direction === 'x' ? x : x + w;
+      const wz = direction === 'z' ? z : z + w;
+      const lanternColor = (i + w) % 6 < 3 ? LANTERN_GOLD : EMISSIVE_RED;
+      voxels.push({
+        x: wx, y: height - 1, z: wz,
+        color: lanternColor, material: 'emissive', hasCollision: false,
+      });
+    }
+  }
+
+  // Stone path underneath
+  for (let i = 0; i < length; i++) {
+    const x = direction === 'x' ? startX + i : startX;
+    const z = direction === 'z' ? startZ + i : startZ;
+    const perpOffset = direction === 'x' ? 'z' : 'x';
+
+    for (let p = -2; p <= 2; p++) {
+      const px = perpOffset === 'x' ? x + p : x;
+      const pz = perpOffset === 'z' ? z + p : z;
+      voxels.push({
+        x: px, y: 0, z: pz,
+        color: i % 2 === 0 ? LIGHT_STONE : STONE, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  return voxels;
+}
+
+/**
+ * Modern Building with glowing windows - 窓が光る近代ビル
+ * Cyberpunk-style building with neon accents.
+ */
+function createModernBuilding(x: number, z: number, width: number, height: number): Voxel[] {
+  const voxels: Voxel[] = [];
+  const depth = Math.max(4, Math.floor(width * 0.8));
+  const rand = seededRandom(x * 1000 + z * 100 + height);
+
+  // Building core - only draw exterior walls to save voxels
+  for (let dy = 0; dy < height; dy++) {
+    // Bottom and top floors are solid
+    if (dy === 0 || dy === height - 1) {
+      for (let dx = 0; dx < width; dx++) {
+        for (let dz = 0; dz < depth; dz++) {
+          voxels.push({
+            x: x + dx, y: dy, z: z + dz,
+            color: BUILDING_DARK, material: 'solid', hasCollision: true,
+          });
+        }
+      }
+      continue;
+    }
+
+    // Walls only
+    for (let dx = 0; dx < width; dx++) {
+      for (let dz = 0; dz < depth; dz++) {
+        const isEdge = dx === 0 || dx === width - 1 || dz === 0 || dz === depth - 1;
+        if (!isEdge) continue;
+
+        const isWindow = dy > 1 && dy < height - 2 &&
+                        (dx > 0 && dx < width - 1) || (dz > 0 && dz < depth - 1);
+
+        if (isWindow && rand() > 0.4) {
+          // Lit window
+          const windowColor = rand() > 0.7 ? NEON_CYAN :
+                             rand() > 0.5 ? WINDOW_WARM : GLASS_BLUE;
+          voxels.push({
+            x: x + dx, y: dy, z: z + dz,
+            color: windowColor, material: 'emissive', hasCollision: true,
+          });
+        } else {
+          voxels.push({
+            x: x + dx, y: dy, z: z + dz,
+            color: dy % 5 === 0 ? BUILDING_DARK : BUILDING_GRAY,
+            material: 'solid', hasCollision: true,
+          });
+        }
+      }
+    }
+  }
+
+  // Neon accents on edges
+  const neonColors = [NEON_CYAN, NEON_PINK, NEON_PURPLE];
+  const neonColor = neonColors[Math.floor(rand() * 3)];
+
+  // Vertical neon lines
+  for (let dy = 0; dy < height; dy += 2) {
+    voxels.push({ x: x - 1, y: dy, z, color: neonColor, material: 'emissive', hasCollision: false });
+    voxels.push({ x: x + width, y: dy, z, color: neonColor, material: 'emissive', hasCollision: false });
+  }
+
+  // Rooftop antenna/spire
+  const spireHeight = Math.floor(height * 0.2);
+  for (let dy = 0; dy < spireHeight; dy++) {
+    voxels.push({
+      x: x + Math.floor(width / 2),
+      y: height + dy,
+      z: z + Math.floor(depth / 2),
+      color: dy === spireHeight - 1 ? NEON_CYAN : BUILDING_DARK,
+      material: dy === spireHeight - 1 ? 'emissive' : 'solid',
+      hasCollision: true,
+    });
+  }
+
+  return voxels;
+}
+
+/**
+ * Sakura Tree - 桜の木
+ * Cherry blossom tree with pink flowers.
+ */
+function createSakuraTree(x: number, z: number): Voxel[] {
+  const voxels: Voxel[] = [];
+  const rand = seededRandom(x * 100 + z);
+
+  // Trunk
+  const trunkHeight = 5 + Math.floor(rand() * 3);
+  for (let y = 0; y < trunkHeight; y++) {
+    voxels.push({ x, y, z, color: BARK, material: 'solid', hasCollision: true });
+    // Add some trunk width at base
+    if (y < 2) {
+      voxels.push({ x: x + 1, y, z, color: BARK, material: 'solid', hasCollision: true });
+      voxels.push({ x: x - 1, y, z, color: BARK, material: 'solid', hasCollision: true });
+      voxels.push({ x, y, z: z + 1, color: BARK, material: 'solid', hasCollision: true });
+      voxels.push({ x, y, z: z - 1, color: BARK, material: 'solid', hasCollision: true });
+    }
+  }
+
+  // Canopy (sakura blossoms)
+  const canopyY = trunkHeight;
+  const canopyRadius = 4;
+
+  for (let dy = 0; dy <= canopyRadius; dy++) {
+    const r = canopyRadius - Math.floor(dy * 0.6);
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist <= r + 0.5 && rand() > 0.3) {
+          const color = rand() > 0.4 ? SAKURA_PINK :
+                       rand() > 0.3 ? LIGHT_PINK : PINK;
+          voxels.push({
+            x: x + dx, y: canopyY + dy, z: z + dz,
+            color, material: 'solid', hasCollision: false,
+          });
+        }
+      }
+    }
+  }
+
+  // Falling petals (emissive for magical effect)
+  for (let i = 0; i < 5; i++) {
+    const px = x + Math.floor(rand() * 8) - 4;
+    const py = Math.floor(rand() * trunkHeight);
+    const pz = z + Math.floor(rand() * 8) - 4;
+    voxels.push({
+      x: px, y: py, z: pz,
+      color: SAKURA_PINK, material: 'emissive', hasCollision: false,
+    });
+  }
 
   return voxels;
 }
@@ -546,6 +1075,7 @@ function createCherryTree(x: number, z: number): Voxel[] {
   // Canopy (sphere-ish shape of pink voxels)
   const canopyY = 6;
   const canopyRadius = 4;
+  const rand = seededRandom(x * 100 + z);
 
   for (let dy = 0; dy <= canopyRadius; dy++) {
     const r = canopyRadius - Math.floor(dy * 0.7);
@@ -553,7 +1083,7 @@ function createCherryTree(x: number, z: number): Voxel[] {
       for (let dz = -r; dz <= r; dz++) {
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (dist <= r + 0.5) {
-          const color = Math.random() > 0.3 ? PINK : LIGHT_PINK;
+          const color = rand() > 0.3 ? PINK : LIGHT_PINK;
           voxels.push({
             x: x + dx,
             y: canopyY + dy,
@@ -697,60 +1227,145 @@ function createPond(centerX: number, centerZ: number, radius: number): Voxel[] {
 
 /**
  * Generate the complete initial world template.
- * Enhanced with Japanese fantasy anime-inspired cityscape.
+ * "Cho-Kaguya-hime" Cyberpunk Japanese Fantasy Townscape.
+ *
+ * Features:
+ * - Central massive torii with lantern sea (toro-nagashi)
+ * - Japanese townhouse district
+ * - Multiple pagodas
+ * - Lantern-lit main street
+ * - Modern buildings in distance
+ * - Sakura trees scattered throughout
  */
 export function generateInitialWorld(): Voxel[] {
   const allVoxels: Voxel[] = [];
 
-  // Central glowing torii gate (replaces basic torii)
-  allVoxels.push(...createGlowingToriiGate(0, 0));
+  // ========================================
+  // Central Feature: Massive Torii Gate
+  // ========================================
+  allVoxels.push(...createMassiveToriiGate(0, 0));
 
-  // Shrine paths with torii gates extending from main torii
-  allVoxels.push(...createShrinePath(-50, 0, 50, 'x'));  // West path
-  allVoxels.push(...createShrinePath(1, 0, 50, 'x'));    // East path
-  allVoxels.push(...createShrinePath(0, -50, 50, 'z')); // North path
-  allVoxels.push(...createShrinePath(0, 1, 50, 'z'));   // South path
+  // ========================================
+  // Lantern Sea around the Torii (Toro-Nagashi)
+  // ========================================
+  // Front lantern sea (main area)
+  allVoxels.push(...createLanternSea(0, 30, 35, 300));
+  // Side lantern clusters
+  allVoxels.push(...createLanternSea(-30, 15, 15, 80));
+  allVoxels.push(...createLanternSea(30, 15, 15, 80));
+  // Back reflection pool
+  allVoxels.push(...createLanternSea(0, -25, 20, 100));
 
-  // Pagodas at specified positions
-  allVoxels.push(...createPagoda(-40, 30, 5));  // West pagoda
-  allVoxels.push(...createPagoda(40, -30, 5));  // East pagoda
+  // ========================================
+  // Japanese Town District (East Side)
+  // ========================================
+  // Row of townhouses along the waterfront
+  allVoxels.push(...createJapaneseTownHouse(45, -10, 2));
+  allVoxels.push(...createJapaneseTownHouse(45, 5, 3));
+  allVoxels.push(...createJapaneseTownHouse(45, 20, 2));
+  allVoxels.push(...createJapaneseTownHouse(45, 33, 1));
 
-  // Curved bridge over water
-  allVoxels.push(...createBridge(-30, -30, -20, -20));
+  // Second row of townhouses
+  allVoxels.push(...createJapaneseTownHouse(58, -5, 3));
+  allVoxels.push(...createJapaneseTownHouse(58, 12, 2));
+  allVoxels.push(...createJapaneseTownHouse(58, 27, 2));
 
-  // Stone lanterns along the paths
+  // ========================================
+  // Japanese Town District (West Side)
+  // ========================================
+  allVoxels.push(...createJapaneseTownHouse(-55, -10, 2));
+  allVoxels.push(...createJapaneseTownHouse(-55, 5, 3));
+  allVoxels.push(...createJapaneseTownHouse(-55, 20, 2));
+
+  allVoxels.push(...createJapaneseTownHouse(-68, -5, 2));
+  allVoxels.push(...createJapaneseTownHouse(-68, 15, 3));
+
+  // ========================================
+  // Main Lantern Street (Connecting Areas)
+  // ========================================
+  allVoxels.push(...createStreetLanterns(-40, -20, 80, 'x'));
+  allVoxels.push(...createStreetLanterns(0, 50, 40, 'z'));
+
+  // ========================================
+  // Pagodas (Landmarks)
+  // ========================================
+  // Main 5-story pagoda (west)
+  allVoxels.push(...createPagoda(-50, 45, 5));
+  // Smaller pagoda (east)
+  allVoxels.push(...createPagoda(55, 50, 4));
+  // Additional pagoda in town
+  allVoxels.push(...createPagoda(-70, -25, 3));
+
+  // ========================================
+  // Modern Buildings (Background - Far Distance)
+  // ========================================
+  // Tall buildings in the distance (northeast)
+  allVoxels.push(...createModernBuilding(80, -50, 8, 35));
+  allVoxels.push(...createModernBuilding(92, -45, 6, 45));
+  allVoxels.push(...createModernBuilding(85, -35, 7, 28));
+
+  // Buildings in the distance (northwest)
+  allVoxels.push(...createModernBuilding(-85, -50, 7, 40));
+  allVoxels.push(...createModernBuilding(-95, -40, 6, 30));
+
+  // Buildings in the distance (south)
+  allVoxels.push(...createModernBuilding(75, 70, 8, 38));
+  allVoxels.push(...createModernBuilding(-80, 75, 7, 32));
+
+  // ========================================
+  // Sakura Trees (Throughout the Town)
+  // ========================================
+  const sakuraPositions = [
+    // Near torii
+    [-20, 10], [20, 10], [-15, -15], [15, -15],
+    // In town districts
+    [40, 0], [40, 25], [52, 15],
+    [-45, 0], [-45, 25], [-52, 15],
+    // Near pagodas
+    [-58, 40], [-42, 50], [50, 42], [62, 55],
+    // Along streets
+    [-25, -20], [25, -20], [0, 55], [0, 70],
+    // Additional scattered
+    [-35, 30], [35, 30], [-30, -35], [30, -35],
+  ];
+
+  for (const [sx, sz] of sakuraPositions) {
+    allVoxels.push(...createSakuraTree(sx, sz));
+  }
+
+  // ========================================
+  // Traditional Elements (Shrine Path & Lanterns)
+  // ========================================
+  // Path from torii to shrine
+  allVoxels.push(...createShrinePath(0, -50, 25, 'z'));
+
+  // Shrine at the end of path
+  allVoxels.push(...createShrine(0, -55));
+
+  // Stone lanterns along paths
   const lanternPositions = [
     [-15, 6], [-15, -6], [15, 6], [15, -6],
-    [6, -15], [-6, -15], [6, 15], [-6, 15],
+    [6, -15], [-6, -15], [6, 60], [-6, 60],
     [-25, 6], [-25, -6], [25, 6], [25, -6],
-    [-35, 6], [-35, -6], [35, 6], [35, -6],
-    [6, -25], [-6, -25], [6, 25], [-6, 25],
-    [6, -35], [-6, -35], [6, 35], [-6, 35],
+    [6, -35], [-6, -35],
+    // Additional lanterns near townhouses
+    [42, 0], [42, 18], [-42, 0], [-42, 18],
   ];
-  for (const [x, z] of lanternPositions) {
-    allVoxels.push(...createStoneLantern(x, z));
+  for (const [lx, lz] of lanternPositions) {
+    allVoxels.push(...createStoneLantern(lx, lz));
   }
 
-  // Shrine at the end of the north path
-  allVoxels.push(...createShrine(0, -45));
+  // ========================================
+  // Bridges Connecting Areas
+  // ========================================
+  allVoxels.push(...createBridge(-25, 25, -35, 35));
+  allVoxels.push(...createBridge(25, 25, 35, 35));
 
-  // Cherry trees scattered around (more trees for anime atmosphere)
-  const treePositions = [
-    [-20, 15], [20, 15], [-20, -20], [20, -20],
-    [-35, 10], [35, 10], [0, 35], [-15, 35], [15, 35],
-    [-50, 25], [50, -25], [-45, -15], [45, 15],
-    [-30, 40], [30, 40], [-25, -40], [25, -40],
-    [-55, 0], [55, 0], [0, 45], [0, -55],
-  ];
-  for (const [x, z] of treePositions) {
-    allVoxels.push(...createCherryTree(x, z));
-  }
-
-  // Ponds for reflection and atmosphere
-  allVoxels.push(...createPond(-35, 20, 6));  // Near west pagoda
-  allVoxels.push(...createPond(35, -20, 6));  // Near east pagoda
-  allVoxels.push(...createPond(25, 35, 5));   // Additional pond
-  allVoxels.push(...createPond(-45, -35, 4)); // Small pond near bridge
+  // ========================================
+  // Additional Atmosphere: Small Ponds
+  // ========================================
+  allVoxels.push(...createPond(-60, 30, 5));
+  allVoxels.push(...createPond(65, 35, 4));
 
   return allVoxels;
 }
@@ -759,6 +1374,7 @@ export function generateInitialWorld(): Voxel[] {
  * VoxelTemplates - export for use.
  */
 export const VoxelTemplates = {
+  // Original functions
   createToriiGate,
   createGlowingToriiGate,
   createStoneLantern,
@@ -769,5 +1385,16 @@ export const VoxelTemplates = {
   createPond,
   createPagoda,
   createBridge,
+
+  // New Cyberpunk Japanese functions
+  createMassiveToriiGate,
+  createJapaneseTownHouse,
+  createLanternSea,
+  createStreetLanterns,
+  createModernBuilding,
+  createSakuraTree,
+  createFloatingLantern,
+
+  // Main generator
   generateInitialWorld,
 };
