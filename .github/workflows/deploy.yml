@@ -53,9 +53,9 @@ jobs:
 
       - name: Save images to tar
         run: |
-          docker save genesis-backend:latest | gzip > /tmp/backend.tar.gz
-          docker save genesis-frontend:latest | gzip > /tmp/frontend.tar.gz
-          ls -lh /tmp/backend.tar.gz /tmp/frontend.tar.gz
+          docker save genesis-backend:latest | gzip > ${{ github.workspace }}/backend.tar.gz
+          docker save genesis-frontend:latest | gzip > ${{ github.workspace }}/frontend.tar.gz
+          ls -lh ${{ github.workspace }}/backend.tar.gz ${{ github.workspace }}/frontend.tar.gz
 
       - name: Transfer images to VPS
         uses: appleboy/scp-action@v0.1.7
@@ -63,10 +63,10 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "/tmp/backend.tar.gz,/tmp/frontend.tar.gz"
+          source: "backend.tar.gz,frontend.tar.gz"
           target: "/tmp"
-          strip_components: 1
           timeout: 30m
+          overwrite: true
 
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
