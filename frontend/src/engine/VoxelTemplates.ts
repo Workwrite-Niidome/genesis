@@ -80,13 +80,6 @@ function seededRandom(seed: number): () => number {
 }
 
 /**
- * Helper: Offset all voxels by a Y amount (for placing buildings on elevated terrain)
- */
-function offsetVoxelsY(voxels: Voxel[], yOffset: number): Voxel[] {
-  return voxels.map(v => ({ ...v, y: v.y + yOffset }));
-}
-
-/**
  * Grand Torii Gate at origin.
  */
 function createToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
@@ -1690,76 +1683,39 @@ function createShopBuilding(x: number, z: number, shopType: 'food' | 'goods' | '
 // ========================================
 
 /**
- * Create a raised land ring around the water zone.
- * The land is elevated above water level with stone edges.
+ * Create a thin stone wall ring at the waterfront edge.
+ * Much lighter than a full land ring - only creates the wall, not filled land.
  */
-function createRaisedLandRing(
+function createWaterfrontWall(
   centerX: number,
   centerZ: number,
-  innerRadius: number,
-  outerRadius: number,
-  landHeight: number
+  radius: number,
+  wallHeight: number
 ): Voxel[] {
   const voxels: Voxel[] = [];
 
-  for (let dx = -outerRadius; dx <= outerRadius; dx++) {
-    for (let dz = -outerRadius; dz <= outerRadius; dz++) {
-      const dist = Math.sqrt(dx * dx + dz * dz);
+  // Create wall using sparse sampling around the circle
+  for (let angle = 0; angle < Math.PI * 2; angle += 0.02) {
+    const x = Math.round(centerX + Math.cos(angle) * radius);
+    const z = Math.round(centerZ + Math.sin(angle) * radius);
 
-      // Only create land between inner and outer radius
-      if (dist >= innerRadius && dist <= outerRadius) {
-        // Edge detection for stone wall
-        const isInnerEdge = dist < innerRadius + 3;
-        const isOuterEdge = dist > outerRadius - 2;
-
-        // Stone retaining wall on inner edge (facing water)
-        if (isInnerEdge) {
-          for (let y = 0; y < landHeight + 1; y++) {
-            voxels.push({
-              x: centerX + dx, y, z: centerZ + dz,
-              color: y === landHeight ? LIGHT_STONE : STONE,
-              material: 'solid', hasCollision: true,
-            });
-          }
-        }
-        // Regular ground
-        else {
-          for (let y = 0; y < landHeight; y++) {
-            voxels.push({
-              x: centerX + dx, y, z: centerZ + dz,
-              color: y === landHeight - 1 ? (isOuterEdge ? STONE : DARK_STONE) : DARK_STONE,
-              material: 'solid', hasCollision: true,
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return voxels;
-}
-
-/**
- * Create a bridge/walkway from water level to elevated land.
- */
-function createWaterfrontStairs(x: number, z: number, direction: 'n' | 's' | 'e' | 'w', landHeight: number): Voxel[] {
-  const voxels: Voxel[] = [];
-  const width = 5;
-
-  for (let step = 0; step <= landHeight; step++) {
-    const offset = step * 2; // Each step extends 2 blocks
-    for (let w = -Math.floor(width / 2); w <= Math.floor(width / 2); w++) {
-      let sx = x, sz = z;
-
-      if (direction === 'n') { sz = z - offset; sx = x + w; }
-      else if (direction === 's') { sz = z + offset; sx = x + w; }
-      else if (direction === 'e') { sx = x + offset; sz = z + w; }
-      else if (direction === 'w') { sx = x - offset; sz = z + w; }
-
+    // Wall blocks
+    for (let y = 0; y <= wallHeight; y++) {
       voxels.push({
-        x: sx, y: step, z: sz,
-        color: LIGHT_STONE, material: 'solid', hasCollision: true,
+        x, y, z,
+        color: y === wallHeight ? LIGHT_STONE : STONE,
+        material: 'solid', hasCollision: true,
       });
+      // Inner thickness
+      const x2 = Math.round(centerX + Math.cos(angle) * (radius + 1));
+      const z2 = Math.round(centerZ + Math.sin(angle) * (radius + 1));
+      if (x2 !== x || z2 !== z) {
+        voxels.push({
+          x: x2, y, z: z2,
+          color: y === wallHeight ? LIGHT_STONE : DARK_STONE,
+          material: 'solid', hasCollision: true,
+        });
+      }
     }
   }
 
@@ -1786,43 +1742,6 @@ function createTerrainHill(x: number, z: number, radius: number, height: number)
             material: 'solid', hasCollision: true,
           });
         }
-      }
-    }
-  }
-  return voxels;
-}
-
-/**
- * Create a stone staircase between two heights.
- */
-function createStaircase(x: number, z: number, startY: number, endY: number, direction: 'x' | 'z', length: number): Voxel[] {
-  const voxels: Voxel[] = [];
-  const steps = Math.abs(endY - startY);
-  const stepLength = Math.floor(length / steps);
-  const goingUp = endY > startY;
-
-  for (let i = 0; i <= steps; i++) {
-    const currentY = goingUp ? startY + i : startY - i;
-    const stepStart = i * stepLength;
-
-    // Create step platform
-    for (let s = 0; s < stepLength; s++) {
-      const sx = direction === 'x' ? x + stepStart + s : x;
-      const sz = direction === 'z' ? z + stepStart + s : z;
-
-      // Step surface
-      voxels.push({
-        x: sx, y: currentY, z: sz,
-        color: LIGHT_STONE, material: 'solid', hasCollision: true,
-      });
-      // Side walls
-      for (let side = -1; side <= 1; side += 2) {
-        const wallX = direction === 'z' ? sx + side : sx;
-        const wallZ = direction === 'x' ? sz + side : sz;
-        voxels.push({
-          x: wallX, y: currentY, z: wallZ,
-          color: STONE, material: 'solid', hasCollision: true,
-        });
       }
     }
   }
@@ -2009,35 +1928,13 @@ export function generateInitialWorld(): Voxel[] {
   const allVoxels: Voxel[] = [];
   const rand = seededRandom(42);
 
-  // Land height - town is elevated above water level
-  const LAND_HEIGHT = 4;
-  const LAND_INNER_RADIUS = 118; // Land starts here (small gap for visual)
-  const LAND_OUTER_RADIUS = 280; // Land extends to here
+  // Waterfront boundary - thin stone wall for visual separation
+  const WATERFRONT_RADIUS = 115;
 
   // ========================================
-  // Raised Land Ring (町は水面より高い位置に)
+  // Waterfront Stone Wall (水辺の境界壁)
   // ========================================
-  allVoxels.push(...createRaisedLandRing(0, 0, LAND_INNER_RADIUS, LAND_OUTER_RADIUS, LAND_HEIGHT));
-
-  // ========================================
-  // Waterfront Stairs (水面から陸地への階段)
-  // ========================================
-  // North stairs
-  allVoxels.push(...createWaterfrontStairs(0, -LAND_INNER_RADIUS, 'n', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(-60, -LAND_INNER_RADIUS, 'n', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(60, -LAND_INNER_RADIUS, 'n', LAND_HEIGHT));
-  // South stairs
-  allVoxels.push(...createWaterfrontStairs(0, LAND_INNER_RADIUS, 's', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(-60, LAND_INNER_RADIUS, 's', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(60, LAND_INNER_RADIUS, 's', LAND_HEIGHT));
-  // East stairs
-  allVoxels.push(...createWaterfrontStairs(LAND_INNER_RADIUS, 0, 'e', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(LAND_INNER_RADIUS, -60, 'e', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(LAND_INNER_RADIUS, 60, 'e', LAND_HEIGHT));
-  // West stairs
-  allVoxels.push(...createWaterfrontStairs(-LAND_INNER_RADIUS, 0, 'w', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(-LAND_INNER_RADIUS, -60, 'w', LAND_HEIGHT));
-  allVoxels.push(...createWaterfrontStairs(-LAND_INNER_RADIUS, 60, 'w', LAND_HEIGHT));
+  allVoxels.push(...createWaterfrontWall(0, 0, WATERFRONT_RADIUS, 2));
 
   // ========================================
   // Central Feature: Massive Torii Gate (at origin, in water)
@@ -2079,7 +1976,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const pos of waterfrontPositions) {
-    allVoxels.push(...offsetVoxelsY(createWaterfrontBuilding(pos.x, pos.z, pos.facing), LAND_HEIGHT));
+    allVoxels.push(...createWaterfrontBuilding(pos.x, pos.z, pos.facing));
   }
 
   // ========================================
@@ -2112,7 +2009,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const block of townBlockPositions) {
-    allVoxels.push(...offsetVoxelsY(createTownBlock(block.x, block.z, block.size), LAND_HEIGHT));
+    allVoxels.push(...createTownBlock(block.x, block.z, block.size));
   }
 
   // ========================================
@@ -2126,35 +2023,25 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const hill of hillPositions) {
-    allVoxels.push(...offsetVoxelsY(createTerrainHill(hill.x, hill.z, hill.radius, hill.height), LAND_HEIGHT));
+    allVoxels.push(...createTerrainHill(hill.x, hill.z, hill.radius, hill.height));
   }
 
   // ========================================
-  // Staircases connecting hill elevations (on top of base land)
+  // Watch Towers
   // ========================================
-  allVoxels.push(...offsetVoxelsY(createStaircase(200, -185, 0, 4, 'z', 10), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createStaircase(195, 190, 0, 4, 'z', 10), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createStaircase(-210, -180, 0, 3, 'z', 8), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createStaircase(-205, 185, 0, 3, 'z', 8), LAND_HEIGHT));
+  allVoxels.push(...createWatchTower(200, -200, 5));
+  allVoxels.push(...createWatchTower(-205, 200, 4));
 
   // ========================================
-  // Watch Towers on hills
+  // Tea Houses
   // ========================================
-  allVoxels.push(...createWatchTower(200, -200, LAND_HEIGHT + 5));
-  allVoxels.push(...createWatchTower(-205, 200, LAND_HEIGHT + 4));
+  allVoxels.push(...createTeaHouse(180, -150, 0));
+  allVoxels.push(...createTeaHouse(-185, 155, 0));
+  allVoxels.push(...createTeaHouse(150, 175, 0));
+  allVoxels.push(...createTeaHouse(-155, -180, 0));
 
   // ========================================
-  // Tea Houses (scattered throughout town, on elevated land)
-  // ========================================
-  allVoxels.push(...createTeaHouse(180, -150, LAND_HEIGHT));
-  allVoxels.push(...createTeaHouse(-185, 155, LAND_HEIGHT));
-  allVoxels.push(...createTeaHouse(150, 175, LAND_HEIGHT));
-  allVoxels.push(...createTeaHouse(-155, -180, LAND_HEIGHT));
-  // Tea house on additional hill
-  allVoxels.push(...createTeaHouse(195, 198, LAND_HEIGHT + 5));
-
-  // ========================================
-  // Market Stalls (busy market area, on elevated land)
+  // Market Stalls
   // ========================================
   const marketPositions: Array<{ x: number; z: number; type: 'food' | 'goods' | 'lantern' }> = [
     { x: 145, z: -140, type: 'food' },
@@ -2163,14 +2050,10 @@ export function generateInitialWorld(): Voxel[] {
     { x: -145, z: 145, type: 'food' },
     { x: -150, z: 145, type: 'goods' },
     { x: -155, z: 145, type: 'lantern' },
-    { x: 140, z: 150, type: 'food' },
-    { x: 145, z: 150, type: 'goods' },
-    { x: -140, z: -150, type: 'lantern' },
-    { x: -145, z: -150, type: 'food' },
   ];
 
   for (const stall of marketPositions) {
-    allVoxels.push(...createMarketStall(stall.x, stall.z, LAND_HEIGHT, stall.type));
+    allVoxels.push(...createMarketStall(stall.x, stall.z, 0, stall.type));
   }
 
   // Additional individual detailed town houses (filling gaps)
@@ -2206,7 +2089,7 @@ export function generateInitialWorld(): Voxel[] {
   const maxHouses = 60;
   for (let i = 0; i < Math.min(detailedHousePositions.length, maxHouses); i++) {
     const h = detailedHousePositions[i];
-    allVoxels.push(...offsetVoxelsY(createDetailedTownHouse(h.x, h.z, h.floors, h.w, h.d), LAND_HEIGHT));
+    allVoxels.push(...createDetailedTownHouse(h.x, h.z, h.floors, h.w, h.d));
   }
 
   // Shops scattered throughout - on elevated land
@@ -2226,7 +2109,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const shop of shopPositions) {
-    allVoxels.push(...offsetVoxelsY(createShopBuilding(shop.x, shop.z, shop.type), LAND_HEIGHT));
+    allVoxels.push(...createShopBuilding(shop.x, shop.z, shop.type));
   }
 
   // ========================================
@@ -2246,7 +2129,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const config of lanternRowConfigs) {
-    allVoxels.push(...offsetVoxelsY(createLanternRow(config.x, config.z, config.length, config.dir), LAND_HEIGHT));
+    allVoxels.push(...createLanternRow(config.x, config.z, config.length, config.dir));
   }
 
   // ========================================
@@ -2264,7 +2147,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const pagoda of pagodaPositions) {
-    allVoxels.push(...offsetVoxelsY(createDetailedPagoda(pagoda.x, pagoda.z, pagoda.floors), LAND_HEIGHT));
+    allVoxels.push(...createDetailedPagoda(pagoda.x, pagoda.z, pagoda.floors));
   }
 
   // ========================================
@@ -2297,7 +2180,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const bld of modernBuildingPositions) {
-    allVoxels.push(...offsetVoxelsY(createModernBuilding(bld.x, bld.z, bld.w, bld.h), LAND_HEIGHT));
+    allVoxels.push(...createModernBuilding(bld.x, bld.z, bld.w, bld.h));
   }
 
   // ========================================
@@ -2327,17 +2210,17 @@ export function generateInitialWorld(): Voxel[] {
   for (const [sx, sz] of sakuraPositions) {
     const dist = Math.sqrt(sx * sx + sz * sz);
     if (dist > 120) {
-      allVoxels.push(...offsetVoxelsY(createSakuraTree(sx, sz), LAND_HEIGHT));
+      allVoxels.push(...createSakuraTree(sx, sz));
     }
   }
 
   // ========================================
   // Shrine and Approach Path - on elevated land
   // ========================================
-  allVoxels.push(...offsetVoxelsY(createShrinePath(150, -220, 35, 'z'), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createShrine(150, -255), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createShrinePath(-150, 200, 30, 'z'), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createShrine(-150, 235), LAND_HEIGHT));
+  allVoxels.push(...createShrinePath(150, -220, 35, 'z'));
+  allVoxels.push(...createShrine(150, -255));
+  allVoxels.push(...createShrinePath(-150, 200, 30, 'z'));
+  allVoxels.push(...createShrine(-150, 235));
 
   // ========================================
   // Stone Lanterns along paths - on elevated land
@@ -2357,7 +2240,7 @@ export function generateInitialWorld(): Voxel[] {
   ];
 
   for (const [lx, lz] of stoneLanternPositions) {
-    allVoxels.push(...offsetVoxelsY(createStoneLantern(lx, lz), LAND_HEIGHT));
+    allVoxels.push(...createStoneLantern(lx, lz));
   }
 
   // ========================================
@@ -2378,10 +2261,10 @@ export function generateInitialWorld(): Voxel[] {
   // ========================================
   // Additional Ponds in Town - on elevated land
   // ========================================
-  allVoxels.push(...offsetVoxelsY(createPond(-175, 155, 6), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createPond(180, -165, 5), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createPond(190, 175, 5), LAND_HEIGHT));
-  allVoxels.push(...offsetVoxelsY(createPond(-155, -195, 5), LAND_HEIGHT));
+  allVoxels.push(...createPond(-175, 155, 6));
+  allVoxels.push(...createPond(180, -165, 5));
+  allVoxels.push(...createPond(190, 175, 5));
+  allVoxels.push(...createPond(-155, -195, 5));
 
   return allVoxels;
 }
