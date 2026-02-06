@@ -2,7 +2,7 @@ name: Deploy GENESIS v4
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 env:
@@ -60,9 +60,9 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /opt/genesis
-            docker compose pull backend
-            docker compose up -d backend
-            docker compose exec -T backend alembic upgrade head
+            docker compose -f docker-compose.prod.yml pull backend
+            docker compose -f docker-compose.prod.yml up -d backend
+            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
             echo "Backend deployed successfully!"
 
   # ============ Frontend Build & Deploy ============
@@ -131,8 +131,8 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /opt/genesis
-            docker compose pull frontend
-            docker compose up -d frontend
+            docker compose -f docker-compose.prod.yml pull frontend
+            docker compose -f docker-compose.prod.yml up -d frontend
             echo "Frontend deployed successfully!"
 
   # ============ Notify ============
