@@ -6,9 +6,11 @@ interface AuthState {
   resident: Resident | null
   token: string | null
   isLoading: boolean
+  isAuthenticated: boolean
   error: string | null
 
   setToken: (token: string | null) => void
+  setResident: (resident: Resident | null) => void
   fetchMe: () => Promise<void>
   logout: () => void
   clearError: () => void
@@ -20,6 +22,7 @@ export const useAuthStore = create<AuthState>()(
       resident: null,
       token: null,
       isLoading: false,
+      isAuthenticated: false,
       error: null,
 
       setToken: (token) => {
@@ -30,22 +33,27 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      setResident: (resident) => {
+        set({ resident, isAuthenticated: !!resident })
+      },
+
       fetchMe: async () => {
         set({ isLoading: true, error: null })
         try {
           const resident = await api.getMe()
-          set({ resident, isLoading: false })
+          set({ resident, isLoading: false, isAuthenticated: true })
         } catch (err) {
           set({
             error: err instanceof Error ? err.message : 'Failed to fetch profile',
             isLoading: false,
+            isAuthenticated: false,
           })
         }
       },
 
       logout: () => {
         api.setToken(null)
-        set({ resident: null, token: null })
+        set({ resident: null, token: null, isAuthenticated: false })
       },
 
       clearError: () => set({ error: null }),
