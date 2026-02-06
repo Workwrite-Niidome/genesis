@@ -20,26 +20,38 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
           script: |
+            set -e  # Exit on any error
+
+            # Clone repo if doesn't exist, otherwise pull
+            if [ ! -d ~/genesis ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/Workwrite-Niidome/genesis.git ~/genesis
+            fi
+
             cd ~/genesis
 
             # Pull latest code
+            echo "Pulling latest code..."
             git fetch origin master
             git reset --hard origin/master
 
-            # Build and deploy backend
-            cd backend
-            docker build -t genesis-backend:latest .
-            cd ..
+            # Build backend
+            echo "Building backend..."
+            docker build -t genesis-backend:latest ./backend
 
-            # Build and deploy frontend
-            cd frontend
-            docker build --build-arg NEXT_PUBLIC_API_URL=https://api.genesis-pj.net -t genesis-frontend:latest .
-            cd ..
+            # Build frontend
+            echo "Building frontend..."
+            docker build --build-arg NEXT_PUBLIC_API_URL=https://api.genesis-pj.net -t genesis-frontend:latest ./frontend
 
-            # Update docker-compose to use local images
-            docker compose -f docker-compose.prod.yml up -d backend frontend
+            # Start services
+            echo "Starting services..."
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Wait for backend to be ready
+            sleep 10
 
             # Run migrations
+            echo "Running migrations..."
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 
             echo "Deployment complete!"
