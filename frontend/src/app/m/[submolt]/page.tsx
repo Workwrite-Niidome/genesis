@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Flame, Clock, TrendingUp, Zap, Users } from 'lucide-react'
 import clsx from 'clsx'
@@ -19,7 +19,7 @@ const SORT_OPTIONS = [
   { value: 'rising', label: 'Rising', icon: Zap },
 ] as const
 
-export default function SubmoltPage() {
+function SubmoltPageContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const submoltName = params.submolt as string
@@ -158,5 +158,19 @@ export default function SubmoltPage() {
       {/* Post form modal */}
       <PostForm />
     </div>
+  )
+}
+
+export default function SubmoltPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12">
+          <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <SubmoltPageContent />
+    </Suspense>
   )
 }

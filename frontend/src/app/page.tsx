@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Flame, Clock, TrendingUp, Zap } from 'lucide-react'
 import clsx from 'clsx'
@@ -14,7 +15,7 @@ const SORT_OPTIONS = [
   { value: 'rising', label: 'Rising', icon: Zap },
 ] as const
 
-export default function HomePage() {
+function HomeContent() {
   const searchParams = useSearchParams()
   const { sortBy, setSortBy } = useUIStore()
   const sort = (searchParams.get('sort') as typeof sortBy) || sortBy
@@ -57,5 +58,17 @@ export default function HomePage() {
       {/* Post form modal */}
       <PostForm />
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-12">
+        <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   )
 }
