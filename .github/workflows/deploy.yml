@@ -70,17 +70,16 @@ jobs:
           script: |
             set -e
 
-            # Clone repo if doesn't exist
-            if [ ! -d ~/genesis/.git ]; then
+            cd ~/genesis || {
               rm -rf ~/genesis
               git clone https://x-access-token:${GITHUB_TOKEN}@github.com/Workwrite-Niidome/genesis.git ~/genesis
-            fi
+              cd ~/genesis
+            }
 
-            cd ~/genesis
-
-            # Pull latest code
+            # Force update to latest code (handle stale refs)
             git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/Workwrite-Niidome/genesis.git
-            git fetch origin master
+            git fetch --prune origin
+            git checkout master 2>/dev/null || git checkout -b master origin/master
             git reset --hard origin/master
 
             # Create .env file
