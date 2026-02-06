@@ -215,11 +215,13 @@ export function useWorldSceneV3(): WorldSceneV3 {
       });
     }).catch((err) => console.warn('[GENESIS] Failed to load world state:', err));
 
-    // Try to load voxels from server (will override template if any exist)
-    api.v3.getVoxels({ min_x: -100, max_x: 100, min_y: -10, max_y: 100, min_z: -100, max_z: 100 })
+    // Try to load voxels from server (expanded range for 3x town, only override if server has substantial data)
+    // The template generates ~80000+ voxels, so only use server data if it has more than 50000
+    const VOXEL_THRESHOLD = 50000;
+    api.v3.getVoxels({ min_x: -350, max_x: 350, min_y: -10, max_y: 150, min_z: -350, max_z: 350 })
       .then((voxels: any[]) => {
-        if (voxels && voxels.length > 0) {
-          console.log('[GENESIS] Server has', voxels.length, 'voxels, loading...');
+        if (voxels && voxels.length >= VOXEL_THRESHOLD) {
+          console.log('[GENESIS] Server has', voxels.length, 'voxels (>threshold), loading...');
           const serverVoxels: Voxel[] = voxels.map((v: any) => ({
             x: v.x, y: v.y, z: v.z,
             color: v.color || '#888888',
@@ -228,7 +230,7 @@ export function useWorldSceneV3(): WorldSceneV3 {
           }));
           scene.loadVoxels(serverVoxels);
         } else {
-          console.log('[GENESIS] No server voxels, using template');
+          console.log('[GENESIS] Server has', voxels?.length || 0, 'voxels (<threshold), using template');
         }
       })
       .catch((err) => console.warn('[GENESIS] Voxel fetch failed, using template:', err));
