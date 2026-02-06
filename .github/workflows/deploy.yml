@@ -74,48 +74,60 @@ jobs:
             echo "Stopping existing containers..."
             docker compose -f docker-compose.prod.yml down --remove-orphans || true
 
-            # Start services
-            echo "Starting services..."
-            docker compose -f docker-compose.prod.yml up -d
+            # Stage 1: Start database services first (without health check wait)
+            echo "Starting database services..."
+            docker compose -f docker-compose.prod.yml up -d --no-deps postgres redis traefik
 
-            # Wait for database to be healthy (with status checking)
-            echo "Waiting for services to be healthy..."
-            POSTGRES_HEALTHY=false
+            # Wait for postgres to be ready (with recovery logic)
+            echo "Waiting for PostgreSQL to be healthy..."
+            POSTGRES_READY=false
             for i in {1..30}; do
-              sleep 5
-              echo "Checking status... ($i/30)"
+              sleep 3
+              echo "Checking PostgreSQL status... ($i/30)"
 
-              # Check if postgres container exists and is running
-              if ! docker ps | grep -q genesis-postgres; then
-                echo "PostgreSQL container is not running. Checking logs..."
-                docker logs genesis-postgres 2>&1 | tail -30 || true
+              # Check if postgres is running
+              POSTGRES_STATUS=$(docker inspect --format='{{.State.Status}}' genesis-postgres 2>/dev/null || echo "not found")
+              echo "PostgreSQL container status: $POSTGRES_STATUS"
 
-                # If postgres data volume might be corrupted, reset it
-                if [ $i -eq 5 ]; then
-                  echo "PostgreSQL failed to start. Resetting data volume..."
-                  docker compose -f docker-compose.prod.yml down -v
-                  docker compose -f docker-compose.prod.yml up -d
+              if [ "$POSTGRES_STATUS" = "running" ]; then
+                # Check if it's actually accepting connections
+                if docker exec genesis-postgres pg_isready -U genesis 2>/dev/null; then
+                  echo "PostgreSQL is ready!"
+                  POSTGRES_READY=true
+                  break
                 fi
-                continue
-              fi
+              elif [ "$POSTGRES_STATUS" = "exited" ] || [ "$POSTGRES_STATUS" = "not found" ]; then
+                echo "PostgreSQL failed to start. Checking logs..."
+                docker logs genesis-postgres 2>&1 | tail -20 || true
 
-              # Check if healthy
-              if docker compose -f docker-compose.prod.yml ps | grep postgres | grep -q "healthy"; then
-                echo "PostgreSQL is healthy!"
-                POSTGRES_HEALTHY=true
-                break
+                # Try resetting the volume after 3 failed attempts
+                if [ $i -eq 3 ]; then
+                  echo "Resetting PostgreSQL data volume..."
+                  docker compose -f docker-compose.prod.yml down -v
+                  docker volume rm genesis_postgres_data 2>/dev/null || true
+                  docker compose -f docker-compose.prod.yml up -d --no-deps postgres redis traefik
+                fi
               fi
             done
+
+            if [ "$POSTGRES_READY" = false ]; then
+              echo "ERROR: PostgreSQL failed to become ready. Final logs:"
+              docker logs genesis-postgres 2>&1 | tail -50 || true
+              docker compose -f docker-compose.prod.yml ps
+              exit 1
+            fi
+
+            # Stage 2: Start application services
+            echo "Starting application services..."
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Wait for all services
+            echo "Waiting for all services to be healthy..."
+            sleep 10
 
             # Check final container status
             echo "Container status:"
             docker compose -f docker-compose.prod.yml ps
-
-            if [ "$POSTGRES_HEALTHY" = false ]; then
-              echo "PostgreSQL failed to become healthy. Final logs:"
-              docker logs genesis-postgres 2>&1 | tail -50 || true
-              exit 1
-            fi
 
             # Run migrations
             echo "Running migrations..."
