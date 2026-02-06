@@ -58,12 +58,17 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: GITHUB_TOKEN,GITHUB_ACTOR
           script: |
             cd ~/genesis
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker compose -f docker-compose.prod.yml pull backend
             docker compose -f docker-compose.prod.yml up -d backend
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
             echo "Backend deployed successfully!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
 
   # ============ Frontend Build & Deploy ============
   frontend:
@@ -131,11 +136,16 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: GITHUB_TOKEN,GITHUB_ACTOR
           script: |
             cd ~/genesis
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             docker compose -f docker-compose.prod.yml pull frontend
             docker compose -f docker-compose.prod.yml up -d frontend
             echo "Frontend deployed successfully!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
 
   # ============ Notify ============
   notify:
