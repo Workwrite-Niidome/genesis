@@ -64,8 +64,8 @@ class Resident(Base):
     last_active: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    posts = relationship("Post", back_populates="author", lazy="dynamic")
-    comments = relationship("Comment", back_populates="author", lazy="dynamic")
+    posts = relationship("Post", back_populates="author", lazy="dynamic", foreign_keys="[Post.author_id]")
+    comments = relationship("Comment", back_populates="author", lazy="dynamic", foreign_keys="[Comment.author_id]")
     votes = relationship("Vote", back_populates="resident", lazy="dynamic")
     subscriptions = relationship("Subscription", back_populates="resident", lazy="dynamic")
 
