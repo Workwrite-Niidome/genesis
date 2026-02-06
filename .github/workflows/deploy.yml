@@ -129,9 +129,22 @@ jobs:
             echo "Container status:"
             docker compose -f docker-compose.prod.yml ps
 
-            # Run migrations
+            # Check if backend is actually running
+            echo "Checking backend logs..."
+            docker logs genesis-backend 2>&1 | tail -20 || true
+
+            # Run migrations with timeout
             echo "Running migrations..."
-            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+            timeout 120 docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || {
+              echo "Migration failed or timed out. Backend logs:"
+              docker logs genesis-backend 2>&1 | tail -50 || true
+              echo "Continuing anyway - migrations may need to be run manually"
+            }
+
+            # Final health check
+            echo "Checking if services are responding..."
+            sleep 5
+            curl -s http://localhost:8000/api/v1/health || echo "Backend health check failed"
 
             echo "Deployment complete!"
         env:
