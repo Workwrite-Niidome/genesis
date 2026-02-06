@@ -1,13 +1,10 @@
 /**
- * GENESIS v3 WorldScene
+ * GENESIS v3 WorldScene — WebGPU
  *
  * 「超かぐや姫」インスパイアの美しい3Dボクセルワールド
- * WebGL + Post-processing Bloom + Aurora + Luminous Water
+ * WebGPUレンダラー + emissive素材による発光効果
  */
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
@@ -32,10 +29,7 @@ export class WorldScene {
   private camera: THREE.PerspectiveCamera;
   private clock: THREE.Clock;
   private canvas: HTMLCanvasElement;
-
-  // Post-processing
-  private composer: EffectComposer | null = null;
-  private bloomPass: UnrealBloomPass | null = null;
+  private isWebGPU = false;
 
   // Subsystems
   voxelRenderer!: VoxelRenderer;
@@ -96,43 +90,65 @@ export class WorldScene {
   }
 
   private async initRenderer(): Promise<void> {
-    console.log('[WorldScene] WebGLレンダラー初期化中...');
+    console.log('[WorldScene] レンダラー初期化中...');
 
-    // WebGLレンダラーを使用（full shader + bloom support）
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
+    // Try WebGPU first
+    try {
+      if ('gpu' in navigator) {
+        const adapter = await (navigator as any).gpu.requestAdapter();
+        if (adapter) {
+          console.log('[WorldScene] WebGPU利用可能、初期化中...');
+          const { WebGPURenderer } = await import('three/webgpu');
+          const webgpuRenderer = new WebGPURenderer({
+            canvas: this.canvas,
+            antialias: true,
+          });
+          await webgpuRenderer.init();
+          this.renderer = webgpuRenderer as unknown as THREE.WebGLRenderer;
+          this.isWebGPU = true;
+          console.log('[WorldScene] ✓ WebGPUレンダラー初期化完了');
+        }
+      }
+    } catch (e) {
+      console.log('[WorldScene] WebGPU初期化失敗:', e);
+    }
+
+    // Fallback to WebGL
+    if (!this.isWebGPU) {
+      console.log('[WorldScene] WebGLにフォールバック');
+      this.renderer = new THREE.WebGLRenderer({
+        canvas: this.canvas,
+        antialias: true,
+        powerPreference: 'high-performance',
+      });
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.2;
+    }
 
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
 
-    console.log('[WorldScene] ✓ WebGLレンダラー初期化完了');
+    // Beautiful gradient sky
+    this.createGradientSky();
 
-    // Setup post-processing with bloom
-    this.setupPostProcessing();
+    // Stars
+    this.addStars();
 
-    // 美しいグラデーション空 with aurora
-    this.createGradientSkyWithAurora();
-
-    // 幻想的な霧
-    this.scene.fog = new THREE.FogExp2(0x1a0a2e, 0.008);
+    // Fog
+    this.scene.fog = new THREE.FogExp2(0x1a0a2e, 0.006);
 
     // Lighting
     this.setupLighting();
 
-    // Luminous water with cyan glow
-    this.createLuminousWater();
+    // Water
+    this.createWater();
 
-    // Floating Lanterns (sparse)
+    // Floating Lanterns
     this.createFloatingLanterns();
 
-    // Falling particles
+    // Particles
     this.createParticles();
 
     // === Subsystems ===
@@ -166,145 +182,59 @@ export class WorldScene {
     // Start
     this.animate();
 
-    console.log('[WorldScene] 初期化完了 (WebGL + Bloom + Aurora + Luminous Water)');
+    console.log(`[WorldScene] 初期化完了 (${this.isWebGPU ? 'WebGPU' : 'WebGL'})`);
   }
 
-  private setupPostProcessing(): void {
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
+  private createGradientSky(): void {
+    const skyGeo = new THREE.SphereGeometry(400, 64, 32);
 
-    this.composer = new EffectComposer(this.renderer);
+    // Vertex colors for gradient
+    const colors = new Float32Array(skyGeo.attributes.position.count * 3);
+    const positions = skyGeo.attributes.position.array;
 
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
+    const topColor = new THREE.Color(0x0a0020);      // Deep purple-black
+    const midColor = new THREE.Color(0x1a0a4e);      // Purple
+    const horizonColor = new THREE.Color(0x3d1a5e);  // Purple-pink
+    const bottomColor = new THREE.Color(0x2d1b4e);   // Dark purple
 
-    const resolution = new THREE.Vector2(width, height);
-    this.bloomPass = new UnrealBloomPass(
-      resolution,
-      1.5,  // bloom strength
-      0.8,  // bloom radius
-      0.2   // bloom threshold
-    );
-    this.composer.addPass(this.bloomPass);
+    for (let i = 0; i < skyGeo.attributes.position.count; i++) {
+      const y = positions[i * 3 + 1];
+      const normalizedY = (y + 400) / 800;
 
-    console.log('[WorldScene] ✓ Bloom有効 (strength: 1.5, threshold: 0.2, radius: 0.8)');
-  }
+      let color: THREE.Color;
+      if (normalizedY > 0.65) {
+        const t = (normalizedY - 0.65) / 0.35;
+        color = midColor.clone().lerp(topColor, t);
+      } else if (normalizedY > 0.45) {
+        const t = (normalizedY - 0.45) / 0.2;
+        color = horizonColor.clone().lerp(midColor, t);
+      } else {
+        const t = normalizedY / 0.45;
+        color = bottomColor.clone().lerp(horizonColor, t);
+      }
 
-  private createGradientSkyWithAurora(): void {
-    const skyGeo = new THREE.SphereGeometry(400, 32, 32);
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
 
-    const skyMat = new THREE.ShaderMaterial({
-      uniforms: {
-        topColor: { value: new THREE.Color(0x0a0015) },
-        midColor: { value: new THREE.Color(0x1a0a3e) },
-        bottomColor: { value: new THREE.Color(0x2d1b4e) },
-        offset: { value: 20 },
-        exponent: { value: 0.6 },
-        time: { value: 0 },
-        auroraIntensity: { value: 1.0 },
-      },
-      vertexShader: `
-        varying vec3 vWorldPosition;
-        varying vec2 vUv;
-        void main() {
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldPosition = worldPosition.xyz;
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 midColor;
-        uniform vec3 bottomColor;
-        uniform float offset;
-        uniform float exponent;
-        uniform float time;
-        uniform float auroraIntensity;
-        varying vec3 vWorldPosition;
-        varying vec2 vUv;
+    skyGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-
-        float snoise(vec2 v) {
-          const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-                             -0.577350269189626, 0.024390243902439);
-          vec2 i  = floor(v + dot(v, C.yy));
-          vec2 x0 = v -   i + dot(i, C.xx);
-          vec2 i1;
-          i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-          vec4 x12 = x0.xyxy + C.xxzz;
-          x12.xy -= i1;
-          i = mod289(i);
-          vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
-                          + i.x + vec3(0.0, i1.x, 1.0));
-          vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy),
-                                  dot(x12.zw,x12.zw)), 0.0);
-          m = m*m;
-          m = m*m;
-          vec3 x = 2.0 * fract(p * C.www) - 1.0;
-          vec3 h = abs(x) - 0.5;
-          vec3 ox = floor(x + 0.5);
-          vec3 a0 = x - ox;
-          m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
-          vec3 g;
-          g.x  = a0.x  * x0.x  + h.x  * x0.y;
-          g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-          return 130.0 * dot(m, g);
-        }
-
-        void main() {
-          float h = normalize(vWorldPosition + offset).y;
-          float t = max(pow(max(h, 0.0), exponent), 0.0);
-          vec3 color = mix(bottomColor, midColor, t);
-          color = mix(color, topColor, t * t);
-
-          // Aurora borealis
-          if (h > 0.1) {
-            float auroraY = (h - 0.1) / 0.9;
-            float noise1 = snoise(vec2(vWorldPosition.x * 0.01 + time * 0.1, auroraY * 2.0 + time * 0.05));
-            float noise2 = snoise(vec2(vWorldPosition.z * 0.015 - time * 0.08, auroraY * 3.0 + time * 0.03));
-            float noise3 = snoise(vec2(vWorldPosition.x * 0.02 + vWorldPosition.z * 0.02 + time * 0.12, auroraY * 1.5));
-
-            float aurora = (noise1 + noise2 * 0.7 + noise3 * 0.5) / 2.2;
-            aurora = aurora * 0.5 + 0.5;
-
-            float curtain = sin(vWorldPosition.x * 0.05 + time * 0.2) * 0.5 + 0.5;
-            curtain *= sin(vWorldPosition.z * 0.03 - time * 0.15) * 0.5 + 0.5;
-
-            float heightFade = sin(auroraY * 3.14159) * exp(-auroraY * 0.5);
-            float auroraStrength = aurora * curtain * heightFade * auroraIntensity;
-            auroraStrength = pow(auroraStrength, 1.5) * 2.0;
-
-            vec3 auroraGreen = vec3(0.2, 1.0, 0.4);
-            vec3 auroraCyan = vec3(0.1, 0.9, 0.95);
-            vec3 auroraPurple = vec3(0.6, 0.2, 0.8);
-
-            vec3 auroraColor = mix(auroraGreen, auroraCyan, noise1 * 0.5 + 0.5);
-            auroraColor = mix(auroraColor, auroraPurple, noise2 * 0.3 + 0.15);
-
-            color += auroraColor * auroraStrength * 0.6;
-          }
-
-          gl_FragColor = vec4(color, 1.0);
-        }
-      `,
+    const skyMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
       side: THREE.BackSide,
     });
 
     this.skyMesh = new THREE.Mesh(skyGeo, skyMat);
     this.scene.add(this.skyMesh);
-
-    this.addStars();
-    console.log('[WorldScene] ✓ オーロラ空作成完了');
+    console.log('[WorldScene] ✓ グラデーション空作成完了');
   }
 
   private addStars(): void {
     const starCount = 3000;
     const positions = new Float32Array(starCount * 3);
     const colors = new Float32Array(starCount * 3);
+    const sizes = new Float32Array(starCount);
 
     for (let i = 0; i < starCount; i++) {
       const theta = Math.random() * Math.PI * 2;
@@ -329,6 +259,8 @@ export class WorldScene {
         colors[i * 3 + 1] = 0.7;
         colors[i * 3 + 2] = 0.9;
       }
+
+      sizes[i] = 0.5 + Math.random() * 2.5;
     }
 
     const starGeo = new THREE.BufferGeometry();
@@ -339,7 +271,7 @@ export class WorldScene {
       size: 2,
       vertexColors: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.9,
       sizeAttenuation: true,
     });
 
@@ -349,125 +281,41 @@ export class WorldScene {
   }
 
   private setupLighting(): void {
-    const ambient = new THREE.AmbientLight(0x2a1a4a, 0.4);
+    const ambient = new THREE.AmbientLight(0x3a2a5a, 0.5);
     this.scene.add(ambient);
 
-    const hemi = new THREE.HemisphereLight(0x4a3a8a, 0x1a1a3a, 0.5);
+    const hemi = new THREE.HemisphereLight(0x5a4a9a, 0x1a1a3a, 0.6);
     this.scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0x8888ff, 0.6);
+    const moon = new THREE.DirectionalLight(0x9999ff, 0.7);
     moon.position.set(30, 60, 20);
-    moon.castShadow = true;
-    moon.shadow.mapSize.width = 2048;
-    moon.shadow.mapSize.height = 2048;
-    moon.shadow.camera.near = 1;
-    moon.shadow.camera.far = 200;
-    moon.shadow.camera.left = -60;
-    moon.shadow.camera.right = 60;
-    moon.shadow.camera.top = 60;
-    moon.shadow.camera.bottom = -60;
-    moon.shadow.bias = -0.0005;
     this.scene.add(moon);
 
-    const warm1 = new THREE.PointLight(0xff9944, 0.8, 50);
-    warm1.position.set(0, 8, 0);
+    // Warm point lights for town atmosphere
+    const warm1 = new THREE.PointLight(0xff9944, 1.0, 60);
+    warm1.position.set(0, 10, 0);
     this.scene.add(warm1);
 
-    const cyan = new THREE.PointLight(0x44ddff, 0.5, 40);
-    cyan.position.set(-20, 5, -20);
+    const cyan = new THREE.PointLight(0x44ddff, 0.6, 50);
+    cyan.position.set(-30, 8, -30);
     this.scene.add(cyan);
 
-    const magenta = new THREE.PointLight(0xff44aa, 0.4, 35);
-    magenta.position.set(20, 5, 20);
+    const magenta = new THREE.PointLight(0xff44aa, 0.5, 40);
+    magenta.position.set(30, 8, 30);
     this.scene.add(magenta);
+
+    // Additional lights for emissive glow effect
+    const red1 = new THREE.PointLight(0xff3333, 0.8, 40);
+    red1.position.set(0, 20, 0); // Near torii
+    this.scene.add(red1);
   }
 
-  private createLuminousWater(): void {
-    const waterGeo = new THREE.PlaneGeometry(300, 300, 100, 100);
-
-    const waterMat = new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        waterColor: { value: new THREE.Color(0x0a4a6a) },
-        deepColor: { value: new THREE.Color(0x051a2a) },
-        glowColor: { value: new THREE.Color(0x00ffff) },
-        glowIntensity: { value: 1.2 },
-      },
-      vertexShader: `
-        uniform float time;
-        varying vec2 vUv;
-        varying float vWave;
-        varying vec3 vPosition;
-        void main() {
-          vUv = uv;
-          vec3 pos = position;
-          float wave = sin(pos.x * 0.1 + time) * cos(pos.y * 0.1 + time * 0.7) * 0.3;
-          wave += sin(pos.x * 0.05 - time * 0.5) * 0.2;
-          pos.z = wave;
-          vWave = wave;
-          vPosition = pos;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 waterColor;
-        uniform vec3 deepColor;
-        uniform vec3 glowColor;
-        uniform float glowIntensity;
-        uniform float time;
-        varying vec2 vUv;
-        varying float vWave;
-        varying vec3 vPosition;
-
-        float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-
-        float noise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
-          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-        }
-
-        void main() {
-          float t = (vWave + 0.5) * 0.5;
-          vec3 color = mix(deepColor, waterColor, t);
-
-          float highlight = pow(max(vWave, 0.0) * 2.0, 3.0) * 0.5;
-          color += vec3(0.2, 0.4, 0.6) * highlight;
-
-          float glow1 = noise(vUv * 20.0 + time * 0.3);
-          float glow2 = noise(vUv * 15.0 - time * 0.2 + vec2(100.0, 50.0));
-          float glow3 = noise(vPosition.xy * 0.1 + time * 0.1);
-
-          float glowPattern = (glow1 + glow2 * 0.7 + glow3 * 0.5) / 2.2;
-          glowPattern = pow(glowPattern, 2.0);
-
-          float waveGlow = pow(max(vWave + 0.3, 0.0), 2.0);
-          float totalGlow = (glowPattern * 0.6 + waveGlow * 0.4) * glowIntensity;
-
-          float pulse = sin(time * 2.0) * 0.15 + 0.85;
-          totalGlow *= pulse;
-
-          color += glowColor * totalGlow * 0.4;
-
-          float shimmer = sin(vPosition.x * 0.5 + time * 3.0) * sin(vPosition.y * 0.5 + time * 2.5);
-          shimmer = shimmer * 0.5 + 0.5;
-          color += glowColor * shimmer * waveGlow * 0.2;
-
-          float dist = length(vUv - 0.5) * 2.0;
-          float alpha = 1.0 - smoothstep(0.4, 1.0, dist);
-          alpha = min(alpha + totalGlow * 0.1, 0.95);
-
-          gl_FragColor = vec4(color, alpha * 0.85);
-        }
-      `,
+  private createWater(): void {
+    const waterGeo = new THREE.PlaneGeometry(300, 300, 1, 1);
+    const waterMat = new THREE.MeshBasicMaterial({
+      color: 0x0066aa,
       transparent: true,
+      opacity: 0.7,
       side: THREE.DoubleSide,
     });
 
@@ -475,31 +323,30 @@ export class WorldScene {
     this.waterPlane.rotation.x = -Math.PI / 2;
     this.waterPlane.position.y = -0.5;
     this.scene.add(this.waterPlane);
-    console.log('[WorldScene] ✓ 発光する水面作成完了');
+    console.log('[WorldScene] ✓ 水面作成完了');
   }
 
   private createFloatingLanterns(): void {
     this.floatingLanterns = new THREE.Group();
     this.floatingLanterns.name = 'floating_lanterns';
 
-    // Sparse lanterns - wider spacing
-    const lanternCount = 60;
+    const lanternCount = 50;
     const lanternGeo = new THREE.BoxGeometry(0.4, 0.6, 0.4);
 
     for (let i = 0; i < lanternCount; i++) {
-      const angle = (i / lanternCount) * Math.PI * 2 + Math.random() * 0.3;
-      const radius = 20 + Math.random() * 50; // Wider spread
+      const angle = (i / lanternCount) * Math.PI * 2 + Math.random() * 0.5;
+      const radius = 25 + Math.random() * 50;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
-      const y = -0.3 + Math.random() * 0.3;
+      const y = -0.2 + Math.random() * 0.3;
 
       const hue = 0.08 + Math.random() * 0.05;
       const color = new THREE.Color().setHSL(hue, 1, 0.6);
 
-      const lanternMat = new THREE.MeshBasicMaterial({
+      const lanternMat = new THREE.MeshLambertMaterial({
         color,
-        transparent: true,
-        opacity: 0.9,
+        emissive: color,
+        emissiveIntensity: 0.8,
       });
 
       const lantern = new THREE.Mesh(lanternGeo, lanternMat);
@@ -510,7 +357,7 @@ export class WorldScene {
         speed: 0.5 + Math.random() * 0.5,
       };
 
-      const light = new THREE.PointLight(color, 0.3, 8);
+      const light = new THREE.PointLight(color, 0.2, 6);
       light.position.set(0, 0.3, 0);
       lantern.add(light);
 
@@ -518,11 +365,11 @@ export class WorldScene {
     }
 
     this.scene.add(this.floatingLanterns);
-    console.log('[WorldScene] ✓ 浮遊灯籠作成完了 (60個、間隔広め)');
+    console.log('[WorldScene] ✓ 浮遊灯籠作成完了 (50個)');
   }
 
   private createParticles(): void {
-    const particleCount = 800;
+    const particleCount = 600;
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
 
@@ -542,16 +389,16 @@ export class WorldScene {
     particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const particleMat = new THREE.PointsMaterial({
-      size: 0.4,
+      size: 0.35,
       vertexColors: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.75,
       sizeAttenuation: true,
     });
 
     this.particles = new THREE.Points(particleGeo, particleMat);
     this.scene.add(this.particles);
-    console.log('[WorldScene] ✓ 降り注ぐパーティクル作成完了 (800個)');
+    console.log('[WorldScene] ✓ パーティクル作成完了 (600個)');
   }
 
   private loadInitialTemplate(): void {
@@ -573,7 +420,7 @@ export class WorldScene {
   }
 
   isUsingWebGPU(): boolean {
-    return false;
+    return this.isWebGPU;
   }
 
   loadVoxels(voxels: Voxel[]): void {
@@ -687,18 +534,6 @@ export class WorldScene {
     const delta = this.clock.getDelta();
     const elapsed = this.clock.getElapsedTime();
 
-    // Update sky aurora animation
-    if (this.skyMesh) {
-      const mat = this.skyMesh.material as THREE.ShaderMaterial;
-      mat.uniforms.time.value = elapsed;
-    }
-
-    // Update water
-    if (this.waterPlane) {
-      const mat = this.waterPlane.material as THREE.ShaderMaterial;
-      mat.uniforms.time.value = elapsed;
-    }
-
     // Update floating lanterns
     if (this.floatingLanterns) {
       this.floatingLanterns.children.forEach((lantern) => {
@@ -712,9 +547,9 @@ export class WorldScene {
     if (this.particles) {
       const positions = this.particles.geometry.attributes.position.array as Float32Array;
       for (let i = 0; i < positions.length; i += 3) {
-        positions[i] += Math.sin(elapsed + i) * 0.01;
-        positions[i + 1] -= 0.03; // Falling speed
-        positions[i + 2] += Math.cos(elapsed + i) * 0.01;
+        positions[i] += Math.sin(elapsed + i) * 0.008;
+        positions[i + 1] -= 0.025;
+        positions[i + 2] += Math.cos(elapsed + i) * 0.008;
 
         if (positions[i + 1] < -1) {
           positions[i + 1] = 40;
@@ -736,12 +571,8 @@ export class WorldScene {
       this.buildingTool.updateGhost(this.mouseNDC);
     }
 
-    // Render with bloom
-    if (this.composer) {
-      this.composer.render();
-    } else if (this.renderer) {
-      this.renderer.render(this.scene, this.camera);
-    }
+    // Render
+    this.renderer.render(this.scene, this.camera);
   };
 
   // === Event Handlers ===
@@ -813,14 +644,6 @@ export class WorldScene {
     if (this.renderer) {
       this.renderer.setSize(width, height);
     }
-
-    if (this.composer) {
-      this.composer.setSize(width, height);
-    }
-
-    if (this.bloomPass) {
-      this.bloomPass.resolution.set(width, height);
-    }
   };
 
   // === Cleanup ===
@@ -842,7 +665,6 @@ export class WorldScene {
     if (this.cameraController) this.cameraController.dispose();
     if (this.buildingTool) this.buildingTool.dispose();
 
-    if (this.composer) this.composer.dispose();
     if (this.renderer) this.renderer.dispose();
   }
 }
