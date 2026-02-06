@@ -41,7 +41,7 @@ services:
 
   # Backend API
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/backend:latest
+    image: genesis-backend:latest
     container_name: genesis-backend
     restart: always
     environment:
@@ -70,7 +70,7 @@ services:
 
   # Celery Worker
   celery-worker:
-    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/backend:latest
+    image: genesis-backend:latest
     container_name: genesis-celery-worker
     restart: always
     command: celery -A app.celery_app worker --loglevel=info
@@ -86,7 +86,7 @@ services:
 
   # Celery Beat (Scheduler)
   celery-beat:
-    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/backend:latest
+    image: genesis-backend:latest
     container_name: genesis-celery-beat
     restart: always
     command: celery -A app.celery_app beat --loglevel=info
@@ -102,7 +102,7 @@ services:
 
   # Frontend (Next.js)
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/frontend:latest
+    image: genesis-frontend:latest
     container_name: genesis-frontend
     restart: always
     environment:
