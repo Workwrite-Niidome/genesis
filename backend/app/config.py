@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     twitter_redirect_uri: str = "http://localhost:3000/auth/callback"
 
     # AI Services
-    ollama_base_url: str = "http://localhost:11434"
+    OLLAMA_HOST: str = "https://ollama.genesis-pj.net"
+    OLLAMA_MODEL: str = "llama3.3"
+    OLLAMA_CONCURRENCY: int = 8
     claude_api_key: str = ""
 
     # Rate Limits

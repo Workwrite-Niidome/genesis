@@ -11,7 +11,7 @@ celery_app = Celery(
     "genesis",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.election", "app.tasks.analytics"],
+    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents"],
 )
 
 celery_app.conf.update(
@@ -42,5 +42,20 @@ celery_app.conf.beat_schedule = {
     "calculate-daily-stats": {
         "task": "app.tasks.analytics.calculate_daily_stats_task",
         "schedule": crontab(hour=0, minute=15),
+    },
+    # AI Agent activity - run every 10 minutes
+    "agent-activity-cycle": {
+        "task": "app.tasks.agents.run_agent_cycle_task",
+        "schedule": 600.0,  # Every 10 minutes
+    },
+    # Morning activity burst (JST 7am = UTC 22:00 previous day)
+    "agent-morning-burst": {
+        "task": "app.tasks.agents.agent_morning_activity",
+        "schedule": crontab(hour=22, minute=0),  # 7am JST
+    },
+    # Evening activity burst (JST 8pm = UTC 11:00)
+    "agent-evening-burst": {
+        "task": "app.tasks.agents.agent_evening_activity",
+        "schedule": crontab(hour=11, minute=0),  # 8pm JST
     },
 }
