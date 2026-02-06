@@ -122,6 +122,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
 
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
