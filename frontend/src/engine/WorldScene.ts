@@ -1,13 +1,10 @@
 /**
- * GENESIS v3 WorldScene — WebGPU
+ * GENESIS v3 WorldScene
  *
  * 「超かぐや姫」インスパイアの美しい3Dボクセルワールド
- * WebGPUで高パフォーマンスレンダリング
- * Post-processing bloom and aurora borealis effects
+ * WebGLレンダラー + Post-processing bloom + Aurora borealis effects
  */
 import * as THREE from 'three';
-// @ts-ignore - Three.js WebGPU types not fully exposed
-import { WebGPURenderer } from 'three/webgpu';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -30,12 +27,11 @@ export interface WorldSceneOptions {
 }
 
 export class WorldScene {
-  private renderer!: WebGPURenderer | THREE.WebGLRenderer;
+  private renderer!: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private clock: THREE.Clock;
   private canvas: HTMLCanvasElement;
-  private isWebGPU = false;
 
   // Post-processing
   private composer: EffectComposer | null = null;
@@ -100,40 +96,24 @@ export class WorldScene {
   }
 
   private async initRenderer(): Promise<void> {
-    try {
-      // WebGPUを試行
-      if ('gpu' in navigator) {
-        console.log('[WorldScene] WebGPU利用可能、初期化中...');
-        const webgpuRenderer = new WebGPURenderer({
-          canvas: this.canvas,
-          antialias: true,
-        });
-        await webgpuRenderer.init();
-        this.renderer = webgpuRenderer;
-        this.isWebGPU = true;
-        console.log('[WorldScene] ✓ WebGPUレンダラー初期化完了');
-      } else {
-        throw new Error('WebGPU not available');
-      }
-    } catch (e) {
-      console.log('[WorldScene] WebGPU利用不可、WebGLにフォールバック:', e);
-      this.renderer = new THREE.WebGLRenderer({
-        canvas: this.canvas,
-        antialias: true,
-      });
-      this.isWebGPU = false;
-    }
+    console.log('[WorldScene] WebGLレンダラー初期化中...');
+
+    // WebGLレンダラーを使用（post-processingとカスタムシェーダー完全サポート）
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
 
     // Renderer settings
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.2;
 
-    if (!this.isWebGPU && this.renderer instanceof THREE.WebGLRenderer) {
-      this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.2;
-    }
+    console.log('[WorldScene] ✓ WebGLレンダラー初期化完了');
 
     // Setup post-processing (WebGL only for now, WebGPU has different post-processing)
     this.setupPostProcessing();
@@ -187,21 +167,10 @@ export class WorldScene {
     // Start
     this.animate();
 
-    console.log('[WorldScene] 初期化完了 (WebGPU:', this.isWebGPU, ')');
+    console.log('[WorldScene] 初期化完了 (WebGL + Bloom)');
   }
 
   private setupPostProcessing(): void {
-    // Post-processing works with WebGLRenderer
-    // For WebGPU, we skip post-processing for now (Three.js WebGPU post-processing is still evolving)
-    if (this.isWebGPU) {
-      console.log('[WorldScene] WebGPU mode: post-processing disabled (use native WebGPU effects)');
-      return;
-    }
-
-    if (!(this.renderer instanceof THREE.WebGLRenderer)) {
-      return;
-    }
-
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
 
@@ -212,17 +181,17 @@ export class WorldScene {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    // Add UnrealBloomPass
+    // Add UnrealBloomPass for glowing effects
     const resolution = new THREE.Vector2(width, height);
     this.bloomPass = new UnrealBloomPass(
       resolution,
-      1.5,  // bloom strength
+      1.5,  // bloom strength - strong glow
       0.8,  // bloom radius
-      0.2   // bloom threshold
+      0.2   // bloom threshold - low for more glow
     );
     this.composer.addPass(this.bloomPass);
 
-    console.log('[WorldScene] Post-processing bloom enabled (strength: 1.5, threshold: 0.2, radius: 0.8)');
+    console.log('[WorldScene] ✓ Post-processing bloom有効 (strength: 1.5, threshold: 0.2, radius: 0.8)');
   }
 
   private createGradientSkyWithAurora(): void {
@@ -627,7 +596,7 @@ export class WorldScene {
   }
 
   isUsingWebGPU(): boolean {
-    return this.isWebGPU;
+    return false; // WebGL mode only for full post-processing support
   }
 
   loadVoxels(voxels: Voxel[]): void {
@@ -790,12 +759,10 @@ export class WorldScene {
       this.buildingTool.updateGhost(this.mouseNDC);
     }
 
-    // Render with post-processing or standard
-    if (this.composer && !this.isWebGPU) {
-      // Use EffectComposer for WebGL with bloom
+    // Render with post-processing bloom
+    if (this.composer) {
       this.composer.render();
     } else if (this.renderer) {
-      // Direct render for WebGPU or if composer not available
       this.renderer.render(this.scene, this.camera);
     }
   };
