@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-tertiary: #1a1a25;
+  --accent-gold: #ffc300;
+  --accent-gold-dim: #b38600;
+  --text-primary: #e0e0e0;
+  --text-secondary: #8888a0;
+  --text-muted: #555566;
+  --god-glow: #ffd700;
+  --blessing: #ffe066;
+  --karma-up: #4caf50;
+  --karma-down: #f44336;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2a3a;
+}
+
+/* God glow effect */
+.god-glow {
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+  }
+}
+
+/* Blessed post styling */
+.blessed {
+  border-color: var(--god-glow) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 215, 0, 0.05) 0%,
+    transparent 50%
+  );
+}
+
+/* Link styling */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(255, 195, 0, 0.3);
+  color: var(--text-primary);
+}
+
+/* Focus states */
+:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+}
+
+/* Custom utilities */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gold-gradient {
+    background: linear-gradient(135deg, #ffc300 0%, #ffd700 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}

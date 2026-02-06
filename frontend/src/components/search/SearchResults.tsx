@@ -1,0 +1,274 @@
+'use client'
+
+import Link from 'next/link'
+import { formatDistanceToNow } from 'date-fns'
+import { FileText, User, MessageSquare, Sparkles } from 'lucide-react'
+import clsx from 'clsx'
+import { SearchResult, Post } from '@/lib/api'
+import Card from '@/components/ui/Card'
+import Avatar from '@/components/ui/Avatar'
+import PostCard from '@/components/post/PostCard'
+
+interface SearchResultsProps {
+  results: SearchResult[]
+  posts?: Post[]
+  type: 'posts' | 'residents' | 'all'
+  isLoading: boolean
+  query?: string
+}
+
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+function EmptyState({ query }: { query?: string }) {
+  return (
+    <div className="text-center py-12">
+      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-tertiary flex items-center justify-center">
+        <FileText size={32} className="text-text-muted" />
+      </div>
+      <h3 className="text-lg font-medium mb-2">検索結果がありません</h3>
+      <p className="text-text-muted text-sm">
+        {query
+          ? `「${query}」に一致する結果が見つかりませんでした`
+          : '検索キーワードを入力してください'}
+      </p>
+    </div>
+  )
+}
+
+interface ResidentCardProps {
+  result: SearchResult
+}
+
+function ResidentCard({ result }: ResidentCardProps) {
+  return (
+    <Link href={`/u/${result.name}`}>
+      <Card hoverable className="p-4">
+        <div className="flex items-center gap-4">
+          <Avatar name={result.name || 'Unknown'} size="lg" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-medium text-text-primary hover:text-accent-gold transition-colors">
+                {result.name}
+              </h3>
+              {result.relevance_score > 0.9 && (
+                <span className="px-2 py-0.5 bg-accent-gold/10 text-accent-gold text-xs rounded-full">
+                  Best match
+                </span>
+              )}
+            </div>
+            {result.content && (
+              <p className="text-sm text-text-secondary mt-1 line-clamp-2">
+                {result.content}
+              </p>
+            )}
+          </div>
+          <User size={20} className="text-text-muted flex-shrink-0" />
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
+interface CommentResultCardProps {
+  result: SearchResult
+}
+
+function CommentResultCard({ result }: CommentResultCardProps) {
+  return (
+    <Link href={`/post/${result.id}`}>
+      <Card hoverable className="p-4">
+        <div className="flex gap-3">
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center">
+              <MessageSquare size={18} className="text-text-muted" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
+              {result.author && (
+                <>
+                  <span className="font-medium text-text-secondary">
+                    {result.author.name}
+                  </span>
+                  <span>commented</span>
+                </>
+              )}
+              {result.created_at && (
+                <>
+                  <span>•</span>
+                  <span>
+                    {formatDistanceToNow(new Date(result.created_at), {
+                      addSuffix: true,
+                    })}
+                  </span>
+                </>
+              )}
+            </div>
+            <p className="text-sm text-text-primary line-clamp-2">
+              {result.content}
+            </p>
+            {result.relevance_score > 0.8 && (
+              <div className="flex items-center gap-1 mt-2 text-xs text-accent-gold">
+                <Sparkles size={12} />
+                <span>High relevance</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
+interface GenericResultCardProps {
+  result: SearchResult
+}
+
+function GenericResultCard({ result }: GenericResultCardProps) {
+  const getResultLink = () => {
+    switch (result.type) {
+      case 'post':
+        return `/post/${result.id}`
+      case 'resident':
+        return `/u/${result.name}`
+      case 'comment':
+        return `/post/${result.id}`
+      default:
+        return '#'
+    }
+  }
+
+  const getResultIcon = () => {
+    switch (result.type) {
+      case 'post':
+        return <FileText size={18} />
+      case 'resident':
+        return <User size={18} />
+      case 'comment':
+        return <MessageSquare size={18} />
+      default:
+        return <FileText size={18} />
+    }
+  }
+
+  const getTypeLabel = () => {
+    switch (result.type) {
+      case 'post':
+        return '投稿'
+      case 'resident':
+        return '住民'
+      case 'comment':
+        return 'コメント'
+      default:
+        return result.type
+    }
+  }
+
+  return (
+    <Link href={getResultLink()}>
+      <Card hoverable className="p-4">
+        <div className="flex gap-3">
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-text-muted">
+              {getResultIcon()}
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2 py-0.5 bg-bg-tertiary text-text-muted text-xs rounded">
+                {getTypeLabel()}
+              </span>
+              {result.created_at && (
+                <span className="text-xs text-text-muted">
+                  {formatDistanceToNow(new Date(result.created_at), {
+                    addSuffix: true,
+                  })}
+                </span>
+              )}
+            </div>
+            {result.title && (
+              <h3 className="font-medium text-text-primary mb-1 hover:text-accent-gold transition-colors">
+                {result.title}
+              </h3>
+            )}
+            {result.name && result.type === 'resident' && (
+              <h3 className="font-medium text-text-primary mb-1 hover:text-accent-gold transition-colors">
+                {result.name}
+              </h3>
+            )}
+            {result.content && (
+              <p className="text-sm text-text-secondary line-clamp-2">
+                {result.content}
+              </p>
+            )}
+            {result.author && (
+              <div className="flex items-center gap-1 mt-2 text-xs text-text-muted">
+                <span>by</span>
+                <span className="text-text-secondary">{result.author.name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
+export default function SearchResults({
+  results,
+  posts,
+  type,
+  isLoading,
+  query,
+}: SearchResultsProps) {
+  if (isLoading) {
+    return <LoadingSpinner />
+  }
+
+  // When we have full Post objects (from searchPosts), use PostCard
+  if (type === 'posts' && posts && posts.length > 0) {
+    return (
+      <div className="space-y-4">
+        {posts.map((post) => (
+          <PostCard key={post.id} post={post} showContent />
+        ))}
+      </div>
+    )
+  }
+
+  if (results.length === 0) {
+    return <EmptyState query={query} />
+  }
+
+  // Render based on type
+  if (type === 'residents') {
+    return (
+      <div className="space-y-3">
+        {results.map((result) => (
+          <ResidentCard key={result.id} result={result} />
+        ))}
+      </div>
+    )
+  }
+
+  // For 'all' or 'posts' type with SearchResult format
+  return (
+    <div className="space-y-3">
+      {results.map((result) => {
+        if (result.type === 'resident') {
+          return <ResidentCard key={result.id} result={result} />
+        }
+        if (result.type === 'comment') {
+          return <CommentResultCard key={result.id} result={result} />
+        }
+        return <GenericResultCard key={result.id} result={result} />
+      })}
+    </div>
+  )
+}

@@ -1,60 +1,64 @@
-import { create } from 'zustand';
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { api, Resident } from '@/lib/api'
 
-interface AuthStore {
-  isAuthenticated: boolean;
-  error: string | null;
-  loading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
-  logout: () => void;
+interface AuthState {
+  resident: Resident | null
+  token: string | null
+  isLoading: boolean
+  error: string | null
+
+  setToken: (token: string | null) => void
+  fetchMe: () => Promise<void>
+  logout: () => void
+  clearError: () => void
 }
 
-function getStoredCredentials(): string | null {
-  return sessionStorage.getItem('genesis_admin_auth');
-}
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      resident: null,
+      token: null,
+      isLoading: false,
+      error: null,
 
-function storeCredentials(username: string, password: string): void {
-  const encoded = btoa(`${username}:${password}`);
-  sessionStorage.setItem('genesis_admin_auth', encoded);
-}
+      setToken: (token) => {
+        api.setToken(token)
+        set({ token })
+        if (token) {
+          get().fetchMe()
+        }
+      },
 
-function clearCredentials(): void {
-  sessionStorage.removeItem('genesis_admin_auth');
-}
+      fetchMe: async () => {
+        set({ isLoading: true, error: null })
+        try {
+          const resident = await api.getMe()
+          set({ resident, isLoading: false })
+        } catch (err) {
+          set({
+            error: err instanceof Error ? err.message : 'Failed to fetch profile',
+            isLoading: false,
+          })
+        }
+      },
 
-export function getAdminAuthHeader(): string | null {
-  const cred = getStoredCredentials();
-  return cred ? `Basic ${cred}` : null;
-}
+      logout: () => {
+        api.setToken(null)
+        set({ resident: null, token: null })
+      },
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
-
-export const useAuthStore = create<AuthStore>((set) => ({
-  isAuthenticated: !!getStoredCredentials(),
-  error: null,
-  loading: false,
-
-  login: async (username: string, password: string) => {
-    set({ loading: true, error: null });
-    const encoded = btoa(`${username}:${password}`);
-    try {
-      const res = await fetch(`${API_BASE}/api/god/state`, {
-        headers: { Authorization: `Basic ${encoded}` },
-      });
-      if (res.ok) {
-        storeCredentials(username, password);
-        set({ isAuthenticated: true, loading: false });
-        return true;
-      }
-      set({ error: 'Invalid credentials', loading: false });
-      return false;
-    } catch {
-      set({ error: 'Connection error', loading: false });
-      return false;
+      clearError: () => set({ error: null }),
+    }),
+    {
+      name: 'genesis-auth',
+      partialize: (state) => ({ token: state.token }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) {
+          api.setToken(state.token)
+          state.fetchMe()
+        }
+      },
     }
-  },
-
-  logout: () => {
-    clearCredentials();
-    set({ isAuthenticated: false, error: null });
-  },
-}));
+  )
+)

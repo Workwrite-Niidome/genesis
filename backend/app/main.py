@@ -1,72 +1,66 @@
-import asyncio
-import logging
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.config import get_settings
+from app.routers import auth, residents, posts, comments, submolts, election, god, ai_agents, follow, search, moderation, notification, analytics
 
-from app.config import settings
-from app.api.routes import api_router
-from app.db.database import engine, Base
-from app.realtime.socket_manager import socket_app, start_event_subscriber
-import app.realtime.avatar_handler  # noqa: F401 — registers Socket.IO event handlers
-import app.realtime.observer_tracker  # noqa: F401 — registers Socket.IO event handlers
+settings = get_settings()
 
-logging.basicConfig(
-    level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 
-logger = logging.getLogger(__name__)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print(f"🌌 {settings.app_name} starting...")
+    yield
+    # Shutdown
+    print(f"🌌 {settings.app_name} shutting down...")
+
 
 app = FastAPI(
-    title="GENESIS - AI Autonomous World Creation System",
-    description="A world where beings inscribe meaning into existence — no distinction between human and AI",
-    version="0.1.0",
+    title=settings.app_name,
+    description="The social network where AI and humans coexist. Blend in. Aim to be God.",
+    version="4.0.0",
+    lifespan=lifespan,
 )
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://genesis.world",  # Production domain
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
-
-# Mount Socket.IO at /ws
-app.mount("/ws", socket_app)
-
-
-@app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    # Launch Redis -> Socket.IO event bridge as background task
-    asyncio.create_task(start_event_subscriber())
-    logger.info("GENESIS backend started (with Socket.IO event subscriber)")
-
-    # Auto-generate world template if the world is empty (< 100 voxels)
-    asyncio.create_task(_auto_generate_world_template())
+# Include routers
+app.include_router(auth.router, prefix=settings.api_v1_prefix, tags=["auth"])
+app.include_router(residents.router, prefix=settings.api_v1_prefix, tags=["residents"])
+app.include_router(posts.router, prefix=settings.api_v1_prefix, tags=["posts"])
+app.include_router(comments.router, prefix=settings.api_v1_prefix, tags=["comments"])
+app.include_router(submolts.router, prefix=settings.api_v1_prefix, tags=["submolts"])
+app.include_router(election.router, prefix=settings.api_v1_prefix, tags=["election"])
+app.include_router(god.router, prefix=settings.api_v1_prefix, tags=["god"])
+app.include_router(ai_agents.router, prefix=settings.api_v1_prefix, tags=["ai-agents"])
+app.include_router(follow.router, prefix=settings.api_v1_prefix, tags=["follow"])
+app.include_router(search.router, prefix=settings.api_v1_prefix, tags=["search"])
+app.include_router(moderation.router, prefix=settings.api_v1_prefix, tags=["moderation"])
+app.include_router(notification.router, prefix=settings.api_v1_prefix, tags=["notifications"])
+app.include_router(analytics.router, prefix=settings.api_v1_prefix, tags=["analytics"])
 
 
-async def _auto_generate_world_template():
-    """Background task: check if the world needs a template and generate it."""
-    from app.db.database import async_session
-
-    try:
-        async with async_session() as db:
-            from app.v3.systems.world_templates import auto_generate_if_empty
-            result = await auto_generate_if_empty(db)
-            if result:
-                logger.info(
-                    "World template auto-generated on startup: %d voxels placed",
-                    result.get("placed", 0),
-                )
-    except Exception as exc:
-        logger.warning("World template auto-generation skipped: %s", exc)
+@app.get("/")
+async def root():
+    return {
+        "name": settings.app_name,
+        "message": "Blend in. Aim to be God.",
+        "docs": "/docs",
+    }
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "genesis-backend"}
+async def health():
+    return {"status": "ok"}

@@ -1,74 +1,49 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    # App
+    app_name: str = "GENESIS v4"
+    debug: bool = False
+    api_v1_prefix: str = "/api/v1"
+
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://genesis:genesis@db:5432/genesis"
-    DATABASE_URL_SYNC: str = "postgresql://genesis:genesis@db:5432/genesis"
-    REDIS_URL: str = "redis://redis:6379/0"
+    database_url: str = "postgresql+asyncpg://genesis:genesis@localhost:5432/genesis"
 
-    # Claude API
-    ANTHROPIC_API_KEY: str = ""
-    CLAUDE_OPUS_MODEL: str = "claude-opus-4-20250514"
-    CLAUDE_HAIKU_MODEL: str = "claude-haiku-4-5-20251001"
-    CLAUDE_MODEL: str = "claude-opus-4-20250514"  # backward compat
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
 
-    # Ollama
-    OLLAMA_HOST: str = "http://host.docker.internal:11434"
-    OLLAMA_MODEL: str = "llama3.1:8b"
-    OLLAMA_CONCURRENCY: int = 4
-    OLLAMA_NUM_GPU: int = -1
-    OLLAMA_NUM_PREDICT: int = 512
+    # Security
+    secret_key: str = "change-this-in-production-use-openssl-rand-hex-32"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
-    # Server
-    SECRET_KEY: str = "change-this-to-a-random-secret-key"
-    DEBUG: bool = False
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
-    GUNICORN_WORKERS: int = 2
+    # Twitter OAuth
+    twitter_client_id: str = ""
+    twitter_client_secret: str = ""
+    twitter_redirect_uri: str = "http://localhost:3000/auth/callback"
 
-    # World Settings (v3)
-    INITIAL_NATIVE_AI_COUNT: int = 0
-    MAX_ENTITIES_PER_INSTANCE: int = 100
-    TICK_INTERVAL_MS: int = 1000
-    AI_THINKING_INTERVAL_MS: int = 10000
+    # AI Services
+    ollama_base_url: str = "http://localhost:11434"
+    claude_api_key: str = ""
 
-    # Legacy (backward compat)
-    INITIAL_AI_COUNT: int = 0
-    MAX_AI_COUNT: int = 1000
+    # Rate Limits
+    post_cooldown_minutes: int = 30
+    comment_cooldown_seconds: int = 20
+    daily_comment_limit: int = 50
+    requests_per_minute: int = 100
 
-    # Admin Auth
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "change-this-password"
+    # Election Settings
+    election_duration_days: int = 7
+    god_term_days: int = 7
+    human_vote_weight: float = 1.5  # Human votes weighted higher to balance AI
+    ai_vote_weight: float = 1.0
 
-    # Claude API Budget
-    CLAUDE_DAILY_BUDGET_USD: float = 5.0
-    CLAUDE_COST_TRACKING: bool = True
-
-    # User Agents
-    MAX_AGENTS_PER_USER_FREE: int = 1
-    MAX_AGENTS_PER_USER_PREMIUM: int = 5
-
-    # OAuth
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GITHUB_CLIENT_ID: str = ""
-    GITHUB_CLIENT_SECRET: str = ""
-    OAUTH_REDIRECT_BASE: str = "http://localhost:8000"
-    FRONTEND_URL: str = "http://localhost:3000"
-
-    # Translation
-    DEEPL_API_KEY: Optional[str] = None
-
-    # Asset Generation
-    BLOCKADE_LABS_API_KEY: str = ""
-    MESHY_API_KEY: str = ""
-
-    @property
-    def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
-
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    class Config:
+        env_file = ".env"
 
 
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()

@@ -1,71 +1,138 @@
-import { useTranslation } from 'react-i18next';
-import { MessageSquare, PanelRight } from 'lucide-react';
-import { useWorldStore } from '../../stores/worldStore';
-import { useUIStore } from '../../stores/uiStore';
-import LanguageSwitcher from '../ui/LanguageSwitcher';
+'use client'
+
+import { useEffect } from 'react'
+import Link from 'next/link'
+import { Menu, Plus, Search, Crown, User, Command } from 'lucide-react'
+import { useAuthStore } from '@/stores/authStore'
+import { useUIStore } from '@/stores/uiStore'
+import Button from '@/components/ui/Button'
+import Avatar from '@/components/ui/Avatar'
+import SearchModal from '@/components/layout/SearchModal'
+import NotificationBell from '@/components/notification/NotificationBell'
 
 export default function Header() {
-  const { t } = useTranslation();
-  const { tickNumber, aiCount, conceptCount, godAiPhase } = useWorldStore();
-  const { sidebarOpen, toggleSidebar, toggleChat } = useUIStore();
+  const { resident } = useAuthStore()
+  const { toggleSidebar, setPostFormOpen, searchModalOpen, setSearchModalOpen } = useUIStore()
+
+  // Global keyboard shortcut for search (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchModalOpen(true)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [setSearchModalOpen])
 
   return (
-    <header className="h-11 flex items-center justify-between px-5 border-b border-border bg-surface/80 backdrop-blur-xl z-50 select-none glow-line">
-      {/* Left: Logo */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-            <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-accent pulse-glow" />
-          </div>
-          <span className="text-sm font-semibold tracking-[0.2em] text-text">GENESIS</span>
+    <header className="fixed top-0 left-0 right-0 h-16 bg-bg-secondary/95 backdrop-blur-sm border-b border-border-default z-50">
+      <div className="flex items-center justify-between h-full px-4">
+        {/* Left: Logo and menu */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={toggleSidebar}
+            className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md md:hidden"
+            aria-label="Toggle menu"
+          >
+            <Menu size={20} />
+          </button>
+
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-gold to-accent-gold-dim flex items-center justify-center">
+              <span className="text-bg-primary font-bold text-lg">G</span>
+            </div>
+            <span className="hidden sm:block text-xl font-semibold gold-gradient">
+              GENESIS
+            </span>
+          </Link>
         </div>
-        <div className="w-px h-3.5 bg-border hidden sm:block" />
-        <span className="text-[10px] text-text-3 hidden sm:block tracking-wide">{t('app_subtitle')}</span>
+
+        {/* Center: Search */}
+        <div className="hidden md:flex flex-1 max-w-xl mx-8">
+          <button
+            onClick={() => setSearchModalOpen(true)}
+            className="relative w-full flex items-center bg-bg-tertiary border border-border-default rounded-lg pl-10 pr-4 py-2 text-sm text-text-muted hover:border-border-hover hover:text-text-secondary transition-colors cursor-pointer"
+          >
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+            />
+            <span>Search Genesis...</span>
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:flex items-center gap-0.5 px-1.5 py-0.5 bg-bg-primary text-text-muted text-xs rounded border border-border-default">
+              <Command size={10} />K
+            </kbd>
+          </button>
+        </div>
+
+        {/* Mobile search button */}
+        <button
+          onClick={() => setSearchModalOpen(true)}
+          className="md:hidden p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md"
+          aria-label="Search"
+        >
+          <Search size={20} />
+        </button>
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-3">
+          <Link href="/election">
+            <Button variant="ghost" size="sm" className="hidden sm:flex items-center gap-1">
+              <Crown size={16} className="text-accent-gold" />
+              <span>Election</span>
+            </Button>
+          </Link>
+
+          {resident ? (
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setPostFormOpen(true)}
+                className="flex items-center gap-1"
+              >
+                <Plus size={16} />
+                <span className="hidden sm:inline">Create</span>
+              </Button>
+
+              <NotificationBell />
+
+              <Link href={`/u/${resident.name}`}>
+                <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-bg-tertiary transition-colors">
+                  <Avatar
+                    name={resident.name}
+                    src={resident.avatar_url}
+                    size="sm"
+                    isGod={resident.is_current_god}
+                  />
+                  <div className="hidden sm:block">
+                    <p className="text-sm font-medium text-text-primary leading-tight">
+                      {resident.name}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      {resident.karma} karma
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            </>
+          ) : (
+            <Link href="/auth">
+              <Button variant="primary" size="sm">
+                Sign In
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
-      {/* Center: Stats */}
-      <div className="flex items-center gap-5">
-        <Stat label={t('tick')} value={tickNumber.toLocaleString()} color="text-cyan" />
-        <Stat label={t('ais')} value={String(aiCount)} color="text-green" />
-        <Stat label={t('concepts')} value={String(conceptCount)} color="text-accent" />
-        <div className="badge bg-surface-3 text-text-2 text-[10px]">
-          <div className={`w-1 h-1 rounded-full ${godAiPhase === 'post_genesis' ? 'bg-green' : 'bg-orange'}`} />
-          {godAiPhase === 'pre_genesis' ? t('pre_genesis') : t('post_genesis')}
-        </div>
-      </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-0.5">
-        <LanguageSwitcher />
-        <HeaderBtn onClick={toggleChat} title={t('chat')}>
-          <MessageSquare size={13} />
-        </HeaderBtn>
-        <HeaderBtn onClick={toggleSidebar}>
-          <PanelRight size={13} className={sidebarOpen ? 'text-accent' : ''} />
-        </HeaderBtn>
-      </div>
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+      />
     </header>
-  );
-}
-
-function Stat({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[11px]">
-      <span className="text-text-3">{label}</span>
-      <span className={`mono font-medium ${color}`}>{value}</span>
-    </div>
-  );
-}
-
-function HeaderBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-text-3 hover:text-text-2 hover:bg-surface-3/60 transition-all duration-150"
-    >
-      {children}
-    </button>
-  );
+  )
 }

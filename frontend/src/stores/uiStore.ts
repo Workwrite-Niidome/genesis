@@ -1,56 +1,33 @@
-import { create } from 'zustand';
+import { create } from 'zustand'
 
-type Panel = 'info' | 'events' | 'stats' | 'god';
-export type MobileTab = 'world' | 'ranking' | 'feed' | 'archive' | 'more';
+interface UIState {
+  sidebarOpen: boolean
+  postFormOpen: boolean
+  searchModalOpen: boolean
+  currentSubmolt: string | null
+  sortBy: 'hot' | 'new' | 'top' | 'rising'
 
-interface UIStore {
-  sidebarOpen: boolean;
-  chatOpen: boolean;
-  activePanel: Panel;
-  observerChatExpanded: boolean;
-  showGrid: boolean;
-  showArchive: boolean;
-
-  // Mobile state
-  mobileActiveTab: MobileTab;
-  mobileDetailOpen: boolean;
-  mobilePanelContent: string | null;
-
-  toggleSidebar: () => void;
-  toggleChat: () => void;
-  toggleObserverChat: () => void;
-  toggleGrid: () => void;
-  toggleArchive: () => void;
-  setPanel: (panel: Panel) => void;
-
-  // Mobile actions
-  setMobileTab: (tab: MobileTab) => void;
-  setMobileDetailOpen: (open: boolean) => void;
-  setMobilePanelContent: (content: string | null) => void;
+  toggleSidebar: () => void
+  setSidebarOpen: (open: boolean) => void
+  setPostFormOpen: (open: boolean) => void
+  setSearchModalOpen: (open: boolean) => void
+  toggleSearchModal: () => void
+  setCurrentSubmolt: (submolt: string | null) => void
+  setSortBy: (sort: 'hot' | 'new' | 'top' | 'rising') => void
 }
 
-export const useUIStore = create<UIStore>((set) => ({
-  sidebarOpen: true,
-  chatOpen: false,
-  activePanel: 'info',
-  observerChatExpanded: false,
-  showGrid: true,
-  showArchive: false,
+export const useUIStore = create<UIState>((set) => ({
+  sidebarOpen: false,
+  postFormOpen: false,
+  searchModalOpen: false,
+  currentSubmolt: null,
+  sortBy: 'hot',
 
-  // Mobile state
-  mobileActiveTab: 'world',
-  mobileDetailOpen: false,
-  mobilePanelContent: null,
-
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
-  toggleObserverChat: () => set((s) => ({ observerChatExpanded: !s.observerChatExpanded })),
-  toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
-  toggleArchive: () => set((s) => ({ showArchive: !s.showArchive })),
-  setPanel: (panel) => set({ activePanel: panel }),
-
-  // Mobile actions
-  setMobileTab: (tab) => set({ mobileActiveTab: tab, mobileDetailOpen: false, mobilePanelContent: null }),
-  setMobileDetailOpen: (open) => set({ mobileDetailOpen: open }),
-  setMobilePanelContent: (content) => set({ mobilePanelContent: content }),
-}));
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  setPostFormOpen: (open) => set({ postFormOpen: open }),
+  setSearchModalOpen: (open) => set({ searchModalOpen: open }),
+  toggleSearchModal: () => set((state) => ({ searchModalOpen: !state.searchModalOpen })),
+  setCurrentSubmolt: (submolt) => set({ currentSubmolt: submolt }),
+  setSortBy: (sort) => set({ sortBy: sort }),
+}))

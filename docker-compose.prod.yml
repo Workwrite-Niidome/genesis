@@ -1,253 +1,165 @@
-# GENESIS v3 — Production Docker Compose
-# Usage:
-#   docker compose -f docker-compose.prod.yml up -d
-#   docker compose -f docker-compose.prod.yml --env-file .env up -d
-#
-# Requires: .env file with production values (see .env.example)
+version: '3.8'
+
+# Production docker-compose for genesis-pj.net
+# Deploy with: docker compose -f docker-compose.prod.yml up -d
 
 services:
-  # ---------------------------------------------------------------------------
-  # PostgreSQL — persistent, tuned for production
-  # ---------------------------------------------------------------------------
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: genesis-postgres
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-genesis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-genesis}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    command:
-      - "postgres"
-      - "-c"
-      - "max_connections=200"
-      - "-c"
-      - "shared_buffers=256MB"
-      - "-c"
-      - "effective_cache_size=768MB"
-      - "-c"
-      - "maintenance_work_mem=128MB"
-      - "-c"
-      - "checkpoint_completion_target=0.9"
-      - "-c"
-      - "wal_buffers=16MB"
-      - "-c"
-      - "default_statistics_target=100"
-      - "-c"
-      - "random_page_cost=1.1"
-      - "-c"
-      - "effective_io_concurrency=200"
-      - "-c"
-      - "work_mem=4MB"
-      - "-c"
-      - "log_min_duration_statement=1000"
+    networks:
+      - genesis-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-genesis} -d ${POSTGRES_DB:-genesis}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-genesis}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        tag: "genesis-db"
 
-  # ---------------------------------------------------------------------------
-  # Redis — persistent with appendonly
-  # ---------------------------------------------------------------------------
+  # Redis Cache
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
-    command: >
-      redis-server
-      --appendonly yes
-      --appendfsync everysec
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --save 60 1000
-      --save 300 100
+    container_name: genesis-redis
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
+    networks:
+      - genesis-internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        tag: "genesis-redis"
 
-  # ---------------------------------------------------------------------------
-  # Backend API — gunicorn + uvicorn workers
-  # ---------------------------------------------------------------------------
+  # Backend API
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
+    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/backend:latest
+    container_name: genesis-backend
+    restart: always
     environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - TWITTER_CLIENT_ID=${TWITTER_CLIENT_ID}
+      - TWITTER_CLIENT_SECRET=${TWITTER_CLIENT_SECRET}
+      - TWITTER_CALLBACK_URL=https://genesis-pj.net/api/v1/auth/twitter/callback
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+      - CORS_ORIGINS=https://genesis-pj.net,https://www.genesis-pj.net
       - DEBUG=false
-      - LOG_LEVEL=${LOG_LEVEL:-warning}
+    networks:
+      - genesis-internal
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    expose:
-      - "8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: >
-      gunicorn app.main:app
-      --config gunicorn.conf.py
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "20m"
-        max-file: "5"
-        tag: "genesis-backend"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.genesis-pj.net`)"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
-  # ---------------------------------------------------------------------------
-  # Celery Worker — task processing
-  # ---------------------------------------------------------------------------
+  # Celery Worker
   celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
+    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/backend:latest
+    container_name: genesis-celery-worker
+    restart: always
+    command: celery -A app.celery_app worker --loglevel=info
     environment:
-      - DEBUG=false
-      - LOG_LEVEL=${LOG_LEVEL:-warning}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+    networks:
+      - genesis-internal
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: >
-      celery -A app.core.celery_app worker
-      --loglevel=${LOG_LEVEL:-warning}
-      --concurrency=${CELERY_WORKER_CONCURRENCY:-4}
-      --pool=prefork
-      --max-tasks-per-child=1000
-      --without-heartbeat
-      --without-mingle
-      --without-gossip
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 10"]
-      interval: 60s
-      timeout: 15s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "20m"
-        max-file: "5"
-        tag: "genesis-celery-worker"
+      - backend
+      - redis
 
-  # ---------------------------------------------------------------------------
-  # Celery Beat — periodic task scheduler
-  # ---------------------------------------------------------------------------
+  # Celery Beat (Scheduler)
   celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
+    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/backend:latest
+    container_name: genesis-celery-beat
+    restart: always
+    command: celery -A app.celery_app beat --loglevel=info
     environment:
-      - DEBUG=false
-      - LOG_LEVEL=${LOG_LEVEL:-warning}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+    networks:
+      - genesis-internal
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: >
-      celery -A app.core.celery_app beat
-      --loglevel=${LOG_LEVEL:-warning}
-      --schedule=/tmp/celerybeat-schedule
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/celerybeat-schedule"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        tag: "genesis-celery-beat"
+      - backend
+      - redis
 
-  # ---------------------------------------------------------------------------
-  # Nginx — reverse proxy + frontend static serving
-  # ---------------------------------------------------------------------------
-  nginx:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    restart: unless-stopped
+  # Frontend (Next.js)
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY:-genesis}/frontend:latest
+    container_name: genesis-frontend
+    restart: always
+    environment:
+      - NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
+    networks:
+      - genesis-internal
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`genesis-pj.net`) || Host(`www.genesis-pj.net`)"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      # Redirect www to non-www
+      - "traefik.http.middlewares.www-redirect.redirectregex.regex=^https://www\\.genesis-pj\\.net/(.*)"
+      - "traefik.http.middlewares.www-redirect.redirectregex.replacement=https://genesis-pj.net/$${1}"
+      - "traefik.http.routers.frontend-www.middlewares=www-redirect"
+
+  # Traefik Reverse Proxy (with automatic HTTPS)
+  traefik:
+    image: traefik:v3.0
+    container_name: genesis-traefik
+    restart: always
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./certbot/conf:/etc/letsencrypt:ro
-      - ./certbot/www:/var/www/certbot:ro
-    depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        tag: "genesis-nginx"
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+    networks:
+      - genesis-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.genesis-pj.net`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_USERS}"
 
-  # ---------------------------------------------------------------------------
-  # Certbot — SSL certificate management
-  # ---------------------------------------------------------------------------
-  certbot:
-    image: certbot/certbot
-    restart: unless-stopped
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-        tag: "genesis-certbot"
+networks:
+  genesis-internal:
+    driver: bridge
 
 volumes:
   postgres_data:
-    driver: local
   redis_data:
-    driver: local
+  traefik_certs:
