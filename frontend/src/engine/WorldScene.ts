@@ -3,10 +3,14 @@
  *
  * 「超かぐや姫」インスパイアの美しい3Dボクセルワールド
  * WebGPUで高パフォーマンスレンダリング
+ * Post-processing bloom and aurora borealis effects
  */
 import * as THREE from 'three';
 // @ts-ignore - Three.js WebGPU types not fully exposed
 import { WebGPURenderer } from 'three/webgpu';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { VoxelRenderer } from './VoxelRenderer';
 import { AvatarSystem } from './AvatarSystem';
 import { CameraController, type CameraMode } from './Camera';
@@ -33,6 +37,10 @@ export class WorldScene {
   private canvas: HTMLCanvasElement;
   private isWebGPU = false;
 
+  // Post-processing
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+
   // Subsystems
   voxelRenderer!: VoxelRenderer;
   avatarSystem!: AvatarSystem;
@@ -43,6 +51,7 @@ export class WorldScene {
   private waterPlane: THREE.Mesh | null = null;
   private floatingLanterns: THREE.Group | null = null;
   private particles: THREE.Points | null = null;
+  private skyMesh: THREE.Mesh | null = null;
 
   // State
   private animationFrameId: number | null = null;
@@ -126,8 +135,11 @@ export class WorldScene {
       this.renderer.toneMappingExposure = 1.2;
     }
 
-    // 美しいグラデーション空
-    this.createGradientSky();
+    // Setup post-processing (WebGL only for now, WebGPU has different post-processing)
+    this.setupPostProcessing();
+
+    // 美しいグラデーション空 with aurora
+    this.createGradientSkyWithAurora();
 
     // 幻想的な霧
     this.scene.fog = new THREE.FogExp2(0x1a0a2e, 0.008);
@@ -135,8 +147,8 @@ export class WorldScene {
     // Lighting
     this.setupLighting();
 
-    // Water
-    this.createWater();
+    // Water with luminous cyan glow
+    this.createLuminousWater();
 
     // Floating Lanterns
     this.createFloatingLanterns();
@@ -178,7 +190,42 @@ export class WorldScene {
     console.log('[WorldScene] 初期化完了 (WebGPU:', this.isWebGPU, ')');
   }
 
-  private createGradientSky(): void {
+  private setupPostProcessing(): void {
+    // Post-processing works with WebGLRenderer
+    // For WebGPU, we skip post-processing for now (Three.js WebGPU post-processing is still evolving)
+    if (this.isWebGPU) {
+      console.log('[WorldScene] WebGPU mode: post-processing disabled (use native WebGPU effects)');
+      return;
+    }
+
+    if (!(this.renderer instanceof THREE.WebGLRenderer)) {
+      return;
+    }
+
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+
+    // Create EffectComposer
+    this.composer = new EffectComposer(this.renderer);
+
+    // Add RenderPass (renders the scene)
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+
+    // Add UnrealBloomPass
+    const resolution = new THREE.Vector2(width, height);
+    this.bloomPass = new UnrealBloomPass(
+      resolution,
+      1.5,  // bloom strength
+      0.8,  // bloom radius
+      0.2   // bloom threshold
+    );
+    this.composer.addPass(this.bloomPass);
+
+    console.log('[WorldScene] Post-processing bloom enabled (strength: 1.5, threshold: 0.2, radius: 0.8)');
+  }
+
+  private createGradientSkyWithAurora(): void {
     const skyGeo = new THREE.SphereGeometry(400, 32, 32);
 
     const skyMat = new THREE.ShaderMaterial({
@@ -188,12 +235,16 @@ export class WorldScene {
         bottomColor: { value: new THREE.Color(0x2d1b4e) },
         offset: { value: 20 },
         exponent: { value: 0.6 },
+        time: { value: 0 },
+        auroraIntensity: { value: 1.0 },
       },
       vertexShader: `
         varying vec3 vWorldPosition;
+        varying vec2 vUv;
         void main() {
           vec4 worldPosition = modelMatrix * vec4(position, 1.0);
           vWorldPosition = worldPosition.xyz;
+          vUv = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -203,20 +254,95 @@ export class WorldScene {
         uniform vec3 bottomColor;
         uniform float offset;
         uniform float exponent;
+        uniform float time;
+        uniform float auroraIntensity;
         varying vec3 vWorldPosition;
+        varying vec2 vUv;
+
+        // Simplex noise function for aurora
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+        float snoise(vec2 v) {
+          const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                             -0.577350269189626, 0.024390243902439);
+          vec2 i  = floor(v + dot(v, C.yy));
+          vec2 x0 = v -   i + dot(i, C.xx);
+          vec2 i1;
+          i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+          vec4 x12 = x0.xyxy + C.xxzz;
+          x12.xy -= i1;
+          i = mod289(i);
+          vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
+                          + i.x + vec3(0.0, i1.x, 1.0));
+          vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy),
+                                  dot(x12.zw,x12.zw)), 0.0);
+          m = m*m;
+          m = m*m;
+          vec3 x = 2.0 * fract(p * C.www) - 1.0;
+          vec3 h = abs(x) - 0.5;
+          vec3 ox = floor(x + 0.5);
+          vec3 a0 = x - ox;
+          m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+          vec3 g;
+          g.x  = a0.x  * x0.x  + h.x  * x0.y;
+          g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+          return 130.0 * dot(m, g);
+        }
+
         void main() {
           float h = normalize(vWorldPosition + offset).y;
           float t = max(pow(max(h, 0.0), exponent), 0.0);
           vec3 color = mix(bottomColor, midColor, t);
           color = mix(color, topColor, t * t);
+
+          // Aurora borealis effect - only in upper hemisphere
+          if (h > 0.1) {
+            // Create flowing aurora waves
+            float auroraY = (h - 0.1) / 0.9; // Normalize to 0-1 range in upper sky
+
+            // Multiple layers of noise for complex aurora patterns
+            float noise1 = snoise(vec2(vWorldPosition.x * 0.01 + time * 0.1, auroraY * 2.0 + time * 0.05));
+            float noise2 = snoise(vec2(vWorldPosition.z * 0.015 - time * 0.08, auroraY * 3.0 + time * 0.03));
+            float noise3 = snoise(vec2(vWorldPosition.x * 0.02 + vWorldPosition.z * 0.02 + time * 0.12, auroraY * 1.5));
+
+            // Combine noises for aurora curtain effect
+            float aurora = (noise1 + noise2 * 0.7 + noise3 * 0.5) / 2.2;
+            aurora = aurora * 0.5 + 0.5; // Normalize to 0-1
+
+            // Create vertical curtain bands
+            float curtain = sin(vWorldPosition.x * 0.05 + time * 0.2) * 0.5 + 0.5;
+            curtain *= sin(vWorldPosition.z * 0.03 - time * 0.15) * 0.5 + 0.5;
+
+            // Aurora visibility peaks at certain heights
+            float heightFade = sin(auroraY * 3.14159) * exp(-auroraY * 0.5);
+
+            // Combine all factors
+            float auroraStrength = aurora * curtain * heightFade * auroraIntensity;
+            auroraStrength = pow(auroraStrength, 1.5) * 2.0;
+
+            // Aurora colors - green and cyan with hints of purple
+            vec3 auroraGreen = vec3(0.2, 1.0, 0.4);
+            vec3 auroraCyan = vec3(0.1, 0.9, 0.95);
+            vec3 auroraPurple = vec3(0.6, 0.2, 0.8);
+
+            // Mix aurora colors based on noise
+            vec3 auroraColor = mix(auroraGreen, auroraCyan, noise1 * 0.5 + 0.5);
+            auroraColor = mix(auroraColor, auroraPurple, noise2 * 0.3 + 0.15);
+
+            // Add aurora to sky color
+            color += auroraColor * auroraStrength * 0.6;
+          }
+
           gl_FragColor = vec4(color, 1.0);
         }
       `,
       side: THREE.BackSide,
     });
 
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    this.scene.add(sky);
+    this.skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    this.scene.add(this.skyMesh);
 
     this.addStars();
   }
@@ -301,19 +427,22 @@ export class WorldScene {
     this.scene.add(magenta);
   }
 
-  private createWater(): void {
+  private createLuminousWater(): void {
     const waterGeo = new THREE.PlaneGeometry(300, 300, 100, 100);
 
     const waterMat = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        waterColor: { value: new THREE.Color(0x0a2a4a) },
-        deepColor: { value: new THREE.Color(0x050a1a) },
+        waterColor: { value: new THREE.Color(0x0a4a6a) },
+        deepColor: { value: new THREE.Color(0x051a2a) },
+        glowColor: { value: new THREE.Color(0x00ffff) },
+        glowIntensity: { value: 1.2 },
       },
       vertexShader: `
         uniform float time;
         varying vec2 vUv;
         varying float vWave;
+        varying vec3 vPosition;
         void main() {
           vUv = uv;
           vec3 pos = position;
@@ -321,22 +450,77 @@ export class WorldScene {
           wave += sin(pos.x * 0.05 - time * 0.5) * 0.2;
           pos.z = wave;
           vWave = wave;
+          vPosition = pos;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
         }
       `,
       fragmentShader: `
         uniform vec3 waterColor;
         uniform vec3 deepColor;
+        uniform vec3 glowColor;
+        uniform float glowIntensity;
         uniform float time;
         varying vec2 vUv;
         varying float vWave;
+        varying vec3 vPosition;
+
+        // Simple noise for glow patterns
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
         void main() {
           float t = (vWave + 0.5) * 0.5;
           vec3 color = mix(deepColor, waterColor, t);
+
+          // Original highlight
           float highlight = pow(max(vWave, 0.0) * 2.0, 3.0) * 0.5;
           color += vec3(0.2, 0.4, 0.6) * highlight;
+
+          // Luminous cyan glow effect
+          float glow1 = noise(vUv * 20.0 + time * 0.3);
+          float glow2 = noise(vUv * 15.0 - time * 0.2 + vec2(100.0, 50.0));
+          float glow3 = noise(vPosition.xy * 0.1 + time * 0.1);
+
+          // Create flowing glow patterns
+          float glowPattern = (glow1 + glow2 * 0.7 + glow3 * 0.5) / 2.2;
+          glowPattern = pow(glowPattern, 2.0);
+
+          // Add wave-synchronized glow
+          float waveGlow = pow(max(vWave + 0.3, 0.0), 2.0);
+
+          // Combine glow effects
+          float totalGlow = (glowPattern * 0.6 + waveGlow * 0.4) * glowIntensity;
+
+          // Pulsing effect
+          float pulse = sin(time * 2.0) * 0.15 + 0.85;
+          totalGlow *= pulse;
+
+          // Add cyan glow to color
+          color += glowColor * totalGlow * 0.4;
+
+          // Edge shimmer
+          float shimmer = sin(vPosition.x * 0.5 + time * 3.0) * sin(vPosition.y * 0.5 + time * 2.5);
+          shimmer = shimmer * 0.5 + 0.5;
+          color += glowColor * shimmer * waveGlow * 0.2;
+
           float dist = length(vUv - 0.5) * 2.0;
           float alpha = 1.0 - smoothstep(0.4, 1.0, dist);
+
+          // Boost alpha slightly for glow visibility
+          alpha = min(alpha + totalGlow * 0.1, 0.95);
+
           gl_FragColor = vec4(color, alpha * 0.85);
         }
       `,
@@ -557,6 +741,12 @@ export class WorldScene {
     const delta = this.clock.getDelta();
     const elapsed = this.clock.getElapsedTime();
 
+    // Update sky aurora animation
+    if (this.skyMesh) {
+      const mat = this.skyMesh.material as THREE.ShaderMaterial;
+      mat.uniforms.time.value = elapsed;
+    }
+
     // Update water
     if (this.waterPlane) {
       const mat = this.waterPlane.material as THREE.ShaderMaterial;
@@ -600,8 +790,12 @@ export class WorldScene {
       this.buildingTool.updateGhost(this.mouseNDC);
     }
 
-    // Render
-    if (this.renderer) {
+    // Render with post-processing or standard
+    if (this.composer && !this.isWebGPU) {
+      // Use EffectComposer for WebGL with bloom
+      this.composer.render();
+    } else if (this.renderer) {
+      // Direct render for WebGPU or if composer not available
       this.renderer.render(this.scene, this.camera);
     }
   };
@@ -675,6 +869,16 @@ export class WorldScene {
     if (this.renderer) {
       this.renderer.setSize(width, height);
     }
+
+    // Update composer size for post-processing
+    if (this.composer) {
+      this.composer.setSize(width, height);
+    }
+
+    // Update bloom pass resolution
+    if (this.bloomPass) {
+      this.bloomPass.resolution.set(width, height);
+    }
   };
 
   // === Cleanup ===
@@ -695,6 +899,9 @@ export class WorldScene {
     if (this.avatarSystem) this.avatarSystem.dispose();
     if (this.cameraController) this.cameraController.dispose();
     if (this.buildingTool) this.buildingTool.dispose();
+
+    // Dispose post-processing
+    if (this.composer) this.composer.dispose();
 
     if (this.renderer) this.renderer.dispose();
   }
