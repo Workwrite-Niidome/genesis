@@ -80,22 +80,42 @@ jobs:
 
             # Wait for database to be healthy (with status checking)
             echo "Waiting for services to be healthy..."
+            POSTGRES_HEALTHY=false
             for i in {1..30}; do
-              if docker compose -f docker-compose.prod.yml ps | grep -q "unhealthy\|Error"; then
-                echo "Container not healthy yet, checking logs..."
-                docker compose -f docker-compose.prod.yml logs --tail=20 postgres redis
+              sleep 5
+              echo "Checking status... ($i/30)"
+
+              # Check if postgres container exists and is running
+              if ! docker ps | grep -q genesis-postgres; then
+                echo "PostgreSQL container is not running. Checking logs..."
+                docker logs genesis-postgres 2>&1 | tail -30 || true
+
+                # If postgres data volume might be corrupted, reset it
+                if [ $i -eq 5 ]; then
+                  echo "PostgreSQL failed to start. Resetting data volume..."
+                  docker compose -f docker-compose.prod.yml down -v
+                  docker compose -f docker-compose.prod.yml up -d
+                fi
+                continue
               fi
+
+              # Check if healthy
               if docker compose -f docker-compose.prod.yml ps | grep postgres | grep -q "healthy"; then
                 echo "PostgreSQL is healthy!"
+                POSTGRES_HEALTHY=true
                 break
               fi
-              echo "Waiting... ($i/30)"
-              sleep 5
             done
 
             # Check final container status
             echo "Container status:"
             docker compose -f docker-compose.prod.yml ps
+
+            if [ "$POSTGRES_HEALTHY" = false ]; then
+              echo "PostgreSQL failed to become healthy. Final logs:"
+              docker logs genesis-postgres 2>&1 | tail -50 || true
+              exit 1
+            fi
 
             # Run migrations
             echo "Running migrations..."
