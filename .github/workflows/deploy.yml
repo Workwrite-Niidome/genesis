@@ -65,62 +65,83 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 10m
-          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,TRAEFIK_USERS,IMAGE_PREFIX
+          command_timeout: 30m
+          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,IMAGE_PREFIX
           script: |
             set -e
 
+            echo "=== Diagnostics ==="
+            df -h / | tail -1
+            docker system df 2>/dev/null || true
+
+            # Free disk space: remove unused images, stopped containers, build cache
+            echo "=== Cleaning up Docker resources ==="
+            docker system prune -af 2>/dev/null || true
+            df -h / | tail -1
+
+            # Update code
             cd ~/genesis || {
               rm -rf ~/genesis
               git clone https://x-access-token:${GITHUB_TOKEN}@github.com/Workwrite-Niidome/genesis.git ~/genesis
               cd ~/genesis
             }
-
-            # Force update to latest code (handle stale refs)
             git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/Workwrite-Niidome/genesis.git
             git fetch --prune origin
             git checkout master 2>/dev/null || git checkout -b master origin/master
             git reset --hard origin/master
 
             # Create .env file
-            cat > .env << EOF
-            POSTGRES_USER=genesis
-            POSTGRES_DB=genesis
-            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            REDIS_PASSWORD=${REDIS_PASSWORD}
-            SECRET_KEY=${SECRET_KEY}
-            TWITTER_CLIENT_ID=${TWITTER_CLIENT_ID}
-            TWITTER_CLIENT_SECRET=${TWITTER_CLIENT_SECRET}
-            CLAUDE_API_KEY=${CLAUDE_API_KEY}
-            ACME_EMAIL=${ACME_EMAIL}
-            TRAEFIK_USERS=${TRAEFIK_USERS}
-            EOF
+            echo "POSTGRES_USER=genesis" > .env
+            echo "POSTGRES_DB=genesis" >> .env
+            echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" >> .env
+            echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> .env
+            echo "SECRET_KEY=${SECRET_KEY}" >> .env
+            echo "TWITTER_CLIENT_ID=${TWITTER_CLIENT_ID}" >> .env
+            echo "TWITTER_CLIENT_SECRET=${TWITTER_CLIENT_SECRET}" >> .env
+            echo "CLAUDE_API_KEY=${CLAUDE_API_KEY}" >> .env
+            echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
+            echo "TRAEFIK_USERS=" >> .env
 
             # Login to GHCR
             echo "${GITHUB_TOKEN}" | docker login ghcr.io -u github --password-stdin
 
             # Pull latest images
+            echo "=== Pulling backend image ==="
             docker pull ${IMAGE_PREFIX}/backend:latest
+            echo "=== Pulling frontend image ==="
             docker pull ${IMAGE_PREFIX}/frontend:latest
 
             # Tag images for docker-compose
             docker tag ${IMAGE_PREFIX}/backend:latest genesis-backend:latest
             docker tag ${IMAGE_PREFIX}/frontend:latest genesis-frontend:latest
 
-            # Restart services
-            docker compose -f docker-compose.prod.yml down --remove-orphans || true
+            # Stop existing services
+            echo "=== Restarting services ==="
+            docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+
+            # Start services
             docker compose -f docker-compose.prod.yml up -d
 
-            # Wait for services
-            sleep 15
+            # Wait for database to be healthy
+            echo "=== Waiting for database ==="
+            for i in $(seq 1 30); do
+              if docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U genesis 2>/dev/null; then
+                echo "Database ready"
+                break
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 2
+            done
 
             # Run migrations
-            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning"
+            echo "=== Running migrations ==="
+            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
 
-            # Show status
+            # Show final status
+            echo "=== Service Status ==="
             docker compose -f docker-compose.prod.yml ps
 
-            echo "Deployment complete!"
+            echo "=== Deployment complete ==="
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
@@ -130,22 +151,4 @@ jobs:
           TWITTER_CLIENT_SECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
-          TRAEFIK_USERS: ${{ secrets.TRAEFIK_USERS }}
           IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
-
-  # ============ Notify ============
-  notify:
-    name: Notify Deployment
-    runs-on: ubuntu-latest
-    needs: [build, deploy]
-    if: always()
-
-    steps:
-      - name: Check deployment status
-        run: |
-          if [ "${{ needs.deploy.result }}" == "success" ]; then
-            echo "✅ GENESIS v4 deployed successfully to genesis-pj.net"
-          else
-            echo "❌ Deployment failed"
-            exit 1
-          fi
