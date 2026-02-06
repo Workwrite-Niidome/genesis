@@ -19,6 +19,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
+          envs: GITHUB_TOKEN
           script: |
             set -e  # Exit on any error
 
@@ -26,13 +27,14 @@ jobs:
             if [ ! -d ~/genesis/.git ]; then
               echo "Setting up repository..."
               rm -rf ~/genesis
-              git clone https://github.com/Workwrite-Niidome/genesis.git ~/genesis
+              git clone https://x-access-token:${GITHUB_TOKEN}@github.com/Workwrite-Niidome/genesis.git ~/genesis
             fi
 
             cd ~/genesis
 
-            # Pull latest code
+            # Pull latest code (use token for auth)
             echo "Pulling latest code..."
+            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/Workwrite-Niidome/genesis.git
             git fetch origin master
             git reset --hard origin/master
 
@@ -56,6 +58,8 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 
             echo "Deployment complete!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ============ Notify ============
   notify:
