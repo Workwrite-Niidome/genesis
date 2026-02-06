@@ -22,9 +22,10 @@ jobs:
           script: |
             set -e  # Exit on any error
 
-            # Clone repo if doesn't exist, otherwise pull
-            if [ ! -d ~/genesis ]; then
-              echo "Cloning repository..."
+            # Clone repo if doesn't exist or isn't a git repo
+            if [ ! -d ~/genesis/.git ]; then
+              echo "Setting up repository..."
+              rm -rf ~/genesis
               git clone https://github.com/Workwrite-Niidome/genesis.git ~/genesis
             fi
 
