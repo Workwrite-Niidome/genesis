@@ -4,6 +4,8 @@
  * Encapsulates all Three.js scene management (init, entity sync, voxels,
  * speech, build mode, camera) so both desktop WorldViewV3 and
  * MobileWorldViewV3 share identical 3D behaviour.
+ *
+ * @version 2026-02-06-v2 - Fixed: Server voxels no longer override template if < 50k
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { WorldScene } from '../engine/WorldScene';
@@ -216,8 +218,9 @@ export function useWorldSceneV3(): WorldSceneV3 {
     }).catch((err) => console.warn('[GENESIS] Failed to load world state:', err));
 
     // Try to load voxels from server (expanded range for 3x town, only override if server has substantial data)
-    // The template generates ~80000+ voxels, so only use server data if it has more than 50000
+    // The template generates ~317,000 voxels, so only use server data if it has more than 50000
     const VOXEL_THRESHOLD = 50000;
+    console.log('[GENESIS] Voxel threshold check enabled (v2026-02-06)');
     api.v3.getVoxels({ min_x: -350, max_x: 350, min_y: -10, max_y: 150, min_z: -350, max_z: 350 })
       .then((voxels: any[]) => {
         if (voxels && voxels.length >= VOXEL_THRESHOLD) {

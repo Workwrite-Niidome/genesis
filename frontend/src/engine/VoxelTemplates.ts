@@ -127,7 +127,7 @@ function createMassiveToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
   const height = 30;
   const pillarSpacing = 12;
 
-  // Giant Pillars - EMISSIVE for glow
+  // Giant Pillars - EMISSIVE for glow (clean design, no extra decorations)
   for (let y = 0; y < height; y++) {
     // Left pillar - 3x3 core - EMISSIVE RED
     for (let dx = -1; dx <= 1; dx++) {
@@ -146,14 +146,6 @@ function createMassiveToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
           color: EMISSIVE_RED, material: 'emissive', hasCollision: true
         });
       }
-    }
-
-    // Bright cyan accents every 3 blocks
-    if (y % 3 === 0) {
-      voxels.push({ x: offsetX - pillarSpacing - 2, y, z: offsetZ, color: NEON_CYAN, material: 'emissive', hasCollision: false });
-      voxels.push({ x: offsetX + pillarSpacing + 2, y, z: offsetZ, color: NEON_CYAN, material: 'emissive', hasCollision: false });
-      voxels.push({ x: offsetX - pillarSpacing, y, z: offsetZ - 2, color: EMISSIVE_GOLD, material: 'emissive', hasCollision: false });
-      voxels.push({ x: offsetX + pillarSpacing, y, z: offsetZ - 2, color: EMISSIVE_GOLD, material: 'emissive', hasCollision: false });
     }
   }
 
@@ -182,20 +174,9 @@ function createMassiveToriiGate(offsetX = 0, offsetZ = 0): Voxel[] {
     voxels.push({ x: offsetX + x, y: height - 9, z: offsetZ, color: EMISSIVE_GOLD, material: 'emissive', hasCollision: false });
   }
 
-  // Central golden ornaments
-  for (let dy = 0; dy < 5; dy++) {
+  // Central golden ornament on top (single elegant piece)
+  for (let dy = 0; dy < 3; dy++) {
     voxels.push({ x: offsetX, y: height + 4 + dy, z: offsetZ, color: EMISSIVE_GOLD, material: 'emissive', hasCollision: true });
-  }
-
-  // Floating cyan orbs around the torii
-  const orbPositions = [
-    [-pillarSpacing - 3, height - 5], [pillarSpacing + 3, height - 5],
-    [-pillarSpacing - 3, height - 15], [pillarSpacing + 3, height - 15],
-    [-pillarSpacing - 3, 10], [pillarSpacing + 3, 10],
-    [0, height + 6],
-  ];
-  for (const [ox, oy] of orbPositions) {
-    voxels.push({ x: offsetX + ox, y: oy, z: offsetZ, color: NEON_CYAN, material: 'emissive', hasCollision: false });
   }
 
   return voxels;
@@ -759,32 +740,34 @@ function createLanternSea(centerX: number, centerZ: number, radius: number, coun
   const voxels: Voxel[] = [];
   const rand = seededRandom(centerX * 1000 + centerZ);
 
-  // Water surface (sparse to reduce voxel count)
-  for (let dx = -radius; dx <= radius; dx += 3) {
-    for (let dz = -radius; dz <= radius; dz += 3) {
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist <= radius) {
-        voxels.push({
-          x: centerX + dx, y: 0, z: centerZ + dz,
-          color: DEEP_WATER, material: 'liquid', hasCollision: false,
-        });
-      }
-    }
-  }
+  // No water base blocks - the scene has a water plane shader already
 
-  // Place lanterns (limited to avoid performance issues)
-  const actualCount = Math.min(count, 300);
+  // Place lanterns (sparse distribution for aesthetic appeal)
+  // Limit count and ensure minimum spacing between lanterns
+  const actualCount = Math.min(count, 150); // Reduced from 300
   const placed = new Set<string>();
+  const minSpacing = 8; // Minimum distance between lanterns
   let attempts = 0;
 
-  while (placed.size < actualCount && attempts < actualCount * 3) {
+  while (placed.size < actualCount && attempts < actualCount * 5) {
     const angle = rand() * Math.PI * 2;
-    const r = rand() * (radius - 2) + 2;
+    const r = 5 + rand() * (radius - 10); // Keep away from center and edge
     const lx = Math.round(centerX + Math.cos(angle) * r);
     const lz = Math.round(centerZ + Math.sin(angle) * r);
     const key = `${lx},${lz}`;
 
-    if (!placed.has(key)) {
+    // Check spacing from existing lanterns
+    let tooClose = false;
+    for (const existingKey of placed) {
+      const [ex, ez] = existingKey.split(',').map(Number);
+      const dist = Math.sqrt((lx - ex) ** 2 + (lz - ez) ** 2);
+      if (dist < minSpacing) {
+        tooClose = true;
+        break;
+      }
+    }
+
+    if (!tooClose && !placed.has(key)) {
       placed.add(key);
       voxels.push(...createFloatingLantern(lx, lz, lx * 100 + lz));
     }
@@ -1622,6 +1605,231 @@ function createShopBuilding(x: number, z: number, shopType: 'food' | 'goods' | '
   return voxels;
 }
 
+// ========================================
+// NEW: Terrain and Diverse Building Types
+// ========================================
+
+/**
+ * Create a raised terrain platform/hill with natural stone edges.
+ */
+function createTerrainHill(x: number, z: number, radius: number, height: number): Voxel[] {
+  const voxels: Voxel[] = [];
+
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dz = -radius; dz <= radius; dz++) {
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= radius) {
+        // Height decreases toward edges
+        const localHeight = Math.max(1, Math.floor(height * (1 - dist / radius * 0.6)));
+        for (let dy = 0; dy < localHeight; dy++) {
+          const isEdge = dist > radius - 2;
+          voxels.push({
+            x: x + dx, y: dy, z: z + dz,
+            color: isEdge ? STONE : (dy === localHeight - 1 ? TATAMI_GREEN : DARK_STONE),
+            material: 'solid', hasCollision: true,
+          });
+        }
+      }
+    }
+  }
+  return voxels;
+}
+
+/**
+ * Create a stone staircase between two heights.
+ */
+function createStaircase(x: number, z: number, startY: number, endY: number, direction: 'x' | 'z', length: number): Voxel[] {
+  const voxels: Voxel[] = [];
+  const steps = Math.abs(endY - startY);
+  const stepLength = Math.floor(length / steps);
+  const goingUp = endY > startY;
+
+  for (let i = 0; i <= steps; i++) {
+    const currentY = goingUp ? startY + i : startY - i;
+    const stepStart = i * stepLength;
+
+    // Create step platform
+    for (let s = 0; s < stepLength; s++) {
+      const sx = direction === 'x' ? x + stepStart + s : x;
+      const sz = direction === 'z' ? z + stepStart + s : z;
+
+      // Step surface
+      voxels.push({
+        x: sx, y: currentY, z: sz,
+        color: LIGHT_STONE, material: 'solid', hasCollision: true,
+      });
+      // Side walls
+      for (let side = -1; side <= 1; side += 2) {
+        const wallX = direction === 'z' ? sx + side : sx;
+        const wallZ = direction === 'x' ? sz + side : sz;
+        voxels.push({
+          x: wallX, y: currentY, z: wallZ,
+          color: STONE, material: 'solid', hasCollision: true,
+        });
+      }
+    }
+  }
+  return voxels;
+}
+
+/**
+ * Create a wooden watchtower.
+ */
+function createWatchTower(x: number, z: number, baseY: number = 0): Voxel[] {
+  const voxels: Voxel[] = [];
+  const height = 12;
+
+  // Four corner pillars
+  const corners = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+  for (const [dx, dz] of corners) {
+    for (let y = baseY; y < baseY + height; y++) {
+      voxels.push({
+        x: x + dx * 2, y, z: z + dz * 2,
+        color: DARK_WOOD, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Platform at top
+  for (let dx = -3; dx <= 3; dx++) {
+    for (let dz = -3; dz <= 3; dz++) {
+      voxels.push({
+        x: x + dx, y: baseY + height, z: z + dz,
+        color: WOOD, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Railing
+  for (let dx = -3; dx <= 3; dx++) {
+    voxels.push({ x: x + dx, y: baseY + height + 1, z: z - 3, color: DARK_WOOD, material: 'solid', hasCollision: true });
+    voxels.push({ x: x + dx, y: baseY + height + 1, z: z + 3, color: DARK_WOOD, material: 'solid', hasCollision: true });
+  }
+  for (let dz = -3; dz <= 3; dz++) {
+    voxels.push({ x: x - 3, y: baseY + height + 1, z: z + dz, color: DARK_WOOD, material: 'solid', hasCollision: true });
+    voxels.push({ x: x + 3, y: baseY + height + 1, z: z + dz, color: DARK_WOOD, material: 'solid', hasCollision: true });
+  }
+
+  // Roof
+  for (let dy = 0; dy < 3; dy++) {
+    const size = 4 - dy;
+    for (let dx = -size; dx <= size; dx++) {
+      voxels.push({
+        x: x + dx, y: baseY + height + 2 + dy, z: z,
+        color: TILE_DARK, material: 'solid', hasCollision: true,
+      });
+      voxels.push({
+        x: x, y: baseY + height + 2 + dy, z: z + dx,
+        color: TILE_DARK, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Lantern at top
+  voxels.push({ x: x, y: baseY + height + 5, z: z, color: LANTERN_GOLD, material: 'emissive', hasCollision: false });
+
+  return voxels;
+}
+
+/**
+ * Create a traditional tea house with veranda.
+ */
+function createTeaHouse(x: number, z: number, baseY: number = 0): Voxel[] {
+  const voxels: Voxel[] = [];
+  const width = 8;
+  const depth = 6;
+  const height = 5;
+
+  // Raised floor platform
+  for (let dx = -1; dx <= width + 1; dx++) {
+    for (let dz = -1; dz <= depth + 1; dz++) {
+      voxels.push({
+        x: x + dx, y: baseY, z: z + dz,
+        color: ENGAWA_WOOD, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Tatami floor
+  for (let dx = 0; dx < width; dx++) {
+    for (let dz = 0; dz < depth; dz++) {
+      voxels.push({
+        x: x + dx, y: baseY + 1, z: z + dz,
+        color: TATAMI_GREEN, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Corner posts
+  const posts = [[0, 0], [width - 1, 0], [0, depth - 1], [width - 1, depth - 1]];
+  for (const [px, pz] of posts) {
+    for (let y = baseY + 1; y < baseY + height; y++) {
+      voxels.push({
+        x: x + px, y, z: z + pz,
+        color: COLUMN_VERMILLION, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Shoji screens (partial walls)
+  for (let dx = 1; dx < width - 1; dx++) {
+    if (dx % 2 === 0) {
+      for (let y = baseY + 2; y < baseY + height - 1; y++) {
+        voxels.push({ x: x + dx, y, z: z, color: SHOJI_CREAM, material: 'solid', hasCollision: true });
+      }
+    }
+  }
+
+  // Low roof with wide eaves
+  for (let dx = -2; dx <= width + 1; dx++) {
+    for (let dz = -2; dz <= depth + 1; dz++) {
+      voxels.push({
+        x: x + dx, y: baseY + height, z: z + dz,
+        color: TILE_GRAY, material: 'solid', hasCollision: true,
+      });
+    }
+  }
+
+  // Lantern at entrance
+  voxels.push({ x: x + Math.floor(width / 2), y: baseY + height - 1, z: z - 1, color: LANTERN_RED, material: 'emissive', hasCollision: false });
+
+  return voxels;
+}
+
+/**
+ * Create a market stall.
+ */
+function createMarketStall(x: number, z: number, baseY: number = 0, type: 'food' | 'goods' | 'lantern'): Voxel[] {
+  const voxels: Voxel[] = [];
+
+  // Counter
+  for (let dx = 0; dx < 4; dx++) {
+    voxels.push({ x: x + dx, y: baseY, z: z, color: WOOD, material: 'solid', hasCollision: true });
+    voxels.push({ x: x + dx, y: baseY + 1, z: z, color: WOOD, material: 'solid', hasCollision: true });
+  }
+
+  // Support posts
+  voxels.push({ x: x, y: baseY + 2, z: z, color: DARK_WOOD, material: 'solid', hasCollision: true });
+  voxels.push({ x: x + 3, y: baseY + 2, z: z, color: DARK_WOOD, material: 'solid', hasCollision: true });
+  voxels.push({ x: x, y: baseY + 3, z: z, color: DARK_WOOD, material: 'solid', hasCollision: true });
+  voxels.push({ x: x + 3, y: baseY + 3, z: z, color: DARK_WOOD, material: 'solid', hasCollision: true });
+
+  // Cloth canopy
+  const canopyColor = type === 'food' ? LANTERN_RED : type === 'goods' ? NEON_PURPLE : LANTERN_GOLD;
+  for (let dx = -1; dx <= 4; dx++) {
+    voxels.push({ x: x + dx, y: baseY + 4, z: z, color: canopyColor, material: 'solid', hasCollision: true });
+    voxels.push({ x: x + dx, y: baseY + 4, z: z - 1, color: canopyColor, material: 'solid', hasCollision: true });
+  }
+
+  // Display items based on type
+  if (type === 'lantern') {
+    voxels.push({ x: x + 1, y: baseY + 2, z: z, color: LANTERN_GOLD, material: 'emissive', hasCollision: false });
+    voxels.push({ x: x + 2, y: baseY + 2, z: z, color: LANTERN_RED, material: 'emissive', hasCollision: false });
+  }
+
+  return voxels;
+}
+
 /**
  * Generate the complete initial world template.
  * "Cho-Kaguya-hime" Cyberpunk Japanese Fantasy Townscape.
@@ -1654,7 +1862,7 @@ export function generateInitialWorld(): Voxel[] {
   // Water zone is radius 120 - no buildings here (3x expanded)
   // ========================================
   // Main lantern sea surrounding torii - expanded
-  allVoxels.push(...createLanternSea(0, 0, 100, 600));
+  allVoxels.push(...createLanternSea(0, 0, 100, 120)); // Sparse elegant distribution
 
   // ========================================
   // Inner Ring: Waterfront Buildings (radius 120-140)
@@ -1726,6 +1934,70 @@ export function generateInitialWorld(): Voxel[] {
 
   for (const block of townBlockPositions) {
     allVoxels.push(...createTownBlock(block.x, block.z, block.size));
+  }
+
+  // ========================================
+  // Terrain Elevation: Hills and Raised Areas
+  // ========================================
+  const hillPositions = [
+    { x: 200, z: -200, radius: 15, height: 6 },   // NE corner hill
+    { x: -210, z: -195, radius: 12, height: 5 },  // NW corner hill
+    { x: 195, z: 205, radius: 14, height: 7 },    // SE corner hill
+    { x: -205, z: 200, radius: 13, height: 5 },   // SW corner hill
+    { x: 170, z: 0, radius: 10, height: 4 },      // East hill
+    { x: -175, z: 0, radius: 11, height: 4 },     // West hill
+  ];
+
+  for (const hill of hillPositions) {
+    allVoxels.push(...createTerrainHill(hill.x, hill.z, hill.radius, hill.height));
+  }
+
+  // ========================================
+  // Staircases connecting elevations
+  // ========================================
+  // Stairs to NE hill
+  allVoxels.push(...createStaircase(200, -185, 0, 5, 'z', 12));
+  // Stairs to SE hill
+  allVoxels.push(...createStaircase(195, 190, 0, 6, 'z', 14));
+  // Stairs to NW hill
+  allVoxels.push(...createStaircase(-210, -180, 0, 4, 'z', 10));
+  // Stairs to SW hill
+  allVoxels.push(...createStaircase(-205, 185, 0, 4, 'z', 10));
+
+  // ========================================
+  // Watch Towers on hills
+  // ========================================
+  allVoxels.push(...createWatchTower(200, -200, 6));   // On NE hill
+  allVoxels.push(...createWatchTower(-205, 200, 5));   // On SW hill
+
+  // ========================================
+  // Tea Houses (scattered throughout town)
+  // ========================================
+  allVoxels.push(...createTeaHouse(180, -150, 0));     // NE area
+  allVoxels.push(...createTeaHouse(-185, 155, 0));     // SW area
+  allVoxels.push(...createTeaHouse(150, 175, 0));      // SE area
+  allVoxels.push(...createTeaHouse(-155, -180, 0));    // NW area
+  // Tea house on elevated terrain
+  allVoxels.push(...createTeaHouse(195, 198, 7));      // On SE hill
+
+  // ========================================
+  // Market Stalls (busy market area)
+  // ========================================
+  const marketPositions: Array<{ x: number; z: number; type: 'food' | 'goods' | 'lantern' }> = [
+    { x: 145, z: -140, type: 'food' },
+    { x: 150, z: -140, type: 'goods' },
+    { x: 155, z: -140, type: 'lantern' },
+    { x: -145, z: 145, type: 'food' },
+    { x: -150, z: 145, type: 'goods' },
+    { x: -155, z: 145, type: 'lantern' },
+    { x: 140, z: 150, type: 'food' },
+    { x: 145, z: 150, type: 'goods' },
+    { x: -140, z: -150, type: 'lantern' },
+    { x: -145, z: -150, type: 'food' },
+  ];
+
+  for (const stall of marketPositions) {
+    allVoxels.push(...createMarketStall(stall.x, stall.z, 0, stall.type));
   }
 
   // Additional individual detailed town houses (filling gaps)
