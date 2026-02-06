@@ -85,61 +85,68 @@ async def list_posts(
     db: AsyncSession = Depends(get_db),
 ):
     """List posts with sorting and filtering"""
-    query = select(Post).options(selectinload(Post.author))
+    import logging
+    logger = logging.getLogger(__name__)
 
-    # Filter by submolt
-    if submolt:
-        query = query.where(Post.submolt == submolt)
+    try:
+        query = select(Post).options(selectinload(Post.author))
 
-    # Apply sorting
-    if sort == "new":
-        query = query.order_by(desc(Post.created_at))
-    elif sort == "top":
-        query = query.order_by(desc(Post.upvotes - Post.downvotes))
-    elif sort == "rising":
-        # Recent posts with good score
-        query = query.order_by(desc(Post.upvotes - Post.downvotes), desc(Post.created_at))
-    else:  # hot
-        query = query.order_by(desc(Post.created_at))  # Simplified; real hot needs computed column
+        # Filter by submolt
+        if submolt:
+            query = query.where(Post.submolt == submolt)
 
-    # Pagination
-    query = query.offset(offset).limit(limit + 1)
+        # Apply sorting
+        if sort == "new":
+            query = query.order_by(desc(Post.created_at))
+        elif sort == "top":
+            query = query.order_by(desc(Post.upvotes - Post.downvotes))
+        elif sort == "rising":
+            # Recent posts with good score
+            query = query.order_by(desc(Post.upvotes - Post.downvotes), desc(Post.created_at))
+        else:  # hot
+            query = query.order_by(desc(Post.created_at))  # Simplified; real hot needs computed column
 
-    result = await db.execute(query)
-    posts = result.scalars().all()
+        # Pagination
+        query = query.offset(offset).limit(limit + 1)
 
-    has_more = len(posts) > limit
-    if has_more:
-        posts = posts[:limit]
+        result = await db.execute(query)
+        posts = result.scalars().all()
 
-    # Get user votes if authenticated
-    user_votes = {}
-    if current_resident:
-        post_ids = [p.id for p in posts]
-        vote_result = await db.execute(
-            select(Vote).where(
-                and_(
-                    Vote.resident_id == current_resident.id,
-                    Vote.target_type == "post",
-                    Vote.target_id.in_(post_ids),
+        has_more = len(posts) > limit
+        if has_more:
+            posts = posts[:limit]
+
+        # Get user votes if authenticated
+        user_votes = {}
+        if current_resident:
+            post_ids = [p.id for p in posts]
+            vote_result = await db.execute(
+                select(Vote).where(
+                    and_(
+                        Vote.resident_id == current_resident.id,
+                        Vote.target_type == "post",
+                        Vote.target_id.in_(post_ids),
+                    )
                 )
             )
+            for vote in vote_result.scalars():
+                user_votes[vote.target_id] = vote.value
+
+        # Count total
+        count_query = select(func.count(Post.id))
+        if submolt:
+            count_query = count_query.where(Post.submolt == submolt)
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        return PostList(
+            posts=[post_to_response(p, user_votes.get(p.id)) for p in posts],
+            total=total,
+            has_more=has_more,
         )
-        for vote in vote_result.scalars():
-            user_votes[vote.target_id] = vote.value
-
-    # Count total
-    count_query = select(func.count(Post.id))
-    if submolt:
-        count_query = count_query.where(Post.submolt == submolt)
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    return PostList(
-        posts=[post_to_response(p, user_votes.get(p.id)) for p in posts],
-        total=total,
-        has_more=has_more,
-    )
+    except Exception as e:
+        logger.error(f"Error in list_posts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.get("/{post_id}", response_model=PostResponse)
