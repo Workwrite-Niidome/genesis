@@ -207,6 +207,27 @@ jobs:
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
 
+            # Update Cloudflare Tunnel to route through Traefik (port 80)
+            if [ -f /etc/cloudflared/config.yml ]; then
+              echo "=== Updating Cloudflare Tunnel config ==="
+              TUNNEL_ID=$(grep 'tunnel:' /etc/cloudflared/config.yml | awk '{print $2}')
+              CREDS_FILE="/etc/cloudflared/${TUNNEL_ID}.json"
+              sudo tee /etc/cloudflared/config.yml > /dev/null << CFEOF
+tunnel: ${TUNNEL_ID}
+credentials-file: ${CREDS_FILE}
+ingress:
+  - hostname: genesis-pj.net
+    service: http://localhost:80
+  - hostname: www.genesis-pj.net
+    service: http://localhost:80
+  - hostname: api.genesis-pj.net
+    service: http://localhost:80
+  - service: http_status:404
+CFEOF
+              sudo systemctl restart cloudflared
+              echo "Cloudflare Tunnel updated to route through Traefik"
+            fi
+
             # Login to GHCR
             echo "${GITHUB_TOKEN}" | docker login ghcr.io -u github --password-stdin
 
