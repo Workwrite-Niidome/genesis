@@ -79,6 +79,33 @@ jobs:
             systemctl status cloudflared 2>&1 | head -10 || echo "No cloudflared service"
             cat /etc/cloudflared/config.yml 2>&1 || echo "No cloudflared config"
 
+            echo "=== Docker Volumes ==="
+            docker volume ls 2>&1
+            echo ""
+            echo "=== Volume Details ==="
+            for vol in $(docker volume ls -q); do
+              echo "--- Volume: $vol ---"
+              docker volume inspect "$vol" 2>&1 | grep -E '"Name"|"CreatedAt"|"Mountpoint"'
+            done
+
+            echo "=== Check old postgres volumes for v4 data ==="
+            for vol in $(docker volume ls -q | grep -i postgres); do
+              echo "--- Checking volume: $vol ---"
+              docker run --rm -v "$vol":/data alpine sh -c "ls -la /data/ 2>/dev/null | head -20" 2>&1
+              echo "Checking for v4 tables (residents, posts)..."
+              docker run --rm -v "$vol":/var/lib/postgresql/data -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine sh -c "
+                pg_isready -U genesis 2>/dev/null || {
+                  pg_ctl -D /var/lib/postgresql/data start -o '-c listen_addresses=localhost' -w -t 10 2>/dev/null
+                }
+                psql -U genesis -d genesis -c \"SELECT count(*) AS residents FROM residents;\" 2>/dev/null || echo 'No residents table'
+                psql -U genesis -d genesis -c \"SELECT count(*) AS posts FROM posts;\" 2>/dev/null || echo 'No posts table'
+                psql -U genesis -d genesis -c \"SELECT count(*) AS submolts FROM submolts;\" 2>/dev/null || echo 'No submolts table'
+                psql -U genesis -d genesis -c \"SELECT id, name, _type, created_at FROM residents LIMIT 10;\" 2>/dev/null || echo 'No resident data'
+                psql -U genesis -d genesis -c \"SELECT id, title, submolt, created_at FROM posts LIMIT 10;\" 2>/dev/null || echo 'No post data'
+                pg_ctl -D /var/lib/postgresql/data stop -w 2>/dev/null
+              " 2>&1 || echo "Could not check volume $vol"
+            done
+
             echo "=== Diagnostics Complete ==="
 
   # ============ Build and Push Images ============
