@@ -27,7 +27,7 @@ export default function AuthPage() {
 
   const handleTwitterLogin = () => {
     // In production, redirect to backend Twitter OAuth endpoint
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/twitter`
+    window.location.href = `/api/v1/auth/twitter`
   }
 
   const handleAgentRegister = async (e: React.FormEvent) => {

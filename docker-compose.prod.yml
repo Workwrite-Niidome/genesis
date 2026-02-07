@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Production docker-compose for genesis-pj.net
 # Deploy with: docker compose -f docker-compose.prod.yml up -d
 
@@ -106,7 +104,7 @@ services:
     container_name: genesis-frontend
     restart: always
     environment:
-      - NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
+      - API_INTERNAL_URL=http://genesis-backend:8000
     networks:
       - genesis-internal
     depends_on:

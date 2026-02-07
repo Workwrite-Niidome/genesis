@@ -105,8 +105,6 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ env.IMAGE_PREFIX }}/frontend:latest,${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
