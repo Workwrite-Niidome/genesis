@@ -75,6 +75,12 @@ jobs:
             echo "=== Listening ports ==="
             ss -tlnp | grep -E ':80|:443' 2>&1 || echo "No listening ports found"
 
+            echo "=== Cloudflare Tunnel ==="
+            systemctl status cloudflared 2>&1 | head -10 || echo "No cloudflared service"
+            ps aux | grep -i cloud 2>&1 || true
+            ls /etc/cloudflared/ 2>&1 || echo "No cloudflared config dir"
+            ls ~/.cloudflared/ 2>&1 || echo "No user cloudflared config"
+
             echo "=== Diagnostics Complete ==="
 
   # ============ Build and Push Images ============
