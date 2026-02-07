@@ -52,6 +52,8 @@ services:
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
       - CORS_ORIGINS=https://genesis-pj.net,https://www.genesis-pj.net
       - DEBUG=false
+    ports:
+      - "127.0.0.1:8000:8000"
     networks:
       - genesis-internal
     depends_on:
@@ -105,6 +107,8 @@ services:
     restart: always
     environment:
       - API_INTERNAL_URL=http://genesis-backend:8000
+    ports:
+      - "127.0.0.1:3000:3000"
     networks:
       - genesis-internal
     depends_on:

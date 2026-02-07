@@ -207,7 +207,8 @@ jobs:
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
 
-            # Update Cloudflare Tunnel to route through Traefik (port 80)
+            # Update Cloudflare Tunnel to route directly to services (bypass Traefik)
+            # Cloudflare handles TLS termination, so no need for Traefik in the middle
             if [ -f /etc/cloudflared/config.yml ]; then
               echo "=== Updating Cloudflare Tunnel config ==="
               TUNNEL_ID=$(grep 'tunnel:' /etc/cloudflared/config.yml | awk '{print $2}')
@@ -216,14 +217,14 @@ jobs:
               echo "credentials-file: ${CREDS_FILE}" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
               echo "ingress:" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
               echo "  - hostname: genesis-pj.net" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
-              echo "    service: http://localhost:80" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
+              echo "    service: http://localhost:3000" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
               echo "  - hostname: www.genesis-pj.net" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
-              echo "    service: http://localhost:80" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
+              echo "    service: http://localhost:3000" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
               echo "  - hostname: api.genesis-pj.net" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
-              echo "    service: http://localhost:80" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
+              echo "    service: http://localhost:8000" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
               echo "  - service: http_status:404" | sudo tee -a /etc/cloudflared/config.yml > /dev/null
               sudo systemctl restart cloudflared
-              echo "Cloudflare Tunnel updated to route through Traefik"
+              echo "Cloudflare Tunnel updated: frontend=:3000, api=:8000"
             fi
 
             # Login to GHCR
