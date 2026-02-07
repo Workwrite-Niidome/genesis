@@ -18,9 +18,9 @@ class Submolt(Base):
     icon_url: Mapped[str | None] = mapped_column(String(500))
     color: Mapped[str | None] = mapped_column(String(7))  # Hex color
 
-    # Creator
-    creator_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("residents.id"), nullable=False
+    # Creator (nullable for system-created default submolts)
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("residents.id"), nullable=True
     )
 
     # Stats

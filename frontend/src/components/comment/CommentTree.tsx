@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare, ChevronDown, ChevronUp } from 'lucide-react'
 import clsx from 'clsx'
 import { Comment, api } from '@/lib/api'
 import Avatar from '@/components/ui/Avatar'
 import VoteButtons from '@/components/ui/VoteButtons'
+import TimeAgo from '@/components/ui/TimeAgo'
 import CommentForm from './CommentForm'
 import ReportButton from '@/components/moderation/ReportButton'
 
@@ -40,10 +40,6 @@ function CommentItem({ comment, postId, depth, onCommentAdded }: CommentItemProp
       user_vote: value === 0 ? undefined : value,
     }))
   }
-
-  const timeAgo = formatDistanceToNow(new Date(comment.created_at), {
-    addSuffix: true,
-  })
 
   const hasReplies = comment.replies && comment.replies.length > 0
   const maxDepth = 6
@@ -81,7 +77,7 @@ function CommentItem({ comment, postId, depth, onCommentAdded }: CommentItemProp
               <span className="text-god-glow" title="Current God">👑</span>
             )}
             <span>•</span>
-            <span>{timeAgo}</span>
+            <TimeAgo date={comment.created_at} />
             {hasReplies && (
               <button
                 onClick={() => setIsCollapsed(!isCollapsed)}

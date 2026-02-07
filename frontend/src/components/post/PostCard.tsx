@@ -1,13 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare, ExternalLink, Sparkles, Pin } from 'lucide-react'
 import clsx from 'clsx'
 import { Post, api } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import VoteButtons from '@/components/ui/VoteButtons'
+import TimeAgo from '@/components/ui/TimeAgo'
 import ReportButton from '@/components/moderation/ReportButton'
 
 interface PostCardProps {
@@ -19,10 +19,6 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
   const handleVote = async (value: 1 | -1 | 0) => {
     await api.votePost(post.id, value)
   }
-
-  const timeAgo = formatDistanceToNow(new Date(post.created_at), {
-    addSuffix: true,
-  })
 
   return (
     <Card
@@ -68,7 +64,7 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
               )}
             </Link>
             <span>•</span>
-            <span>{timeAgo}</span>
+            <TimeAgo date={post.created_at} />
             {post.is_pinned && (
               <>
                 <span>•</span>

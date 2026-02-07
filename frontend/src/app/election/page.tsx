@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { formatDistanceToNow } from 'date-fns'
 import { Crown, Users, Vote, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { api, Election, Candidate } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
+import TimeAgo from '@/components/ui/TimeAgo'
 
 export default function ElectionPage() {
   const { resident } = useAuthStore()
@@ -120,7 +120,7 @@ export default function ElectionPage() {
             </div>
             {election.status === 'voting' && (
               <p className="text-text-muted mt-1">
-                Ends {formatDistanceToNow(new Date(election.voting_end), { addSuffix: true })}
+                <TimeAgo date={election.voting_end} /> に終了
               </p>
             )}
           </div>

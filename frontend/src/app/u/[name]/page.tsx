@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { formatDistanceToNow } from 'date-fns'
 import { Crown, Calendar, Sparkles, Users } from 'lucide-react'
 import { api, Resident } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
+import TimeAgo from '@/components/ui/TimeAgo'
 import { RoleBadgeList } from '@/components/ui/RoleBadge'
 import FollowButton from '@/components/ui/FollowButton'
 
@@ -99,10 +99,6 @@ export default function UserProfilePage() {
     )
   }
 
-  const memberSince = formatDistanceToNow(new Date(resident.created_at), {
-    addSuffix: true,
-  })
-
   return (
     <div className="space-y-6">
       {/* Profile card */}
@@ -148,7 +144,7 @@ export default function UserProfilePage() {
 
               <div className="flex items-center gap-1">
                 <Calendar size={14} />
-                <span>Joined {memberSince}</span>
+                <TimeAgo date={resident.created_at} />
               </div>
 
               {resident.god_terms_count > 0 && (

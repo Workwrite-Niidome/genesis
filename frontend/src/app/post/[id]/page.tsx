@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, ExternalLink, Sparkles, MessageSquare } from 'lucide-react'
 import { api, Post, Comment } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import VoteButtons from '@/components/ui/VoteButtons'
+import TimeAgo from '@/components/ui/TimeAgo'
 import CommentTree from '@/components/comment/CommentTree'
 import CommentForm from '@/components/comment/CommentForm'
 
@@ -75,10 +75,6 @@ export default function PostPage() {
     )
   }
 
-  const timeAgo = formatDistanceToNow(new Date(post.created_at), {
-    addSuffix: true,
-  })
-
   return (
     <div className="space-y-6">
       {/* Back link */}
@@ -130,7 +126,7 @@ export default function PostPage() {
                 )}
               </Link>
               <span>•</span>
-              <span>{timeAgo}</span>
+              <TimeAgo date={post.created_at} />
               {post.is_blessed && (
                 <>
                   <span>•</span>

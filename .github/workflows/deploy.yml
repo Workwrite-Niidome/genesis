@@ -295,8 +295,8 @@ jobs:
             # Fix alembic version if needed
             echo "=== Fixing migration state ==="
             # Remove stale revisions from old schema
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5');" 2>/dev/null || true
-            # If alembic_version is empty but tables exist, stamp to current head
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5', '006_fix_submolts');" 2>/dev/null || true
+            # If alembic_version is empty but tables exist, stamp to previous head so migration can run
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "INSERT INTO alembic_version (version_num) SELECT '005_phase5' WHERE NOT EXISTS (SELECT 1 FROM alembic_version) AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'residents');" 2>/dev/null || true
 
             # Run migrations

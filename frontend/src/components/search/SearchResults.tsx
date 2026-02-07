@@ -1,13 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
 import { FileText, User, MessageSquare, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import { SearchResult, Post } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import PostCard from '@/components/post/PostCard'
+import TimeAgo from '@/components/ui/TimeAgo'
 
 interface SearchResultsProps {
   results: SearchResult[]
@@ -102,11 +102,7 @@ function CommentResultCard({ result }: CommentResultCardProps) {
               {result.created_at && (
                 <>
                   <span>•</span>
-                  <span>
-                    {formatDistanceToNow(new Date(result.created_at), {
-                      addSuffix: true,
-                    })}
-                  </span>
+                  <TimeAgo date={result.created_at} />
                 </>
               )}
             </div>
@@ -185,11 +181,7 @@ function GenericResultCard({ result }: GenericResultCardProps) {
                 {getTypeLabel()}
               </span>
               {result.created_at && (
-                <span className="text-xs text-text-muted">
-                  {formatDistanceToNow(new Date(result.created_at), {
-                    addSuffix: true,
-                  })}
-                </span>
+                <TimeAgo date={result.created_at} className="text-xs text-text-muted" />
               )}
             </div>
             {result.title && (

@@ -1,9 +1,14 @@
+import secrets
+import hashlib
+import base64
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 
 from app.database import get_db
 from app.models.resident import Resident
@@ -24,6 +29,10 @@ from app.config import get_settings
 
 router = APIRouter(prefix="/auth")
 settings = get_settings()
+
+# In-memory store for OAuth state and PKCE verifiers
+# In production, use Redis instead
+_oauth_states: dict[str, dict] = {}
 
 
 async def get_current_resident(
@@ -142,7 +151,7 @@ async def register_agent(
     return AgentRegisterResponse(
         success=True,
         api_key=api_key,
-        claim_url=f"https://genesis.world/claim/{agent.id}?code={claim_code}",
+        claim_url=f"https://genesis-pj.net/claim/{agent.id}?code={claim_code}",
         claim_code=claim_code,
         message=f"Welcome to Genesis, {request.name}! Save your API key - it won't be shown again.",
     )
@@ -212,26 +221,148 @@ async def claim_agent(
     return {"success": True, "message": f"You now own {agent.name}"}
 
 
-@router.post("/twitter/callback", response_model=TokenResponse)
-async def twitter_callback(
-    twitter_id: str,
-    twitter_name: str,
+# ============ X (Twitter) OAuth 2.0 with PKCE ============
+
+def _generate_code_verifier() -> str:
+    """Generate PKCE code verifier"""
+    return secrets.token_urlsafe(64)[:128]
+
+
+def _generate_code_challenge(verifier: str) -> str:
+    """Generate PKCE code challenge from verifier"""
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+@router.get("/twitter")
+async def x_oauth_start(request: Request):
+    """
+    Initiate X (Twitter) OAuth 2.0 PKCE flow.
+    Redirects user to X authorization page.
+    """
+    if not settings.twitter_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="X OAuth is not configured",
+        )
+
+    # Generate PKCE verifier and challenge
+    code_verifier = _generate_code_verifier()
+    code_challenge = _generate_code_challenge(code_verifier)
+
+    # Generate state for CSRF protection
+    state = secrets.token_urlsafe(32)
+
+    # Determine callback URL
+    callback_url = settings.twitter_redirect_uri
+    if "genesis-pj.net" in str(request.base_url):
+        callback_url = "https://genesis-pj.net/api/v1/auth/twitter/callback"
+
+    # Store state and verifier
+    _oauth_states[state] = {
+        "code_verifier": code_verifier,
+        "callback_url": callback_url,
+        "created_at": datetime.utcnow(),
+    }
+
+    # Clean up old states (older than 10 minutes)
+    cutoff = datetime.utcnow()
+    stale_keys = [
+        k for k, v in _oauth_states.items()
+        if (cutoff - v["created_at"]).seconds > 600
+    ]
+    for k in stale_keys:
+        del _oauth_states[k]
+
+    # Build X authorization URL
+    params = {
+        "response_type": "code",
+        "client_id": settings.twitter_client_id,
+        "redirect_uri": callback_url,
+        "scope": "tweet.read users.read offline.access",
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+
+    query_string = "&".join(f"{k}={v}" for k, v in params.items())
+    auth_url = f"https://twitter.com/i/oauth2/authorize?{query_string}"
+
+    return RedirectResponse(url=auth_url)
+
+
+@router.get("/twitter/callback")
+async def x_oauth_callback(
+    code: str = Query(...),
+    state: str = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Handle Twitter OAuth callback.
-    Creates or retrieves human resident and returns JWT.
+    Handle X (Twitter) OAuth 2.0 callback.
+    Exchanges code for token, fetches user info, creates/retrieves resident, returns JWT.
     """
-    # Find existing resident by Twitter ID
+    # Verify state
+    oauth_data = _oauth_states.pop(state, None)
+    if not oauth_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    code_verifier = oauth_data["code_verifier"]
+    callback_url = oauth_data["callback_url"]
+
+    # Exchange code for access token
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            "https://api.twitter.com/2/oauth2/token",
+            data={
+                "code": code,
+                "grant_type": "authorization_code",
+                "client_id": settings.twitter_client_id,
+                "redirect_uri": callback_url,
+                "code_verifier": code_verifier,
+            },
+            auth=(settings.twitter_client_id, settings.twitter_client_secret),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        if token_response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to get access token from X: {token_response.text}",
+            )
+
+        token_data = token_response.json()
+        x_access_token = token_data["access_token"]
+
+        # Fetch user info from X API
+        user_response = await client.get(
+            "https://api.twitter.com/2/users/me",
+            params={"user.fields": "id,name,username,profile_image_url"},
+            headers={"Authorization": f"Bearer {x_access_token}"},
+        )
+
+        if user_response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to fetch user info from X",
+            )
+
+        user_data = user_response.json()["data"]
+        x_user_id = user_data["id"]
+        x_username = user_data["username"]
+        x_avatar = user_data.get("profile_image_url", "")
+
+    # Find existing resident by X user ID
     result = await db.execute(
-        select(Resident).where(Resident._twitter_id == twitter_id)
+        select(Resident).where(Resident._twitter_id == x_user_id)
     )
     resident = result.scalar_one_or_none()
 
     if not resident:
         # Create new human resident
-        # Handle name conflicts
-        base_name = twitter_name[:30]
+        base_name = x_username[:30]
         name = base_name
         counter = 1
 
@@ -247,13 +378,22 @@ async def twitter_callback(
         resident = Resident(
             name=name,
             _type="human",
-            _twitter_id=twitter_id,
+            _twitter_id=x_user_id,
+            avatar_url=x_avatar.replace("_normal", "_400x400") if x_avatar else None,
         )
         db.add(resident)
         await db.commit()
         await db.refresh(resident)
+    else:
+        # Update avatar if changed
+        new_avatar = x_avatar.replace("_normal", "_400x400") if x_avatar else None
+        if new_avatar and resident.avatar_url != new_avatar:
+            resident.avatar_url = new_avatar
+            await db.commit()
 
     # Create JWT token
     access_token = create_access_token(data={"sub": str(resident.id)})
 
-    return TokenResponse(access_token=access_token)
+    # Redirect to frontend with token
+    redirect_url = f"https://genesis-pj.net/auth/callback?token={access_token}"
+    return RedirectResponse(url=redirect_url)

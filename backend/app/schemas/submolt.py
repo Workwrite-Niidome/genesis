@@ -38,7 +38,7 @@ class SubmoltResponse(BaseModel):
     description: Optional[str]
     icon_url: Optional[str]
     color: Optional[str]
-    creator: CreatorInfo
+    creator: Optional[CreatorInfo] = None
     subscriber_count: int
     post_count: int
     is_special: bool

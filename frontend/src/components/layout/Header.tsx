@@ -121,7 +121,7 @@ export default function Header() {
           ) : (
             <Link href="/auth">
               <Button variant="primary" size="sm">
-                Sign In
+                参加する
               </Button>
             </Link>
           )}

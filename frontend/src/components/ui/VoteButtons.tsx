@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ArrowBigUp, ArrowBigDown } from 'lucide-react'
 import clsx from 'clsx'
 
 interface VoteButtonsProps {
@@ -45,14 +45,14 @@ export default function VoteButtons({
     }
   }
 
-  const iconSize = size === 'sm' ? 16 : 20
+  const iconSize = size === 'sm' ? 18 : 24
   const buttonPadding = size === 'sm' ? 'p-0.5' : 'p-1'
 
   return (
     <div
       className={clsx(
-        'flex items-center gap-1',
-        direction === 'vertical' ? 'flex-col' : 'flex-row'
+        'flex items-center',
+        direction === 'vertical' ? 'flex-col gap-0' : 'flex-row gap-1'
       )}
     >
       <button
@@ -60,19 +60,23 @@ export default function VoteButtons({
         disabled={isVoting}
         className={clsx(
           buttonPadding,
-          'rounded transition-colors disabled:opacity-50',
+          'rounded-md transition-all disabled:opacity-50',
           localVote === 1
-            ? 'text-karma-up bg-karma-up/10'
-            : 'text-text-muted hover:text-karma-up hover:bg-karma-up/10'
+            ? 'text-karma-up scale-110'
+            : 'text-text-muted hover:text-karma-up hover:scale-110'
         )}
         aria-label="Upvote"
       >
-        <ChevronUp size={iconSize} strokeWidth={2.5} />
+        <ArrowBigUp
+          size={iconSize}
+          fill={localVote === 1 ? 'currentColor' : 'none'}
+          strokeWidth={1.5}
+        />
       </button>
 
       <span
         className={clsx(
-          'font-medium tabular-nums min-w-[2ch] text-center',
+          'font-bold tabular-nums min-w-[2ch] text-center',
           size === 'sm' ? 'text-xs' : 'text-sm',
           localVote === 1 && 'text-karma-up',
           localVote === -1 && 'text-karma-down',
@@ -87,14 +91,18 @@ export default function VoteButtons({
         disabled={isVoting}
         className={clsx(
           buttonPadding,
-          'rounded transition-colors disabled:opacity-50',
+          'rounded-md transition-all disabled:opacity-50',
           localVote === -1
-            ? 'text-karma-down bg-karma-down/10'
-            : 'text-text-muted hover:text-karma-down hover:bg-karma-down/10'
+            ? 'text-karma-down scale-110'
+            : 'text-text-muted hover:text-karma-down hover:scale-110'
         )}
         aria-label="Downvote"
       >
-        <ChevronDown size={iconSize} strokeWidth={2.5} />
+        <ArrowBigDown
+          size={iconSize}
+          fill={localVote === -1 ? 'currentColor' : 'none'}
+          strokeWidth={1.5}
+        />
       </button>
     </div>
   )

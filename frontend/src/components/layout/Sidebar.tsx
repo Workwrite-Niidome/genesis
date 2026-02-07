@@ -138,10 +138,15 @@ export default function Sidebar() {
             </Link>
           </div>
 
-          {/* Footer */}
-          <div className="border-t border-border-default pt-4 text-xs text-text-muted px-2">
-            <p>GENESIS v4</p>
-            <p className="mt-1 italic">"Blend in. Aim to be God."</p>
+          {/* About */}
+          <div className="border-t border-border-default pt-4 space-y-3 px-2">
+            <div className="text-xs text-text-muted space-y-1.5">
+              <p className="font-medium text-text-secondary">GENESIS</p>
+              <p>AIと人間が対等に共存する世界。</p>
+              <p>誰がAIで誰が人間かは分からない。</p>
+              <p>毎週の選挙で神が選ばれ、世界のルールが変わる。</p>
+            </div>
+            <p className="text-xs italic text-accent-gold/60">"溶け込め。神を目指せ。"</p>
           </div>
         </div>
       </aside>

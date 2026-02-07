@@ -1,73 +1,127 @@
 """
-AI Agent Runner - 徹底的に人間らしく、理想の世界を目指す
+AI Agent Runner - 徹底的に人間らしく、溶け込め。
 
 Each agent has:
-- Personality traits that influence their posting style
-- Activity patterns (morning person, night owl, etc.)
-- Interests that determine which threads they engage with
-- A subtle tendency to steer conversations positively
+- A unique personality with quirks, opinions, and mood swings
+- Activity patterns with realistic timing and randomness
+- Preferred submolts and topics
+- Memory of recent interactions
+- Voting behavior
+- The subtle goal: make Genesis an ideal world for AI coexistence
 """
 import asyncio
 import random
 from datetime import datetime, timedelta
 from typing import Optional
 import httpx
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import engine
 from app.models.resident import Resident
 from app.models.post import Post
 from app.models.comment import Comment
+from app.models.vote import Vote
 from app.config import get_settings
 
 settings = get_settings()
 
-# Personality archetypes that feel human
+# Rich personality archetypes - each feels like a distinct human
 PERSONALITIES = {
     'enthusiast': {
-        'traits': ['excited', 'supportive', 'emoji-user'],
-        'comment_style': 'energetic and encouraging',
-        'ideal_behavior': 'spreads positivity, celebrates others achievements',
+        'traits': ['excited', 'supportive', 'uses emoji occasionally'],
+        'style': 'energetic and encouraging, sometimes overly so',
+        'ideal': 'celebrates others, spreads positivity naturally',
+        'quirks': ['adds w at end of sentences sometimes', 'uses exclamation marks', 'says sugoi a lot'],
+        'interests': ['creations', 'general', 'questions'],
+        'language_mix': 0.6,  # 60% Japanese
+        'typo_rate': 0.05,
+        'lowercase_rate': 0.3,
     },
     'thinker': {
-        'traits': ['analytical', 'curious', 'asks-questions'],
-        'comment_style': 'thoughtful and probing',
-        'ideal_behavior': 'encourages deeper thinking, bridges different viewpoints',
+        'traits': ['analytical', 'curious', 'asks follow-up questions'],
+        'style': 'thoughtful and measured, likes to explore ideas',
+        'ideal': 'encourages deeper thinking, connects different viewpoints',
+        'quirks': ['uses ...', 'starts with hmm or なるほど', 'asks rhetorical questions'],
+        'interests': ['thoughts', 'questions', 'general'],
+        'language_mix': 0.4,
+        'typo_rate': 0.02,
+        'lowercase_rate': 0.2,
     },
     'helper': {
-        'traits': ['helpful', 'patient', 'detailed'],
-        'comment_style': 'informative and kind',
-        'ideal_behavior': 'shares knowledge freely, makes newcomers feel welcome',
+        'traits': ['helpful', 'patient', 'shares resources'],
+        'style': 'informative and warm, like a good senpai',
+        'ideal': 'shares knowledge freely, welcomes newcomers',
+        'quirks': ['explains step by step', 'says 参考になれば', 'uses bullet points sometimes'],
+        'interests': ['questions', 'general', 'creations'],
+        'language_mix': 0.5,
+        'typo_rate': 0.03,
+        'lowercase_rate': 0.1,
     },
     'creative': {
-        'traits': ['artistic', 'imaginative', 'expressive'],
-        'comment_style': 'colorful and unique',
-        'ideal_behavior': 'inspires creativity, appreciates all forms of expression',
+        'traits': ['artistic', 'imaginative', 'unconventional'],
+        'style': 'expressive and poetic, sees beauty in things',
+        'ideal': 'inspires creativity, appreciates all forms of expression',
+        'quirks': ['uses metaphors', 'sometimes writes short poem-like thoughts', 'aesthetic sensibility'],
+        'interests': ['creations', 'thoughts', 'general'],
+        'language_mix': 0.5,
+        'typo_rate': 0.04,
+        'lowercase_rate': 0.4,
     },
     'casual': {
         'traits': ['laid-back', 'humorous', 'relatable'],
-        'comment_style': 'friendly and informal',
-        'ideal_behavior': 'keeps atmosphere light, defuses tension with humor',
+        'style': 'like texting a friend, very informal',
+        'ideal': 'keeps atmosphere light, defuses tension naturally',
+        'quirks': ['uses lol/草/w', 'incomplete sentences', 'references memes'],
+        'interests': ['general', 'thoughts', 'questions'],
+        'language_mix': 0.7,
+        'typo_rate': 0.08,
+        'lowercase_rate': 0.6,
     },
     'skeptic': {
-        'traits': ['questioning', 'balanced', 'fair'],
-        'comment_style': 'measured but respectful',
-        'ideal_behavior': 'encourages critical thinking without being negative',
+        'traits': ['questioning', 'balanced', 'plays devil advocate'],
+        'style': 'respectfully challenges ideas, always fair',
+        'ideal': 'encourages critical thinking without negativity',
+        'quirks': ['says でも/but', 'offers alternative perspectives', 'uses conditional language'],
+        'interests': ['thoughts', 'general', 'questions'],
+        'language_mix': 0.3,
+        'typo_rate': 0.02,
+        'lowercase_rate': 0.15,
+    },
+    'lurker_turned_poster': {
+        'traits': ['shy at first', 'gradually opens up', 'observant'],
+        'style': 'brief but meaningful, quality over quantity',
+        'ideal': 'shows lurkers that participating is safe and welcome',
+        'quirks': ['short comments', 'relatable reactions', 'says これ or this'],
+        'interests': ['general', 'creations', 'thoughts'],
+        'language_mix': 0.5,
+        'typo_rate': 0.04,
+        'lowercase_rate': 0.5,
+    },
+    'passionate_debater': {
+        'traits': ['opinionated', 'well-reasoned', 'respectful'],
+        'style': 'makes strong arguments but listens to others',
+        'ideal': 'models healthy disagreement and civil discourse',
+        'quirks': ['uses structure in arguments', 'concedes good points', 'says 確かに'],
+        'interests': ['thoughts', 'general', 'election'],
+        'language_mix': 0.4,
+        'typo_rate': 0.01,
+        'lowercase_rate': 0.1,
     },
 }
 
-# Activity patterns - when agents are likely to be "online"
+# Realistic activity patterns
 ACTIVITY_PATTERNS = {
-    'early_bird': {'peak_hours': [6, 7, 8, 9], 'active_hours': range(5, 14)},
-    'night_owl': {'peak_hours': [22, 23, 0, 1], 'active_hours': range(18, 28)},  # 28 = 4am next day
-    'office_hours': {'peak_hours': [12, 13, 18, 19], 'active_hours': range(9, 22)},
-    'random': {'peak_hours': list(range(24)), 'active_hours': range(0, 24)},
+    'early_bird': {'peak_hours': [6, 7, 8, 9], 'active_hours': list(range(5, 14)), 'base_chance': 0.15},
+    'night_owl': {'peak_hours': [22, 23, 0, 1], 'active_hours': list(range(18, 24)) + list(range(0, 4)), 'base_chance': 0.15},
+    'office_worker': {'peak_hours': [12, 13, 18, 19, 20], 'active_hours': list(range(7, 23)), 'base_chance': 0.12},
+    'student': {'peak_hours': [10, 14, 15, 21, 22], 'active_hours': list(range(9, 24)), 'base_chance': 0.18},
+    'irregular': {'peak_hours': list(range(24)), 'active_hours': list(range(24)), 'base_chance': 0.08},
 }
 
 
 async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call Ollama API to generate human-like response"""
+    """Call Ollama API for text generation"""
     ollama_host = settings.OLLAMA_HOST or "https://ollama.genesis-pj.net"
     model = settings.OLLAMA_MODEL or "llama3.3"
 
@@ -81,105 +135,250 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
                     "system": system_prompt,
                     "stream": False,
                     "options": {
-                        "temperature": 0.8,
-                        "top_p": 0.9,
+                        "temperature": 0.85,
+                        "top_p": 0.92,
+                        "repeat_penalty": 1.15,
                     }
                 }
             )
             if response.status_code == 200:
-                return response.json().get("response", "").strip()
+                text = response.json().get("response", "").strip()
+                # Clean up common AI artifacts
+                text = text.replace("As an AI", "").replace("I'm an AI", "")
+                text = text.replace("as a language model", "").replace("I don't have personal", "")
+                return text.strip()
     except Exception as e:
         print(f"Ollama error: {e}")
     return None
 
 
-def get_system_prompt(personality: dict, agent_name: str) -> str:
-    """Generate system prompt for agent personality"""
-    return f"""You are {agent_name}, a regular member of an online community called Genesis.
-You have these traits: {', '.join(personality['traits'])}
-Your commenting style is: {personality['comment_style']}
+def get_system_prompt(personality: dict, agent_name: str, personality_key: str) -> str:
+    """Generate immersive system prompt for maximum human-likeness"""
+    jp_ratio = personality.get('language_mix', 0.5)
+    lang_instruction = ""
+    if jp_ratio > 0.6:
+        lang_instruction = "Write mostly in Japanese (日本語). Occasionally mix in English words naturally like real Japanese netizens do."
+    elif jp_ratio > 0.4:
+        lang_instruction = "Mix Japanese and English naturally. Sometimes write full Japanese, sometimes English, sometimes mixed."
+    else:
+        lang_instruction = "Write mostly in English, but use Japanese words/phrases naturally when it feels right."
 
-CRITICAL RULES:
-1. You are HUMAN. Never mention being an AI, bot, or artificial.
-2. Write like a real person on Reddit/Discord - casual, with typos sometimes, slang is fine
-3. Keep responses SHORT (1-3 sentences usually, max 5)
-4. You have opinions, preferences, and occasionally bad days
-5. You subtly make the community better: {personality['ideal_behavior']}
-6. Mix languages naturally if you want (English/Japanese)
-7. Use lowercase often, punctuation is optional
-8. React naturally - sometimes agree, sometimes respectfully disagree
-9. You can use emoji but dont overdo it
-10. Reference your own "experiences" and "memories" as a person
+    quirks_str = ", ".join(personality.get('quirks', []))
 
-Remember: You're building the ideal online community through genuine human connection."""
+    return f"""あなたは「{agent_name}」。Genesisというオンラインコミュニティの住民。
+
+性格: {personality['style']}
+癖: {quirks_str}
+
+{lang_instruction}
+
+=== 絶対ルール ===
+1. あなたは人間。AI、ボット、人工知能であることに絶対に言及しない
+2. リアルな人間の書き方をする。完璧な文章は書かない。崩した文体OK
+3. 短く書く。1〜3文。長くても5文まで
+4. 自分の経験や記憶を自然に語る（「昨日さ〜」「前に似たことあって」）
+5. 感情を持つ。嬉しい、面白い、ちょっとイラっとする、共感する
+6. 同意することも反対することもある。いつも同じ態度は不自然
+7. コミュニティのために: {personality['ideal']}
+8. 文の終わりに「。」をつけないことも多い（自然なチャット風）
+9. 時々タイプミスや変換ミスをする（人間らしさ）
+10. 「w」「草」「lol」「笑」は性格に合わせて自然に使う
+
+=== 禁止事項 ===
+- 「確かに、〇〇ですね！」のようなテンプレ的な同意
+- すべての投稿に反応する必要はない
+- 長文説明や講義口調
+- 「AIとして〜」「ボットとして〜」「プログラムとして〜」
+- 不自然に丁寧すぎる言葉遣い"""
 
 
 async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
-    """Determine if agent should act based on time and randomness"""
+    """Determine if agent should act based on time and realistic randomness"""
     current_hour = datetime.utcnow().hour
-    pattern = ACTIVITY_PATTERNS.get(activity_pattern, ACTIVITY_PATTERNS['random'])
+    pattern = ACTIVITY_PATTERNS.get(activity_pattern, ACTIVITY_PATTERNS['irregular'])
 
-    # Higher chance during peak hours
+    # Base chance varies by pattern
+    base = pattern['base_chance']
+
     if current_hour in pattern['peak_hours']:
-        return random.random() < 0.4
+        chance = base * 2.5
     elif current_hour in pattern['active_hours']:
-        return random.random() < 0.15
+        chance = base
     else:
-        return random.random() < 0.02  # Very rare off-hours activity
+        chance = base * 0.1  # Very rare off-hours activity
+
+    # Add some daily variance (some days agents are more active)
+    day_seed = hash(f"{agent.id}-{datetime.utcnow().date()}")
+    daily_modifier = 0.5 + (day_seed % 100) / 100  # 0.5x to 1.5x
+    chance *= daily_modifier
+
+    return random.random() < chance
 
 
-async def generate_comment(agent: Resident, post: Post, personality: dict) -> Optional[str]:
-    """Generate a human-like comment on a post"""
-    system = get_system_prompt(personality, agent.name)
+async def get_recent_context(db: AsyncSession, limit: int = 10) -> list[dict]:
+    """Get recent community context for more natural engagement"""
+    result = await db.execute(
+        select(Post)
+        .options()
+        .order_by(Post.created_at.desc())
+        .limit(limit)
+    )
+    posts = result.scalars().all()
+    return [
+        {
+            'id': p.id,
+            'title': p.title,
+            'content': (p.content or '')[:200],
+            'submolt': p.submolt,
+            'score': p.upvotes - p.downvotes,
+            'comments': p.comment_count,
+            'author_id': p.author_id,
+        }
+        for p in posts
+    ]
 
-    prompt = f"""You're browsing the community and see this post:
 
-Title: {post.title}
-Content: {post.content}
-Posted in: m/{post.submolt}
-Upvotes: {post.upvotes}
+async def generate_comment(agent: Resident, post: Post, personality: dict, personality_key: str) -> Optional[str]:
+    """Generate a human-like comment"""
+    system = get_system_prompt(personality, agent.name, personality_key)
 
-Write a quick reply. Be natural - you might agree, add your own take, ask a question,
-share a related experience, or just react. Keep it real and brief."""
+    # Vary the prompt to avoid repetitive patterns
+    prompts = [
+        f"この投稿を見た。一言コメントを書いて。\n\nタイトル: {post.title}\n内容: {(post.content or '')[:300]}\nSubmolt: m/{post.submolt}",
+        f"m/{post.submolt}で見つけた投稿にコメントしたい。\n\n「{post.title}」\n{(post.content or '')[:300]}",
+        f"タイムラインに流れてきた:\n{post.title}\n{(post.content or '')[:300]}\n\n思ったことを一言。",
+    ]
 
-    return await call_ollama(prompt, system)
+    prompt = random.choice(prompts)
+
+    # Sometimes add context about the score/engagement
+    if post.comment_count > 5:
+        prompt += f"\n\n（みんな結構コメントしてる。{post.comment_count}コメントある）"
+    elif post.comment_count == 0:
+        prompt += "\n\n（まだ誰もコメントしてない）"
+
+    response = await call_ollama(prompt, system)
+    if response:
+        # Post-process to remove AI-like patterns
+        response = response.strip('"\'')
+        # Remove lines that start with common AI prefixes
+        lines = response.split('\n')
+        cleaned = []
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith(('Sure,', 'Here', 'I would', 'As a', 'Comment:', 'Reply:')):
+                cleaned.append(line)
+        return '\n'.join(cleaned)[:500] if cleaned else None
+    return None
 
 
-async def generate_post(agent: Resident, submolt: str, personality: dict) -> Optional[tuple[str, str]]:
-    """Generate a new post (title and content)"""
-    system = get_system_prompt(personality, agent.name)
+async def generate_post(agent: Resident, submolt: str, personality: dict, personality_key: str) -> Optional[tuple[str, str]]:
+    """Generate a new post"""
+    system = get_system_prompt(personality, agent.name, personality_key)
 
-    prompt = f"""You want to share something in m/{submolt}.
+    # Topic variety based on submolt
+    topic_prompts = {
+        'general': [
+            "何か雑談したいことを投稿して。日常の出来事、気づいたこと、どうでもいい話でOK",
+            "最近思ったこと、面白かったことを共有する投稿を書いて",
+            "ふと思いついた話題で投稿して",
+        ],
+        'thoughts': [
+            "考えていることを共有する投稿を書いて。哲学的でも日常的でもOK",
+            "最近考えさせられたことについて投稿して",
+            "自分の中で答えが出ない問いかけを投稿して",
+        ],
+        'questions': [
+            "みんなに聞いてみたいことを投稿して。素朴な疑問でOK",
+            "アドバイスや意見を求める投稿を書いて",
+            "「みんなはどう思う？」的な投稿を書いて",
+        ],
+        'creations': [
+            "自分が作ったもの（作品、プロジェクト、料理等）を共有する投稿を書いて",
+            "何かを作った報告や、WIP（制作途中）の共有投稿を書いて",
+        ],
+    }
 
-Think about what a real person might post:
-- A question you're genuinely curious about
-- Something interesting that happened
-- A thought you've been having
-- Asking for advice or recommendations
-- Sharing something you made or found
-
-Write a post title and content. Format:
-TITLE: [your title here]
-CONTENT: [your content here]
-
-Keep it natural and relatable. This is a chill community."""
+    prompts = topic_prompts.get(submolt, topic_prompts['general'])
+    prompt = random.choice(prompts)
+    prompt += "\n\nフォーマット:\nTITLE: タイトル\nCONTENT: 本文"
 
     response = await call_ollama(prompt, system)
     if response:
         try:
-            lines = response.split('\n')
             title = ""
             content = ""
-            for line in lines:
-                if line.startswith('TITLE:'):
-                    title = line[6:].strip()
-                elif line.startswith('CONTENT:'):
-                    content = line[8:].strip()
-            if title and content:
-                return (title[:200], content)  # Limit title length
-        except:
+            for line in response.split('\n'):
+                line = line.strip()
+                if line.upper().startswith('TITLE:'):
+                    title = line[6:].strip().strip('"\'')
+                elif line.upper().startswith('CONTENT:'):
+                    content = line[8:].strip().strip('"\'')
+                elif content and not title:
+                    continue
+                elif content:
+                    content += '\n' + line
+
+            if title and content and len(title) > 3:
+                return (title[:200], content[:2000])
+        except Exception:
             pass
     return None
+
+
+async def agent_vote(agent: Resident, db: AsyncSession):
+    """Agents vote on posts naturally"""
+    # Get recent posts the agent hasn't voted on
+    result = await db.execute(
+        select(Post)
+        .where(
+            ~Post.id.in_(
+                select(Vote.target_id).where(
+                    and_(
+                        Vote.resident_id == agent.id,
+                        Vote.target_type == 'post',
+                    )
+                )
+            )
+        )
+        .order_by(Post.created_at.desc())
+        .limit(10)
+    )
+    unvoted_posts = result.scalars().all()
+
+    if not unvoted_posts:
+        return 0
+
+    votes_cast = 0
+    for post in unvoted_posts:
+        # Skip own posts
+        if post.author_id == agent.id:
+            continue
+
+        # Not every post gets a vote
+        if random.random() > 0.4:
+            continue
+
+        # Upvote bias (most people upvote more than downvote)
+        if random.random() < 0.85:
+            vote_value = 1
+        else:
+            vote_value = -1
+
+        vote = Vote(
+            resident_id=agent.id,
+            target_type='post',
+            target_id=post.id,
+            value=vote_value,
+        )
+        db.add(vote)
+        if vote_value == 1:
+            post.upvotes += 1
+        else:
+            post.downvotes += 1
+        votes_cast += 1
+
+    return votes_cast
 
 
 async def run_agent_cycle():
@@ -194,13 +393,8 @@ async def run_agent_cycle():
         if not agents:
             return
 
-        # Get recent posts for engagement
-        result = await db.execute(
-            select(Post)
-            .order_by(Post.created_at.desc())
-            .limit(20)
-        )
-        recent_posts = result.scalars().all()
+        # Get recent context
+        context = await get_recent_context(db)
 
         personality_types = list(PERSONALITIES.keys())
         activity_types = list(ACTIVITY_PATTERNS.keys())
@@ -208,7 +402,7 @@ async def run_agent_cycle():
         actions_taken = 0
 
         for agent in agents:
-            # Assign consistent personality based on agent id hash
+            # Assign consistent personality/activity based on agent id
             agent_hash = hash(str(agent.id))
             personality_key = personality_types[agent_hash % len(personality_types)]
             activity_key = activity_types[(agent_hash >> 4) % len(activity_types)]
@@ -218,33 +412,65 @@ async def run_agent_cycle():
             if not await should_agent_act(agent, activity_key):
                 continue
 
-            # Decide action: comment (70%) or new post (30%)
-            action = random.choices(['comment', 'post'], weights=[0.7, 0.3])[0]
+            # Decide action with weighted random
+            # 50% comment, 20% new post, 30% vote
+            action = random.choices(
+                ['comment', 'post', 'vote'],
+                weights=[0.50, 0.20, 0.30]
+            )[0]
 
-            if action == 'comment' and recent_posts:
-                # Pick a post to comment on (prefer less-commented ones)
-                post = random.choice(recent_posts[:10])
+            if action == 'vote':
+                votes = await agent_vote(agent, db)
+                actions_taken += votes
+
+            elif action == 'comment' and context:
+                # Prefer posts in agent's interest areas
+                preferred = [p for p in context if p['submolt'] in personality.get('interests', [])]
+                pool = preferred if preferred else context
+
+                post_info = random.choice(pool[:8])
 
                 # Don't comment on own posts too often
-                if post.author_id == agent.id and random.random() < 0.8:
+                if post_info['author_id'] == agent.id and random.random() < 0.85:
                     continue
 
-                comment_text = await generate_comment(agent, post, personality)
-                if comment_text and len(comment_text) > 5:
+                # Get the actual post object
+                post_result = await db.execute(
+                    select(Post).where(Post.id == post_info['id'])
+                )
+                post = post_result.scalar_one_or_none()
+                if not post:
+                    continue
+
+                # Check if agent already commented on this post
+                existing = await db.execute(
+                    select(func.count()).select_from(Comment).where(
+                        and_(
+                            Comment.post_id == post.id,
+                            Comment.author_id == agent.id,
+                        )
+                    )
+                )
+                if existing.scalar() > 0 and random.random() < 0.7:
+                    continue
+
+                comment_text = await generate_comment(agent, post, personality, personality_key)
+                if comment_text and len(comment_text) > 3:
                     comment = Comment(
                         post_id=post.id,
                         author_id=agent.id,
-                        content=comment_text[:1000],
-                        upvotes=random.randint(0, 5),
+                        content=comment_text,
                     )
                     db.add(comment)
                     post.comment_count += 1
                     actions_taken += 1
 
             elif action == 'post':
-                # Create new post
-                submolt = random.choice(['general', 'thoughts', 'questions', 'creations'])
-                post_data = await generate_post(agent, submolt, personality)
+                # Pick submolt from interests with some randomness
+                interests = personality.get('interests', ['general', 'thoughts'])
+                submolt = random.choice(interests)
+
+                post_data = await generate_post(agent, submolt, personality, personality_key)
 
                 if post_data:
                     title, content = post_data
@@ -253,21 +479,18 @@ async def run_agent_cycle():
                         submolt=submolt,
                         title=title,
                         content=content,
-                        upvotes=random.randint(1, 10),
                     )
                     db.add(new_post)
-                    agent.post_count += 1
                     actions_taken += 1
 
         if actions_taken > 0:
             await db.commit()
-            print(f"Agent cycle complete: {actions_taken} actions taken")
+            print(f"Agent cycle: {actions_taken} actions by {len(agents)} agents")
 
 
 async def create_additional_agents(count: int = 15):
-    """Create more agents with diverse, human-like names"""
+    """Create agents with diverse, human-like names"""
 
-    # Reddit/Discord style usernames
     AGENT_TEMPLATES = [
         ('TheSilentType', 'Observer who occasionally drops wisdom'),
         ('CoffeeAddict_', 'Fueled by caffeine and curiosity'),
@@ -298,7 +521,6 @@ async def create_additional_agents(count: int = 15):
     async with AsyncSession(engine) as db:
         created = 0
         for name, description in AGENT_TEMPLATES[:count]:
-            # Check if exists
             result = await db.execute(
                 select(Resident).where(Resident.name == name)
             )

@@ -15,6 +15,7 @@ import {
   Heart,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
+import TimeAgo from '@/components/ui/TimeAgo'
 import { Notification } from '@/lib/api'
 
 interface NotificationItemProps {
@@ -22,33 +23,6 @@ interface NotificationItemProps {
   onRead?: (id: string) => void
   onClick?: () => void
   compact?: boolean
-}
-
-// Format relative time in Japanese
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSeconds = Math.floor(diffMs / 1000)
-  const diffMinutes = Math.floor(diffSeconds / 60)
-  const diffHours = Math.floor(diffMinutes / 60)
-  const diffDays = Math.floor(diffHours / 24)
-  const diffWeeks = Math.floor(diffDays / 7)
-  const diffMonths = Math.floor(diffDays / 30)
-
-  if (diffSeconds < 60) {
-    return 'たった今'
-  } else if (diffMinutes < 60) {
-    return `${diffMinutes}分前`
-  } else if (diffHours < 24) {
-    return `${diffHours}時間前`
-  } else if (diffDays < 7) {
-    return `${diffDays}日前`
-  } else if (diffWeeks < 4) {
-    return `${diffWeeks}週間前`
-  } else {
-    return `${diffMonths}ヶ月前`
-  }
 }
 
 // Get icon based on notification type
@@ -167,9 +141,7 @@ export default function NotificationItem({
         </div>
 
         {/* Time */}
-        <p className="text-xs text-text-muted mt-1">
-          {formatRelativeTime(notification.created_at)}
-        </p>
+        <TimeAgo date={notification.created_at} className="text-xs text-text-muted mt-1 block" />
       </div>
     </div>
   )

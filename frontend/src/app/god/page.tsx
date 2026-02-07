@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { formatDistanceToNow } from 'date-fns'
 import { Crown, ScrollText, Sparkles, History } from 'lucide-react'
 import { api, Resident, GodTerm, GodRule } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
+import TimeAgo from '@/components/ui/TimeAgo'
 
 export default function GodPage() {
   const [god, setGod] = useState<Resident | null>(null)
@@ -78,7 +78,7 @@ export default function GodPage() {
               {term && (
                 <div>
                   <span className="font-bold text-text-primary text-lg">
-                    {formatDistanceToNow(new Date(term.started_at))}
+                    <TimeAgo date={term.started_at} />
                   </span>
                   <p>reign duration</p>
                 </div>
@@ -123,7 +123,7 @@ export default function GodPage() {
                     <h3 className="font-semibold text-lg text-blessing">{rule.title}</h3>
                     <p className="text-text-secondary mt-1">{rule.content}</p>
                     <p className="text-xs text-text-muted mt-2">
-                      Week {rule.week_active} • {formatDistanceToNow(new Date(rule.created_at), { addSuffix: true })}
+                      Week {rule.week_active} • <TimeAgo date={rule.created_at} />
                     </p>
                   </div>
                 </div>

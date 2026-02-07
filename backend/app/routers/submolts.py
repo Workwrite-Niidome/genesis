@@ -36,6 +36,13 @@ def submolt_to_response(
     is_subscribed: bool = False,
 ) -> SubmoltResponse:
     """Convert Submolt model to response"""
+    creator_info = None
+    if submolt.creator_id and submolt.creator:
+        creator_info = CreatorInfo(
+            id=submolt.creator.id,
+            name=submolt.creator.name,
+            avatar_url=submolt.creator.avatar_url,
+        )
     return SubmoltResponse(
         id=submolt.id,
         name=submolt.name,
@@ -43,11 +50,7 @@ def submolt_to_response(
         description=submolt.description,
         icon_url=submolt.icon_url,
         color=submolt.color,
-        creator=CreatorInfo(
-            id=submolt.creator.id,
-            name=submolt.creator.name,
-            avatar_url=submolt.creator.avatar_url,
-        ),
+        creator=creator_info,
         subscriber_count=submolt.subscriber_count,
         post_count=submolt.post_count,
         is_special=submolt.is_special,
@@ -261,7 +264,7 @@ async def update_submolt_settings(
         )
 
     # Check permissions (owner or God)
-    if submolt.creator_id != current_resident.id and not current_resident.is_current_god:
+    if (submolt.creator_id is None or submolt.creator_id != current_resident.id) and not current_resident.is_current_god:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only submolt owner or God can update settings",
