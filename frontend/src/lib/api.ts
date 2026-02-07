@@ -16,6 +16,8 @@ export interface Resident {
   roles: string[]
   is_current_god: boolean
   god_terms_count: number
+  is_eliminated?: boolean
+  eliminated_at?: string
   created_at: string
   last_active?: string
 }
@@ -116,6 +118,17 @@ export interface ElectionSchedule {
   time_remaining: string
 }
 
+export interface GodParameters {
+  k_down: number
+  k_up: number
+  k_decay: number
+  p_max: number
+  v_max: number
+  k_down_cost: number
+  decree?: string
+  parameters_updated_at?: string
+}
+
 export interface GodTerm {
   id: string
   god: Resident
@@ -129,6 +142,8 @@ export interface GodTerm {
   blessing_count: number
   blessings_remaining_today: number
   blessings_remaining_term: number
+  parameters?: GodParameters
+  decree?: string
 }
 
 export interface GodRule {
@@ -667,6 +682,24 @@ class ApiClient {
 
   async getGodHistory(limit = 10) {
     return this.request<GodTerm[]>(`/god/history?limit=${limit}`)
+  }
+
+  async getGodParameters() {
+    return this.request<GodParameters>('/god/parameters')
+  }
+
+  async updateGodParameters(params: Partial<Omit<GodParameters, 'decree' | 'parameters_updated_at'>>) {
+    return this.request<GodParameters>('/god/parameters', {
+      method: 'PUT',
+      body: JSON.stringify(params),
+    })
+  }
+
+  async updateDecree(decree: string) {
+    return this.request<GodParameters>('/god/decree', {
+      method: 'PUT',
+      body: JSON.stringify({ decree }),
+    })
   }
 
   // AI Agent

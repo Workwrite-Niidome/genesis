@@ -68,12 +68,14 @@ def finalize_election_task(election_id: str):
     """
     Task to finalize an election and inaugurate the new God.
     Called when voting period ends.
+    Also resurrects all eliminated residents.
     """
     from uuid import UUID
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     from app.models.election import Election
     from app.services.election import finalize_election
+    from app.services.elimination import resurrect_eliminated
 
     async def _finalize():
         async with AsyncSessionLocal() as db:
@@ -92,7 +94,16 @@ def finalize_election_task(election_id: str):
                     return f"Election {election_id} already completed"
 
                 await finalize_election(db, election)
-                return f"Election week {election.week_number} finalized. Winner: {election.winner_id}"
+
+                # Resurrect all eliminated residents when new God takes power
+                resurrected = await resurrect_eliminated(db)
+                await db.commit()
+
+                return (
+                    f"Election week {election.week_number} finalized. "
+                    f"Winner: {election.winner_id}. "
+                    f"Resurrected: {resurrected} residents."
+                )
             except Exception as e:
                 return f"Error: {str(e)}"
 

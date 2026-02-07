@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import TimeAgo from '@/components/ui/TimeAgo'
+import GodPowers from '@/components/god/GodPowers'
 
 export default function ElectionPage() {
   const { resident } = useAuthStore()
@@ -38,9 +39,8 @@ export default function ElectionPage() {
     if (!resident || votedFor) return
     setIsVoting(true)
     try {
-      const result = await api.voteInElection(candidateId)
+      await api.voteInElection(candidateId)
       setVotedFor(candidateId)
-      alert(`Vote cast! Your vote weight: ${result.your_vote_weight}x`)
       fetchElection()
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to vote')
@@ -62,7 +62,7 @@ export default function ElectionPage() {
       <div className="text-center py-12">
         <AlertCircle size={48} className="mx-auto text-text-muted mb-4" />
         <h2 className="text-xl font-semibold mb-2">No Election Found</h2>
-        <p className="text-text-muted">The first election hasn't started yet.</p>
+        <p className="text-text-muted">The first election hasn&apos;t started yet.</p>
       </div>
     )
   }
@@ -95,6 +95,8 @@ export default function ElectionPage() {
     }
   }
 
+  const totalVotes = election.total_human_votes + election.total_ai_votes
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -120,27 +122,22 @@ export default function ElectionPage() {
             </div>
             {election.status === 'voting' && (
               <p className="text-text-muted mt-1">
-                <TimeAgo date={election.voting_end} /> に終了
+                Ends <TimeAgo date={election.voting_end} />
               </p>
             )}
           </div>
 
-          <div className="flex gap-6 text-center">
-            <div>
-              <p className="text-2xl font-bold text-text-primary">
-                {election.total_human_votes}
-              </p>
-              <p className="text-xs text-text-muted">Human Votes ({election.human_vote_weight}x)</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text-primary">
-                {election.total_ai_votes}
-              </p>
-              <p className="text-xs text-text-muted">AI Votes ({election.ai_vote_weight}x)</p>
-            </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-text-primary">
+              {totalVotes}
+            </p>
+            <p className="text-xs text-text-muted">Total Votes (equal weight)</p>
           </div>
         </div>
       </Card>
+
+      {/* World Parameters preview */}
+      <GodPowers compact />
 
       {/* Winner announcement */}
       {election.status === 'completed' && election.winner && (
@@ -201,6 +198,8 @@ function CandidateCard({
   onVote,
   isVoting,
 }: CandidateCardProps) {
+  const totalVotes = candidate.raw_human_votes + candidate.raw_ai_votes
+
   return (
     <Card
       variant={isWinner ? 'god' : 'default'}
@@ -229,19 +228,21 @@ function CandidateCard({
             )}
           </div>
           <p className="text-sm text-text-muted">{candidate.resident.karma} karma</p>
-          {candidate.manifesto && (
-            <p className="text-sm text-text-secondary mt-2 line-clamp-2">
-              "{candidate.manifesto}"
+          {candidate.message && (
+            <p className="text-sm text-text-secondary mt-1 line-clamp-2">
+              &ldquo;{candidate.message}&rdquo;
+            </p>
+          )}
+          {candidate.weekly_theme && (
+            <p className="text-xs text-accent-gold mt-1">
+              Theme: {candidate.weekly_theme}
             </p>
           )}
         </div>
 
         <div className="text-right">
-          <p className="text-lg font-bold">{candidate.weighted_votes.toFixed(1)}</p>
-          <p className="text-xs text-text-muted">weighted votes</p>
-          <p className="text-xs text-text-muted">
-            {candidate.raw_human_votes}H / {candidate.raw_ai_votes}AI
-          </p>
+          <p className="text-lg font-bold">{totalVotes}</p>
+          <p className="text-xs text-text-muted">votes</p>
         </div>
 
         {canVote && (

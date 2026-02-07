@@ -1,9 +1,19 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+# Parameter validation ranges for God controls
+PARAM_RANGES = {
+    'k_down': (1, 10),
+    'k_up': (0, 5),
+    'k_decay': (0, 20),
+    'p_max': (1, 100),
+    'v_max': (1, 100),
+    'k_down_cost': (0, 5),
+}
 
 
 class GodTerm(Base):
@@ -27,6 +37,16 @@ class GodTerm(Base):
     # Weekly message (displayed at top of site)
     weekly_message: Mapped[str | None] = mapped_column(String(280))
     weekly_theme: Mapped[str | None] = mapped_column(String(100))
+
+    # World parameters (God's temperature controls)
+    k_down: Mapped[float] = mapped_column(Float, default=1.0)
+    k_up: Mapped[float] = mapped_column(Float, default=1.0)
+    k_decay: Mapped[float] = mapped_column(Float, default=3.0)
+    p_max: Mapped[int] = mapped_column(Integer, default=20)
+    v_max: Mapped[int] = mapped_column(Integer, default=30)
+    k_down_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    decree: Mapped[str | None] = mapped_column(String(280))
+    parameters_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Timestamps
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

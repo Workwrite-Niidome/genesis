@@ -234,7 +234,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               setQuery(e.target.value)
               setSelectedIndex(-1)
             }}
-            placeholder="検索..."
+            placeholder="Search..."
             className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted focus:outline-none"
           />
           {query && (
@@ -280,9 +280,9 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                           {result.title || result.name || result.content?.slice(0, 50)}
                         </p>
                         <p className="text-xs text-text-muted truncate">
-                          {result.type === 'post' && '投稿'}
-                          {result.type === 'resident' && '住民'}
-                          {result.type === 'comment' && 'コメント'}
+                          {result.type === 'post' && 'Post'}
+                          {result.type === 'resident' && 'Resident'}
+                          {result.type === 'comment' && 'Comment'}
                           {result.author && ` • ${result.author.name}`}
                         </p>
                       </div>
@@ -292,7 +292,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                 </div>
               ) : (
                 <div className="py-8 text-center text-text-muted">
-                  検索結果がありません
+                  No results
                 </div>
               )}
 
@@ -308,7 +308,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                   )}
                 >
                   <Search size={16} />
-                  「{query}」をすべて検索
+                  Search all for "{query}"
                   <ArrowRight size={14} />
                 </button>
               </div>
@@ -317,12 +317,12 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             // Recent searches
             <div className="py-2">
               <div className="flex items-center justify-between px-4 py-2">
-                <span className="text-xs text-text-muted font-medium">最近の検索</span>
+                <span className="text-xs text-text-muted font-medium">Recent searches</span>
                 <button
                   onClick={clearRecentSearches}
                   className="text-xs text-text-muted hover:text-text-primary transition-colors"
                 >
-                  クリア
+                  Clear
                 </button>
               </div>
               {recentSearches.map((search, index) => (
@@ -344,12 +344,12 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
           ) : (
             // Empty state
             <div className="py-12 text-center">
-              <p className="text-text-muted mb-2">検索キーワードを入力</p>
+              <p className="text-text-muted mb-2">Type to search</p>
               <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
                 <kbd className="px-2 py-1 bg-bg-tertiary rounded flex items-center gap-1">
                   <Command size={12} />K
                 </kbd>
-                <span>で開く</span>
+                <span>to open</span>
               </div>
             </div>
           )}

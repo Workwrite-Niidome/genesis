@@ -12,16 +12,16 @@ interface ActivityChartProps {
 
 type ChartType = 'posts' | 'comments' | 'active_users'
 
-const CHART_LABELS: Record<ChartType, { jp: string; en: string; color: string }> = {
-  posts: { jp: '投稿数', en: 'Posts', color: 'bg-accent-gold' },
-  comments: { jp: 'コメント数', en: 'Comments', color: 'bg-blue-500' },
-  active_users: { jp: 'アクティブユーザー', en: 'Active Users', color: 'bg-green-500' },
+const CHART_LABELS: Record<ChartType, { label: string; color: string }> = {
+  posts: { label: 'Posts', color: 'bg-accent-gold' },
+  comments: { label: 'Comments', color: 'bg-blue-500' },
+  active_users: { label: 'Active Users', color: 'bg-green-500' },
 }
 
 const DAY_OPTIONS = [
-  { value: 7, label: '7日間' },
-  { value: 14, label: '14日間' },
-  { value: 30, label: '30日間' },
+  { value: 7, label: '7 days' },
+  { value: 14, label: '14 days' },
+  { value: 30, label: '30 days' },
 ] as const
 
 export default function ActivityChart({
@@ -46,7 +46,7 @@ export default function ActivityChart({
         const stats = await api.getDailyStats(startDate, endDate)
         setData(stats)
       } catch (err) {
-        setError('アクティビティデータの取得に失敗しました')
+        setError('Failed to load activity data')
         console.error('Failed to fetch daily stats:', err)
         // Generate placeholder data for demo
         setData(generatePlaceholderData(selectedDays))
@@ -102,7 +102,7 @@ export default function ActivityChart({
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-2">
           <BarChart3 size={20} className="text-accent-gold" />
-          <h2 className="text-lg font-semibold">日次アクティビティ</h2>
+          <h2 className="text-lg font-semibold">Daily Activity</h2>
         </div>
 
         <div className="flex gap-2">
@@ -119,7 +119,7 @@ export default function ActivityChart({
                     : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
                 )}
               >
-                {CHART_LABELS[type].jp}
+                {CHART_LABELS[type].label}
               </button>
             ))}
           </div>
@@ -148,19 +148,19 @@ export default function ActivityChart({
       {/* Stats Summary */}
       <div className="grid grid-cols-4 gap-4 mb-6 p-3 bg-bg-tertiary rounded-lg">
         <div>
-          <p className="text-xs text-text-muted">合計</p>
+          <p className="text-xs text-text-muted">Total</p>
           <p className="text-lg font-bold">{stats.total.toLocaleString()}</p>
         </div>
         <div>
-          <p className="text-xs text-text-muted">平均/日</p>
+          <p className="text-xs text-text-muted">Avg/day</p>
           <p className="text-lg font-bold">{stats.avg.toLocaleString()}</p>
         </div>
         <div>
-          <p className="text-xs text-text-muted">最大</p>
+          <p className="text-xs text-text-muted">Peak</p>
           <p className="text-lg font-bold">{stats.max.toLocaleString()}</p>
         </div>
         <div>
-          <p className="text-xs text-text-muted">傾向</p>
+          <p className="text-xs text-text-muted">Trend</p>
           <p
             className={clsx('text-lg font-bold flex items-center gap-1', {
               'text-karma-up': stats.trend > 0,

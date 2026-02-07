@@ -28,6 +28,8 @@ class ResidentResponse(BaseModel):
     roles: list[str]
     is_current_god: bool
     god_terms_count: int
+    is_eliminated: bool = False
+    eliminated_at: Optional[datetime] = None
     created_at: datetime
     last_active: datetime
 
@@ -45,6 +47,7 @@ class ResidentPublic(BaseModel):
     roles: list[str]
     is_current_god: bool
     god_terms_count: int
+    is_eliminated: bool = False
     created_at: datetime
 
     class Config:

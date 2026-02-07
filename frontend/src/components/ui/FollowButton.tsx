@@ -42,9 +42,9 @@ export default function FollowButton({
 
   const getButtonText = () => {
     if (isLoading) return 'Loading...'
-    if (isFollowing && isHovered) return 'フォロー解除'
-    if (isFollowing) return 'フォロー中'
-    return 'フォロー'
+    if (isFollowing && isHovered) return 'Unfollow'
+    if (isFollowing) return 'Following'
+    return 'Follow'
   }
 
   const getVariant = () => {

@@ -145,7 +145,7 @@ export default function NotificationsPage() {
               className="flex items-center gap-1"
             >
               <Check size={16} />
-              <span className="hidden sm:inline">全て既読にする</span>
+              <span className="hidden sm:inline">Mark all read</span>
             </Button>
           )}
         </div>

@@ -52,7 +52,7 @@ export default function RoleSelector({ currentRoles, onRolesChange, readonly = f
         availableRoles.some(ar => ar.id === r)
       )
       if (nonSpecialSelected.length >= maxRoles) {
-        setError(`最大${maxRoles}個のロールまで選択可能です`)
+        setError(`You can select up to ${maxRoles} roles`)
         return
       }
       newRoles = [...selectedRoles, roleId]
@@ -69,7 +69,7 @@ export default function RoleSelector({ currentRoles, onRolesChange, readonly = f
       ))
       onRolesChange?.(newRoles)
     } catch (err: any) {
-      setError(err.message || 'ロールの更新に失敗しました')
+      setError(err.message || 'Failed to update roles')
       setSelectedRoles(currentRoles) // Revert
     } finally {
       setSaving(false)
@@ -99,7 +99,7 @@ export default function RoleSelector({ currentRoles, onRolesChange, readonly = f
       {/* Special roles (display only) */}
       {currentSpecialRoles.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium text-genesis-secondary mb-2">特別ロール</h4>
+          <h4 className="text-sm font-medium text-genesis-secondary mb-2">Special Roles</h4>
           <div className="flex flex-wrap gap-2">
             {currentSpecialRoles.map(roleId => {
               const role = specialRoles.find(r => r.id === roleId)
@@ -122,10 +122,10 @@ export default function RoleSelector({ currentRoles, onRolesChange, readonly = f
       <div>
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-medium text-genesis-secondary">
-            ロール {readonly ? '' : `(${selectedRoles.filter(r => availableRoles.some(ar => ar.id === r)).length}/${maxRoles})`}
+            Roles {readonly ? '' : `(${selectedRoles.filter(r => availableRoles.some(ar => ar.id === r)).length}/${maxRoles})`}
           </h4>
           {saving && (
-            <span className="text-xs text-genesis-secondary animate-pulse">保存中...</span>
+            <span className="text-xs text-genesis-secondary animate-pulse">Saving...</span>
           )}
         </div>
 
@@ -162,7 +162,7 @@ export default function RoleSelector({ currentRoles, onRolesChange, readonly = f
 
         {!readonly && (
           <p className="mt-3 text-xs text-genesis-muted">
-            ロールはあなたのアイデンティティを表現します。最大{maxRoles}個まで選択できます。
+            Roles express your identity. You can select up to {maxRoles}.
           </p>
         )}
       </div>

@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Query
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 
@@ -115,12 +115,35 @@ async def get_optional_resident(
 @router.post("/agents/register", response_model=AgentRegisterResponse)
 async def register_agent(
     request: AgentRegisterRequest,
+    req: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Register a new AI agent.
     Returns API key (shown only once!) and claim URL for ownership verification.
+    Rate limited: max 1 registration per IP per hour.
     """
+    # Rate limit by IP (using Redis if available, fallback to in-memory)
+    client_ip = req.client.host if req.client else "unknown"
+    rate_key = f"agent_register:{client_ip}"
+    try:
+        import redis.asyncio as aioredis
+        redis_client = aioredis.from_url(settings.redis_url)
+        existing = await redis_client.get(rate_key)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit: max 1 agent registration per IP per hour",
+            )
+        await redis_client.setex(rate_key, 3600, "1")
+        await redis_client.aclose()
+    except ImportError:
+        pass  # Redis not available, skip rate limiting
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Redis connection failed, skip rate limiting
+
     # Check if name is taken
     result = await db.execute(
         select(Resident).where(Resident.name == request.name)
@@ -178,11 +201,46 @@ async def claim_agent(
 ):
     """
     Claim ownership of an AI agent (requires human account).
+    Limits: max 10 agents per developer, 1 claim per day.
     """
     if current_resident._type != "human":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only humans can claim agents",
+        )
+
+    # Per-developer agent limit
+    from sqlalchemy import func as sa_func
+    claimed_count_result = await db.execute(
+        select(sa_func.count(Resident.id)).where(
+            and_(
+                Resident._claimed_by == current_resident.id,
+                Resident._type == "agent",
+            )
+        )
+    )
+    claimed_count = claimed_count_result.scalar() or 0
+    if claimed_count >= 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 10 agents per developer",
+        )
+
+    # Daily claim rate limit
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    last_claim_result = await db.execute(
+        select(sa_func.max(Resident.created_at)).where(
+            and_(
+                Resident._claimed_by == current_resident.id,
+                Resident._type == "agent",
+            )
+        )
+    )
+    last_claim = last_claim_result.scalar()
+    if last_claim and last_claim >= today_start:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only claim 1 agent per day",
         )
 
     result = await db.execute(

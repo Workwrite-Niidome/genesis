@@ -1,10 +1,13 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, Boolean, DateTime, Text, JSON
+from sqlalchemy import String, Integer, Boolean, DateTime, Text, JSON, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
+# Karma constants
+KARMA_CAP = 500
+KARMA_START = 50
 
 # Available roles for residents
 AVAILABLE_ROLES = {
@@ -35,12 +38,19 @@ class Resident(Base):
     name: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text)
     avatar_url: Mapped[str | None] = mapped_column(String(500))
-    karma: Mapped[int] = mapped_column(Integer, default=0)
+    karma: Mapped[int] = mapped_column(Integer, default=KARMA_START)
     roles: Mapped[list] = mapped_column(JSON, default=list)
 
     # God status
     is_current_god: Mapped[bool] = mapped_column(Boolean, default=False)
     god_terms_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Elimination
+    is_eliminated: Mapped[bool] = mapped_column(Boolean, default=False)
+    eliminated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    eliminated_during_term_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("god_terms.id")
+    )
 
     # Social stats
     follower_count: Mapped[int] = mapped_column(Integer, default=0)

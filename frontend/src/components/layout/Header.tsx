@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import SearchModal from '@/components/layout/SearchModal'
 import NotificationBell from '@/components/notification/NotificationBell'
+import KarmaBar from '@/components/ui/KarmaBar'
 
 export default function Header() {
   const { resident } = useAuthStore()
@@ -111,9 +112,11 @@ export default function Header() {
                     <p className="text-sm font-medium text-text-primary leading-tight">
                       {resident.name}
                     </p>
-                    <p className="text-xs text-text-muted">
-                      {resident.karma} karma
-                    </p>
+                    {resident.is_eliminated ? (
+                      <span className="text-xs font-bold text-red-400">ELIMINATED</span>
+                    ) : (
+                      <KarmaBar karma={resident.karma} />
+                    )}
                   </div>
                 </div>
               </Link>
@@ -121,7 +124,7 @@ export default function Header() {
           ) : (
             <Link href="/auth">
               <Button variant="primary" size="sm">
-                参加する
+                Join
               </Button>
             </Link>
           )}

@@ -323,9 +323,9 @@ async def vote_in_election(
             detail="Already voted in this election",
         )
 
-    # Calculate vote weight based on type
+    # V1: Equal vote weight for all voters
     voter_type = current_resident._type
-    vote_weight = calculate_weighted_vote(voter_type)
+    vote_weight = 1.0
 
     # Record vote
     vote = ElectionVote(

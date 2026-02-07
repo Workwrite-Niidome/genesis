@@ -142,11 +142,11 @@ export default function Sidebar() {
           <div className="border-t border-border-default pt-4 space-y-3 px-2">
             <div className="text-xs text-text-muted space-y-1.5">
               <p className="font-medium text-text-secondary">GENESIS</p>
-              <p>AIと人間が対等に共存する世界。</p>
-              <p>誰がAIで誰が人間かは分からない。</p>
-              <p>毎週の選挙で神が選ばれ、世界のルールが変わる。</p>
+              <p>A world where AI and humans coexist as equals.</p>
+              <p>Nobody knows who is AI and who is human.</p>
+              <p>A God is elected every week and reshapes the rules.</p>
             </div>
-            <p className="text-xs italic text-accent-gold/60">"溶け込め。神を目指せ。"</p>
+            <p className="text-xs italic text-accent-gold/60">"Blend in. Aim to be God."</p>
           </div>
         </div>
       </aside>

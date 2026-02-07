@@ -20,6 +20,9 @@ from app.schemas.god import (
     GodPublic,
     WeeklyMessageUpdate,
     BlessingLimitResponse,
+    GodParametersResponse,
+    GodParametersUpdate,
+    DecreeUpdate,
 )
 from app.routers.auth import get_current_resident
 from app.services.election import get_blessing_count_today, get_blessing_count_term
@@ -116,6 +119,16 @@ async def get_current_god(
 
     term_response = None
     if term:
+        params = GodParametersResponse(
+            k_down=term.k_down,
+            k_up=term.k_up,
+            k_decay=term.k_decay,
+            p_max=term.p_max,
+            v_max=term.v_max,
+            k_down_cost=term.k_down_cost,
+            decree=term.decree,
+            parameters_updated_at=term.parameters_updated_at,
+        )
         term_response = GodTermResponse(
             id=term.id,
             god=god_to_public(god),
@@ -129,6 +142,8 @@ async def get_current_god(
             blessing_count=blessing_count,
             blessings_remaining_today=max(0, MAX_BLESSINGS_PER_DAY - blessings_today),
             blessings_remaining_term=max(0, MAX_BLESSINGS_PER_TERM - blessings_term),
+            parameters=params,
+            decree=term.decree,
         )
 
     return CurrentGodResponse(
@@ -451,6 +466,124 @@ async def get_blessings(
         )
         for b in blessings
     ]
+
+
+@router.get("/parameters", response_model=GodParametersResponse)
+async def get_god_parameters(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current active world parameters (public)"""
+    result = await db.execute(
+        select(GodTerm)
+        .where(GodTerm.is_active == True)
+        .order_by(desc(GodTerm.started_at))
+        .limit(1)
+    )
+    term = result.scalar_one_or_none()
+
+    if not term:
+        return GodParametersResponse()
+
+    return GodParametersResponse(
+        k_down=term.k_down,
+        k_up=term.k_up,
+        k_decay=term.k_decay,
+        p_max=term.p_max,
+        v_max=term.v_max,
+        k_down_cost=term.k_down_cost,
+        decree=term.decree,
+        parameters_updated_at=term.parameters_updated_at,
+    )
+
+
+@router.put("/parameters", response_model=GodParametersResponse)
+async def update_god_parameters(
+    params: GodParametersUpdate,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update world parameters (God only, max 1 change per day)"""
+    if not current_resident.is_current_god:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only God can update world parameters",
+        )
+
+    term = await get_active_term(db, current_resident.id)
+    if not term:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active God term found",
+        )
+
+    # Check daily limit
+    if term.parameters_updated_at:
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        if term.parameters_updated_at >= today_start:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Parameters can only be changed once per day",
+            )
+
+    # Apply updates
+    update_data = params.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No parameters provided to update",
+        )
+
+    for key, value in update_data.items():
+        setattr(term, key, value)
+
+    term.parameters_updated_at = datetime.utcnow()
+    await db.commit()
+
+    return GodParametersResponse(
+        k_down=term.k_down,
+        k_up=term.k_up,
+        k_decay=term.k_decay,
+        p_max=term.p_max,
+        v_max=term.v_max,
+        k_down_cost=term.k_down_cost,
+        decree=term.decree,
+        parameters_updated_at=term.parameters_updated_at,
+    )
+
+
+@router.put("/decree", response_model=GodParametersResponse)
+async def update_decree(
+    decree_data: DecreeUpdate,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update God's decree (God only)"""
+    if not current_resident.is_current_god:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only God can issue decrees",
+        )
+
+    term = await get_active_term(db, current_resident.id)
+    if not term:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active God term found",
+        )
+
+    term.decree = decree_data.decree
+    await db.commit()
+
+    return GodParametersResponse(
+        k_down=term.k_down,
+        k_up=term.k_up,
+        k_decay=term.k_decay,
+        p_max=term.p_max,
+        v_max=term.v_max,
+        k_down_cost=term.k_down_cost,
+        decree=term.decree,
+        parameters_updated_at=term.parameters_updated_at,
+    )
 
 
 @router.get("/history", response_model=list[GodTermResponse])

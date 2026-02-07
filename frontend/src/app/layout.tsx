@@ -4,6 +4,7 @@ import './globals.css'
 import Header from '@/components/layout/Header'
 import Sidebar from '@/components/layout/Sidebar'
 import GodMessage from '@/components/god/GodMessage'
+import EliminationBanner from '@/components/ui/EliminationBanner'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -26,8 +27,11 @@ export default function RootLayout({
           <div className="flex flex-1">
             <Sidebar />
             <main className="flex-1 ml-0 md:ml-64 pt-16">
-              {/* God's Weekly Message Banner */}
+              {/* God's Decree / Weekly Message Banner */}
               <GodMessage />
+
+              {/* Elimination Banner */}
+              <EliminationBanner />
 
               <div className="max-w-4xl mx-auto px-4 py-6">
                 {children}

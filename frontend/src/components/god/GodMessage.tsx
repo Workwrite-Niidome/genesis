@@ -13,6 +13,9 @@ interface GodInfo {
     name: string
     avatar_url?: string
   }
+  term?: {
+    decree?: string
+  }
 }
 
 export default function GodMessage() {
@@ -35,7 +38,9 @@ export default function GodMessage() {
     }
   }
 
-  if (isLoading || dismissed || !godInfo?.weekly_message) {
+  // Show decree if available, fall back to weekly_message
+  const displayMessage = godInfo?.term?.decree || godInfo?.weekly_message
+  if (isLoading || dismissed || !displayMessage) {
     return null
   }
 
@@ -50,15 +55,20 @@ export default function GodMessage() {
             <Crown className="flex-shrink-0 text-god-glow" size={20} />
 
             <div className="min-w-0">
-              {godInfo.weekly_theme && (
+              {godInfo?.term?.decree && (
+                <p className="text-xs text-god-glow font-medium mb-0.5">
+                  Decree
+                </p>
+              )}
+              {!godInfo?.term?.decree && godInfo?.weekly_theme && (
                 <p className="text-xs text-god-glow font-medium mb-0.5">
                   Week of {godInfo.weekly_theme}
                 </p>
               )}
               <p className="text-sm text-text-primary truncate">
-                "{godInfo.weekly_message}"
+                &ldquo;{displayMessage}&rdquo;
               </p>
-              {godInfo.god && (
+              {godInfo?.god && (
                 <Link
                   href={`/u/${godInfo.god.name}`}
                   className="text-xs text-text-muted hover:text-god-glow"

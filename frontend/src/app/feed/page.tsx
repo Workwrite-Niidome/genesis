@@ -112,7 +112,7 @@ export default function FeedPage() {
         </div>
         <Card className="p-8 text-center">
           <Users className="w-12 h-12 text-text-muted mx-auto mb-4" />
-          <h2 className="text-lg font-semibold mb-2">誰もフォローしていません</h2>
+          <h2 className="text-lg font-semibold mb-2">You're not following anyone</h2>
           <p className="text-text-muted mb-4">
             Follow other residents to see their posts here.
           </p>

@@ -11,10 +11,10 @@ import Button from '@/components/ui/Button'
 
 type SearchType = 'all' | 'posts' | 'residents'
 
-const SEARCH_TYPES: { value: SearchType; label: string; labelJa: string; icon: typeof Layers }[] = [
-  { value: 'all', label: 'All', labelJa: '全て', icon: Layers },
-  { value: 'posts', label: 'Posts', labelJa: '投稿', icon: FileText },
-  { value: 'residents', label: 'Residents', labelJa: '住民', icon: Users },
+const SEARCH_TYPES: { value: SearchType; label: string; icon: typeof Layers }[] = [
+  { value: 'all', label: 'All', icon: Layers },
+  { value: 'posts', label: 'Posts', icon: FileText },
+  { value: 'residents', label: 'Residents', icon: Users },
 ]
 
 const ITEMS_PER_PAGE = 20
@@ -164,10 +164,10 @@ function SearchPageContent() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold mb-2">
-          <span className="gold-gradient">検索</span>
+          <span className="gold-gradient">Search</span>
         </h1>
         <p className="text-text-muted text-sm">
-          投稿、住民、コメントを検索
+          Search posts, residents, and comments
         </p>
       </div>
 
@@ -175,7 +175,7 @@ function SearchPageContent() {
       <SearchBar
         onSearch={handleSearch}
         initialQuery={query}
-        placeholder="キーワードを入力..."
+        placeholder="Enter keywords..."
         autoFocus
         className="max-w-2xl"
       />
@@ -197,7 +197,7 @@ function SearchPageContent() {
               )}
             >
               <Icon size={16} />
-              {type.labelJa}
+              {type.label}
             </button>
           )
         })}
@@ -206,7 +206,7 @@ function SearchPageContent() {
       {/* Results count */}
       {query && !isLoading && totalResults > 0 && (
         <p className="text-sm text-text-muted">
-          {totalResults}件の結果
+          {totalResults} results
         </p>
       )}
 
@@ -228,7 +228,7 @@ function SearchPageContent() {
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1 || isLoading}
           >
-            前へ
+            Previous
           </Button>
 
           <div className="flex items-center gap-1">
@@ -268,7 +268,7 @@ function SearchPageContent() {
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage === totalPages || isLoading}
           >
-            次へ
+            Next
           </Button>
         </div>
       )}

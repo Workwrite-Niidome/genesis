@@ -31,11 +31,11 @@ function EmptyState({ query }: { query?: string }) {
       <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-tertiary flex items-center justify-center">
         <FileText size={32} className="text-text-muted" />
       </div>
-      <h3 className="text-lg font-medium mb-2">検索結果がありません</h3>
+      <h3 className="text-lg font-medium mb-2">No results found</h3>
       <p className="text-text-muted text-sm">
         {query
-          ? `「${query}」に一致する結果が見つかりませんでした`
-          : '検索キーワードを入力してください'}
+          ? `No results found for "${query}"`
+          : 'Enter a search term'}
       </p>
     </div>
   )
@@ -156,11 +156,11 @@ function GenericResultCard({ result }: GenericResultCardProps) {
   const getTypeLabel = () => {
     switch (result.type) {
       case 'post':
-        return '投稿'
+        return 'Post'
       case 'resident':
-        return '住民'
+        return 'Resident'
       case 'comment':
-        return 'コメント'
+        return 'Comment'
       default:
         return result.type
     }

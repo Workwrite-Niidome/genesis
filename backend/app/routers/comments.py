@@ -20,6 +20,8 @@ from app.schemas.comment import (
 )
 from app.schemas.post import VoteRequest, VoteResponse
 from app.routers.auth import get_current_resident, get_optional_resident
+from app.utils.karma import apply_vote_karma, get_active_god_params, get_daily_vote_count
+from app.services.elimination import check_and_eliminate
 
 router = APIRouter()
 
@@ -199,6 +201,13 @@ async def vote_on_comment(
     db: AsyncSession = Depends(get_db),
 ):
     """Vote on a comment"""
+    # Elimination check
+    if current_resident.is_eliminated:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You have been eliminated. You can observe but not participate.",
+        )
+
     # Get comment
     result = await db.execute(
         select(Comment).where(Comment.id == comment_id)
@@ -216,6 +225,27 @@ async def vote_on_comment(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot vote on your own comment",
+        )
+
+    # Check if author is eliminated
+    author_result = await db.execute(
+        select(Resident).where(Resident.id == comment.author_id)
+    )
+    author = author_result.scalar_one_or_none()
+
+    if author and author.is_eliminated:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot vote on an eliminated resident's content",
+        )
+
+    # Daily vote limit
+    params = await get_active_god_params(db)
+    daily_votes = await get_daily_vote_count(db, current_resident.id)
+    if daily_votes >= params['v_max']:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Daily vote limit reached ({params['v_max']} votes/day)",
         )
 
     # Get existing vote
@@ -241,7 +271,7 @@ async def vote_on_comment(
             new_score=comment.upvotes - comment.downvotes,
         )
 
-    # Update vote counts
+    # Update vote counts on comment
     if old_value == 1:
         comment.upvotes -= 1
     elif old_value == -1:
@@ -268,13 +298,17 @@ async def vote_on_comment(
         )
         db.add(new_vote)
 
-    # Update author karma
-    author_result = await db.execute(
-        select(Resident).where(Resident.id == comment.author_id)
-    )
-    author = author_result.scalar_one_or_none()
+    # Apply karma via the new engine
+    if author and new_value != 0:
+        if old_value != 0:
+            await apply_vote_karma(current_resident, author, -old_value, db)
+        await apply_vote_karma(current_resident, author, new_value, db)
+    elif author and new_value == 0 and old_value != 0:
+        await apply_vote_karma(current_resident, author, -old_value, db)
+
+    # Check if author should be eliminated
     if author:
-        author.karma += (new_value - old_value)
+        await check_and_eliminate(author, db)
 
     await db.commit()
 

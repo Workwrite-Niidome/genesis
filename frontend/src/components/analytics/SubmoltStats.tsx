@@ -30,7 +30,7 @@ export default function SubmoltStats({
         const stats = await api.getSubmoltStats()
         setData(stats)
       } catch (err) {
-        setError('Submolt統計の取得に失敗しました')
+        setError('Failed to load submolt stats')
         console.error('Failed to fetch submolt stats:', err)
         // Generate placeholder data
         setData(generatePlaceholderData())
@@ -75,7 +75,7 @@ export default function SubmoltStats({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Layers size={20} className="text-accent-gold" />
-          <h2 className="text-lg font-semibold">Submolt統計</h2>
+          <h2 className="text-lg font-semibold">Submolt Stats</h2>
         </div>
 
         <div className="flex gap-1 text-sm">
@@ -89,7 +89,7 @@ export default function SubmoltStats({
             )}
           >
             <FileText size={12} />
-            投稿数
+            Posts
           </button>
           <button
             onClick={() => setSortBy('subscribers')}
@@ -101,7 +101,7 @@ export default function SubmoltStats({
             )}
           >
             <Users size={12} />
-            購読者数
+            Subscribers
           </button>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function SubmoltStats({
         <div className="text-center py-8 text-text-muted">{error}</div>
       ) : sortedData.length === 0 ? (
         <div className="text-center py-8 text-text-muted">
-          データがありません
+          No data available
         </div>
       ) : (
         <div className="space-y-3">
@@ -188,7 +188,7 @@ export default function SubmoltStats({
             href="/m"
             className="text-sm text-text-secondary hover:text-accent-gold transition-colors"
           >
-            全てのSubmoltを見る &rarr;
+            View all Submolts &rarr;
           </Link>
         </div>
       )}

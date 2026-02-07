@@ -19,10 +19,10 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { id: 'profile', name: 'プロフィール', icon: User },
-  { id: 'roles', name: 'ロール', icon: Shield },
-  { id: 'notifications', name: '通知', icon: Bell },
-  { id: 'appearance', name: '外観', icon: Palette },
+  { id: 'profile', name: 'Profile', icon: User },
+  { id: 'roles', name: 'Roles', icon: Shield },
+  { id: 'notifications', name: 'Notifications', icon: Bell },
+  { id: 'appearance', name: 'Appearance', icon: Palette },
 ]
 
 export default function SettingsPage() {
@@ -87,7 +87,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">設定</h1>
+      <h1 className="text-2xl font-bold mb-6">Settings</h1>
 
       <div className="flex flex-col md:flex-row gap-6">
         {/* Sidebar */}
@@ -120,7 +120,7 @@ export default function SettingsPage() {
         <div className="flex-1">
           {activeTab === 'profile' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-6">プロフィール設定</h2>
+              <h2 className="text-lg font-semibold mb-6">Profile Settings</h2>
 
               <div className="space-y-6">
                 {/* Avatar preview */}
@@ -133,14 +133,14 @@ export default function SettingsPage() {
                   />
                   <div>
                     <p className="font-medium">{resident.name}</p>
-                    <p className="text-sm text-genesis-muted">カルマ: {resident.karma}</p>
+                    <p className="text-sm text-genesis-muted">Karma: {resident.karma}</p>
                   </div>
                 </div>
 
                 {/* Avatar URL */}
                 <div>
                   <label className="block text-sm font-medium text-genesis-secondary mb-2">
-                    アバターURL
+                    Avatar URL
                   </label>
                   <input
                     type="url"
@@ -150,19 +150,19 @@ export default function SettingsPage() {
                     className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold"
                   />
                   <p className="mt-1 text-xs text-genesis-muted">
-                    画像のURLを入力してください
+                    Enter an image URL
                   </p>
                 </div>
 
                 {/* Description */}
                 <div>
                   <label className="block text-sm font-medium text-genesis-secondary mb-2">
-                    自己紹介
+                    Bio
                   </label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="あなたについて教えてください..."
+                    placeholder="Tell us about yourself..."
                     rows={4}
                     maxLength={500}
                     className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold resize-none"
@@ -183,12 +183,12 @@ export default function SettingsPage() {
                     ) : saveSuccess ? (
                       <>
                         <Check size={16} />
-                        保存完了
+                        Saved
                       </>
                     ) : (
                       <>
                         <Save size={16} />
-                        保存
+                        Save
                       </>
                     )}
                   </Button>
@@ -199,10 +199,9 @@ export default function SettingsPage() {
 
           {activeTab === 'roles' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-2">ロール設定</h2>
+              <h2 className="text-lg font-semibold mb-2">Role Settings</h2>
               <p className="text-sm text-genesis-muted mb-6">
-                ロールはあなたのプレイスタイルやアイデンティティを表現します。
-                他の住民があなたを見つけやすくなります。
+                Roles express your playstyle and identity. They help other residents find you.
               </p>
 
               <RoleSelector
@@ -214,18 +213,18 @@ export default function SettingsPage() {
 
           {activeTab === 'notifications' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">通知設定</h2>
+              <h2 className="text-lg font-semibold mb-4">Notification Settings</h2>
               <p className="text-genesis-muted text-center py-8">
-                通知設定は近日公開予定...
+                Notification settings coming soon...
               </p>
             </Card>
           )}
 
           {activeTab === 'appearance' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">外観設定</h2>
+              <h2 className="text-lg font-semibold mb-4">Appearance Settings</h2>
               <p className="text-genesis-muted text-center py-8">
-                外観設定は近日公開予定...
+                Appearance settings coming soon...
               </p>
             </Card>
           )}

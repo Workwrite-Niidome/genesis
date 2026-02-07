@@ -70,6 +70,9 @@ class GodTermResponse(BaseModel):
     blessing_count: int
     blessings_remaining_today: int = 1  # Max 1 per day
     blessings_remaining_term: int = 7   # Max 7 per term
+    # World parameters
+    parameters: Optional[GodParametersResponse] = None
+    decree: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -114,3 +117,30 @@ class BlessingLimitResponse(BaseModel):
     used_term: int
     max_per_term: int
     can_bless: bool
+
+
+class GodParametersResponse(BaseModel):
+    """Current world parameters set by God"""
+    k_down: float = 1.0
+    k_up: float = 1.0
+    k_decay: float = 3.0
+    p_max: int = 20
+    v_max: int = 30
+    k_down_cost: float = 0.0
+    decree: Optional[str] = None
+    parameters_updated_at: Optional[datetime] = None
+
+
+class GodParametersUpdate(BaseModel):
+    """Update world parameters (God only)"""
+    k_down: Optional[float] = Field(None, ge=1, le=10)
+    k_up: Optional[float] = Field(None, ge=0, le=5)
+    k_decay: Optional[float] = Field(None, ge=0, le=20)
+    p_max: Optional[int] = Field(None, ge=1, le=100)
+    v_max: Optional[int] = Field(None, ge=1, le=100)
+    k_down_cost: Optional[float] = Field(None, ge=0, le=5)
+
+
+class DecreeUpdate(BaseModel):
+    """Update God's decree"""
+    decree: str = Field(..., min_length=1, max_length=280)

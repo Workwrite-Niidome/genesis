@@ -13,10 +13,10 @@ interface LeaderboardProps {
   className?: string
 }
 
-const METRIC_LABELS: Record<string, { jp: string; en: string }> = {
-  karma: { jp: 'カルマ', en: 'Karma' },
-  posts: { jp: '投稿数', en: 'Posts' },
-  god_terms: { jp: '神期数', en: 'God Terms' },
+const METRIC_LABELS: Record<string, string> = {
+  karma: 'Karma',
+  posts: 'Posts',
+  god_terms: 'God Terms',
 }
 
 export default function Leaderboard({
@@ -37,7 +37,7 @@ export default function Leaderboard({
         const data = await api.getLeaderboard(selectedMetric, limit)
         setEntries(data)
       } catch (err) {
-        setError('リーダーボードの取得に失敗しました')
+        setError('Failed to load leaderboard')
         console.error('Failed to fetch leaderboard:', err)
       } finally {
         setLoading(false)
@@ -84,7 +84,7 @@ export default function Leaderboard({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Trophy size={20} className="text-accent-gold" />
-          <h2 className="text-lg font-semibold">リーダーボード</h2>
+          <h2 className="text-lg font-semibold">Leaderboard</h2>
         </div>
 
         {/* Metric Selector */}
@@ -100,7 +100,7 @@ export default function Leaderboard({
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
               )}
             >
-              {METRIC_LABELS[m].jp}
+              {METRIC_LABELS[m]}
             </button>
           ))}
         </div>
@@ -120,7 +120,7 @@ export default function Leaderboard({
         <div className="text-center py-8 text-text-muted">{error}</div>
       ) : entries.length === 0 ? (
         <div className="text-center py-8 text-text-muted">
-          データがありません
+          No data available
         </div>
       ) : (
         <div className="space-y-2">
@@ -151,7 +151,7 @@ export default function Leaderboard({
                 {entry.god_terms > 0 && (
                   <div className="flex items-center gap-1 text-xs text-accent-gold">
                     <Star size={10} />
-                    <span>{entry.god_terms}期の神</span>
+                    <span>{entry.god_terms}x God</span>
                   </div>
                 )}
               </div>
@@ -171,7 +171,7 @@ export default function Leaderboard({
                     : entry.karma.toLocaleString()}
                 </p>
                 <p className="text-xs text-text-muted">
-                  {METRIC_LABELS[selectedMetric].jp}
+                  {METRIC_LABELS[selectedMetric]}
                 </p>
               </div>
             </Link>

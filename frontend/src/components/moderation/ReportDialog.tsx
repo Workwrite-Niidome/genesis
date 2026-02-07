@@ -16,11 +16,11 @@ interface ReportDialogProps {
 }
 
 const REPORT_REASONS = [
-  { value: 'spam', label: 'スパム' },
-  { value: 'harassment', label: 'ハラスメント' },
-  { value: 'hate', label: '差別・ヘイト' },
-  { value: 'misinformation', label: '誤情報' },
-  { value: 'other', label: 'その他' },
+  { value: 'spam', label: 'Spam' },
+  { value: 'harassment', label: 'Harassment' },
+  { value: 'hate', label: 'Hate/Discrimination' },
+  { value: 'misinformation', label: 'Misinformation' },
+  { value: 'other', label: 'Other' },
 ] as const
 
 export default function ReportDialog({
@@ -61,7 +61,7 @@ export default function ReportDialog({
     setError(null)
 
     if (!reason) {
-      setError('報告理由を選択してください')
+      setError('Please select a reason')
       return
     }
 
@@ -81,7 +81,7 @@ export default function ReportDialog({
         onClose()
       }, 1500)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '報告の送信に失敗しました')
+      setError(err instanceof Error ? err.message : 'Failed to submit report')
     } finally {
       setIsSubmitting(false)
     }
@@ -94,9 +94,9 @@ export default function ReportDialog({
   }
 
   const targetTypeLabel = {
-    post: '投稿',
-    comment: 'コメント',
-    resident: 'ユーザー',
+    post: 'Post',
+    comment: 'Comment',
+    resident: 'User',
   }[targetType]
 
   if (showSuccess) {
@@ -108,9 +108,9 @@ export default function ReportDialog({
         <Card className="w-full max-w-md">
           <div className="p-6 text-center">
             <CheckCircle className="w-16 h-16 text-karma-up mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">報告を受け付けました</h2>
+            <h2 className="text-xl font-semibold mb-2">Report Submitted</h2>
             <p className="text-text-secondary">
-              ご報告ありがとうございます。内容を確認いたします。
+              Thank you for your report. We will review it.
             </p>
           </div>
         </Card>
@@ -128,12 +128,12 @@ export default function ReportDialog({
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">
-              {targetTypeLabel}を報告
+              Report {targetTypeLabel}
             </h2>
             <button
               onClick={onClose}
               className="p-1 text-text-muted hover:text-text-primary transition-colors"
-              aria-label="閉じる"
+              aria-label="Close"
             >
               <X size={20} />
             </button>
@@ -143,7 +143,7 @@ export default function ReportDialog({
             {/* Reason selection */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-3">
-                報告理由
+                Reason
               </label>
               <div className="space-y-2">
                 {REPORT_REASONS.map((option) => (
@@ -183,12 +183,12 @@ export default function ReportDialog({
             {/* Optional description */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                詳細（任意）
+                Details (optional)
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="報告の詳細を入力してください..."
+                placeholder="Provide additional details..."
                 rows={3}
                 maxLength={1000}
                 className="w-full bg-bg-tertiary border border-border-default rounded-lg px-4 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-gold resize-none"
@@ -211,7 +211,7 @@ export default function ReportDialog({
                 onClick={onClose}
                 disabled={isSubmitting}
               >
-                キャンセル
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -219,7 +219,7 @@ export default function ReportDialog({
                 isLoading={isSubmitting}
                 disabled={!reason}
               >
-                報告する
+                Report
               </Button>
             </div>
           </form>

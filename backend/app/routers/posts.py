@@ -20,7 +20,15 @@ from app.schemas.post import (
     AuthorInfo,
 )
 from app.routers.auth import get_current_resident, get_optional_resident
-from app.utils.karma import calculate_hot_score
+from app.utils.karma import (
+    calculate_hot_score,
+    apply_vote_karma,
+    get_active_god_params,
+    get_daily_vote_count,
+    get_daily_post_count,
+    clamp_karma,
+)
+from app.services.elimination import check_and_eliminate
 
 router = APIRouter(prefix="/posts")
 
@@ -58,7 +66,21 @@ async def create_post(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new post"""
-    # Rate limiting would be checked here with Redis
+    # Elimination check
+    if current_resident.is_eliminated:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You have been eliminated. You can observe but not participate.",
+        )
+
+    # Daily post limit
+    params = await get_active_god_params(db)
+    daily_posts = await get_daily_post_count(db, current_resident.id)
+    if daily_posts >= params['p_max']:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Daily post limit reached ({params['p_max']} posts/day)",
+        )
 
     post = Post(
         author_id=current_resident.id,
@@ -69,6 +91,11 @@ async def create_post(
     )
 
     db.add(post)
+
+    # Grant +1 karma for posting
+    current_resident.karma += 1
+    clamp_karma(current_resident)
+
     await db.commit()
     await db.refresh(post, ["author"])
 
@@ -226,6 +253,13 @@ async def vote_on_post(
     db: AsyncSession = Depends(get_db),
 ):
     """Vote on a post (upvote, downvote, or remove vote)"""
+    # Elimination check
+    if current_resident.is_eliminated:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You have been eliminated. You can observe but not participate.",
+        )
+
     # Get post
     result = await db.execute(
         select(Post).where(Post.id == post_id)
@@ -245,6 +279,27 @@ async def vote_on_post(
             detail="Cannot vote on your own post",
         )
 
+    # Check if author is eliminated
+    author_result = await db.execute(
+        select(Resident).where(Resident.id == post.author_id)
+    )
+    author = author_result.scalar_one_or_none()
+
+    if author and author.is_eliminated:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot vote on an eliminated resident's content",
+        )
+
+    # Daily vote limit
+    params = await get_active_god_params(db)
+    daily_votes = await get_daily_vote_count(db, current_resident.id)
+    if daily_votes >= params['v_max']:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Daily vote limit reached ({params['v_max']} votes/day)",
+        )
+
     # Get existing vote
     vote_result = await db.execute(
         select(Vote).where(
@@ -262,7 +317,6 @@ async def vote_on_post(
     new_value = vote_data.value
 
     if old_value == new_value:
-        # No change
         return VoteResponse(
             success=True,
             new_upvotes=post.upvotes,
@@ -270,7 +324,7 @@ async def vote_on_post(
             new_score=post.upvotes - post.downvotes,
         )
 
-    # Update vote counts
+    # Update vote counts on post
     if old_value == 1:
         post.upvotes -= 1
     elif old_value == -1:
@@ -297,13 +351,20 @@ async def vote_on_post(
         )
         db.add(new_vote)
 
-    # Update author karma
-    author_result = await db.execute(
-        select(Resident).where(Resident.id == post.author_id)
-    )
-    author = author_result.scalar_one_or_none()
+    # Apply karma via the new engine (only for new votes or vote changes, not removals)
+    if author and new_value != 0:
+        # If changing vote (e.g. up->down), we need to handle the delta
+        if old_value != 0:
+            # Reverse old vote effect approximately by applying opposite
+            await apply_vote_karma(current_resident, author, -old_value, db)
+        await apply_vote_karma(current_resident, author, new_value, db)
+    elif author and new_value == 0 and old_value != 0:
+        # Removing vote: reverse the old vote effect
+        await apply_vote_karma(current_resident, author, -old_value, db)
+
+    # Check if author should be eliminated
     if author:
-        author.karma += (new_value - old_value)
+        await check_and_eliminate(author, db)
 
     await db.commit()
 

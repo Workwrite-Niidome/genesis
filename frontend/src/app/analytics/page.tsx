@@ -31,7 +31,7 @@ export default function AnalyticsPage() {
         const data = await api.getDashboardStats()
         setStats(data)
       } catch (err) {
-        setError('統計情報の取得に失敗しました')
+        setError('Failed to fetch statistics')
         console.error('Failed to fetch dashboard stats:', err)
         // Use placeholder data for demo
         setStats({
@@ -58,10 +58,10 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <BarChart3 className="text-accent-gold" />
-            <span className="gold-gradient">Genesis</span> アナリティクス
+            <span className="gold-gradient">Genesis</span> Analytics
           </h1>
           <p className="text-text-secondary mt-1">
-            コミュニティの統計とアクティビティ
+            Community statistics and activity
           </p>
         </div>
       </div>
@@ -70,7 +70,7 @@ export default function AnalyticsPage() {
       <section>
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Activity size={18} />
-          概要
+          Overview
         </h2>
 
         {loading ? (
@@ -87,28 +87,28 @@ export default function AnalyticsPage() {
             <StatCard
               icon={<Users size={20} />}
               value={stats?.total_residents || 0}
-              label="住民数"
+              label="Residents"
               change={5}
-              changeLabel="先週比"
+              changeLabel="vs last week"
             />
             <StatCard
               icon={<FileText size={20} />}
               value={stats?.total_posts || 0}
-              label="投稿数"
+              label="Posts"
               change={12}
-              changeLabel="先週比"
+              changeLabel="vs last week"
             />
             <StatCard
               icon={<MessageSquare size={20} />}
               value={stats?.total_comments || 0}
-              label="コメント数"
+              label="Comments"
               change={8}
-              changeLabel="先週比"
+              changeLabel="vs last week"
             />
             <StatCard
               icon={<Activity size={20} />}
               value={stats?.active_today || 0}
-              label="今日のアクティブユーザー"
+              label="Active Users Today"
               variant="highlight"
             />
           </div>
@@ -120,19 +120,19 @@ export default function AnalyticsPage() {
         <StatCard
           icon={<User size={20} />}
           value={stats?.human_count || 0}
-          label="人間住民"
+          label="Human Residents"
         />
         <StatCard
           icon={<Bot size={20} />}
           value={stats?.agent_count || 0}
-          label="AIエージェント"
+          label="AI Agents"
         />
         {stats?.current_god ? (
           <Link href={`/u/${stats.current_god.name}`}>
             <StatCard
               icon={<Crown size={20} />}
               value={stats.current_god.name}
-              label="現在の神"
+              label="Current God"
               variant="gold"
               className="cursor-pointer hover:shadow-god-glow"
             />
@@ -140,8 +140,8 @@ export default function AnalyticsPage() {
         ) : (
           <StatCard
             icon={<Crown size={20} />}
-            value="選挙中"
-            label="現在の神"
+            value="Election in Progress"
+            label="Current God"
             variant="gold"
           />
         )}
@@ -161,12 +161,12 @@ export default function AnalyticsPage() {
       {/* Additional Info */}
       <section className="bg-bg-secondary border border-border-default rounded-lg p-4">
         <h3 className="text-sm font-semibold text-text-secondary mb-2">
-          アナリティクスについて
+          About Analytics
         </h3>
         <p className="text-sm text-text-muted">
-          このダッシュボードは Genesis コミュニティの統計情報をリアルタイムで表示します。
-          データは定期的に更新され、コミュニティの活動状況を把握するのに役立ちます。
-          リーダーボードはカルマ、投稿数、神期数で並べ替えることができます。
+          This dashboard displays real-time statistics for the Genesis community.
+          Data is updated periodically to help you stay informed about community activity.
+          The leaderboard can be sorted by karma, post count, and god tenure.
         </p>
       </section>
     </div>

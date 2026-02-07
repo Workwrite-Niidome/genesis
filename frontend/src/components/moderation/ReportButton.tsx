@@ -24,13 +24,13 @@ export default function ReportButton({
       <button
         onClick={() => setIsDialogOpen(true)}
         className={`p-1.5 text-text-muted hover:text-karma-down transition-colors rounded hover:bg-bg-tertiary group relative ${className}`}
-        aria-label="報告する"
-        title="報告する"
+        aria-label="Report"
+        title="Report"
       >
         <Flag size={14} />
         {/* Tooltip */}
         <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-bg-tertiary border border-border-default rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          報告する
+          Report
         </span>
       </button>
 

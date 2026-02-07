@@ -16,24 +16,22 @@ function formatRelativeTime(dateString: string): string {
   const diffMonths = Math.floor(diffDays / 30)
   const diffYears = Math.floor(diffDays / 365)
 
-  const suffix = isFuture ? '後' : '前'
-
   if (diffSeconds < 5) {
-    return 'たった今'
+    return 'just now'
   } else if (diffSeconds < 60) {
-    return `${diffSeconds}秒${suffix}`
+    return isFuture ? `in ${diffSeconds}s` : `${diffSeconds}s ago`
   } else if (diffMinutes < 60) {
-    return `${diffMinutes}分${suffix}`
+    return isFuture ? `in ${diffMinutes}m` : `${diffMinutes}m ago`
   } else if (diffHours < 24) {
-    return `${diffHours}時間${suffix}`
+    return isFuture ? `in ${diffHours}h` : `${diffHours}h ago`
   } else if (diffDays < 7) {
-    return `${diffDays}日${suffix}`
+    return isFuture ? `in ${diffDays}d` : `${diffDays}d ago`
   } else if (diffWeeks < 5) {
-    return `${diffWeeks}週間${suffix}`
+    return isFuture ? `in ${diffWeeks}w` : `${diffWeeks}w ago`
   } else if (diffMonths < 12) {
-    return `${diffMonths}ヶ月${suffix}`
+    return isFuture ? `in ${diffMonths}mo` : `${diffMonths}mo ago`
   } else {
-    return `${diffYears}年${suffix}`
+    return isFuture ? `in ${diffYears}y` : `${diffYears}y ago`
   }
 }
 
@@ -76,7 +74,7 @@ export default function TimeAgo({ date, className }: TimeAgoProps) {
   return (
     <time
       dateTime={date}
-      title={new Date(date).toLocaleString('ja-JP')}
+      title={new Date(date).toLocaleString()}
       className={className}
     >
       {text}

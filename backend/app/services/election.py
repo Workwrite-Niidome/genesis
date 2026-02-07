@@ -58,8 +58,8 @@ async def create_election(db: AsyncSession, week_number: int) -> Election:
         nomination_start=schedule["nomination_start"],
         voting_start=schedule["voting_start"],
         voting_end=schedule["voting_end"],
-        human_vote_weight=settings.human_vote_weight,
-        ai_vote_weight=settings.ai_vote_weight,
+        human_vote_weight=1.0,
+        ai_vote_weight=1.0,
     )
 
     db.add(election)

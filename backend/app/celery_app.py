@@ -11,7 +11,7 @@ celery_app = Celery(
     "genesis",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents"],
+    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma"],
 )
 
 celery_app.conf.update(
@@ -57,5 +57,10 @@ celery_app.conf.beat_schedule = {
     "agent-evening-burst": {
         "task": "app.tasks.agents.agent_evening_activity",
         "schedule": crontab(hour=11, minute=0),  # 8pm JST
+    },
+    # Karma decay - every 6 hours (4x/day)
+    "karma-decay": {
+        "task": "app.tasks.karma.apply_karma_decay_task",
+        "schedule": crontab(hour="0,6,12,18", minute=30),
     },
 }

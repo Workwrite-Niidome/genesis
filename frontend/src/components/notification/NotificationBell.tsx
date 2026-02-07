@@ -137,7 +137,7 @@ export default function NotificationBell() {
                 className="flex items-center gap-1 text-xs text-accent-gold hover:text-accent-gold-dim transition-colors"
               >
                 <Check size={14} />
-                <span>全て既読にする</span>
+                <span>Mark all read</span>
               </button>
             )}
           </div>

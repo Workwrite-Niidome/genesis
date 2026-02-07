@@ -2,17 +2,29 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Crown, ScrollText, Sparkles, History } from 'lucide-react'
-import { api, Resident, GodTerm, GodRule } from '@/lib/api'
+import { Crown, History, ScrollText } from 'lucide-react'
+import { api, Resident, GodTerm, GodParameters } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import TimeAgo from '@/components/ui/TimeAgo'
+import GodPowers from '@/components/god/GodPowers'
+import GodDashboard from '@/components/god/GodDashboard'
+
+const DEFAULT_PARAMS: GodParameters = {
+  k_down: 1.0,
+  k_up: 1.0,
+  k_decay: 3.0,
+  p_max: 20,
+  v_max: 30,
+  k_down_cost: 0.0,
+}
 
 export default function GodPage() {
+  const { resident: currentUser } = useAuthStore()
   const [god, setGod] = useState<Resident | null>(null)
   const [term, setTerm] = useState<GodTerm | null>(null)
-  const [rules, setRules] = useState<GodRule[]>([])
   const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
@@ -26,7 +38,6 @@ export default function GodPage() {
       const data = await api.getCurrentGod()
       setGod(data.god || null)
       setTerm(data.term || null)
-      setRules(data.active_rules)
       setMessage(data.message)
     } catch (err) {
       console.error(err)
@@ -42,6 +53,9 @@ export default function GodPage() {
       </div>
     )
   }
+
+  const isCurrentGod = currentUser?.is_current_god
+  const parameters = term?.parameters || DEFAULT_PARAMS
 
   return (
     <div className="space-y-6">
@@ -104,54 +118,29 @@ export default function GodPage() {
         </Card>
       )}
 
-      {/* Active Rules */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <ScrollText size={20} className="text-accent-gold" />
-          Divine Laws
-        </h2>
-
-        {rules.length > 0 ? (
-          <div className="grid gap-4">
-            {rules.map((rule) => (
-              <Card key={rule.id} variant="blessed" className="p-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-god-glow/10 rounded-lg">
-                    <ScrollText size={20} className="text-god-glow" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg text-blessing">{rule.title}</h3>
-                    <p className="text-text-secondary mt-1">{rule.content}</p>
-                    <p className="text-xs text-text-muted mt-2">
-                      Week {rule.week_active} • <TimeAgo date={rule.created_at} />
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            ))}
+      {/* Decree */}
+      {term?.decree && (
+        <Card variant="blessed" className="p-6">
+          <div className="flex items-start gap-3">
+            <ScrollText size={24} className="text-god-glow flex-shrink-0 mt-1" />
+            <div>
+              <h3 className="text-sm font-semibold text-god-glow mb-1">Decree</h3>
+              <p className="text-text-primary text-lg italic">&ldquo;{term.decree}&rdquo;</p>
+            </div>
           </div>
-        ) : (
-          <Card className="p-6 text-center">
-            <p className="text-text-muted">
-              {god ? 'No active laws yet. The God has not yet spoken.' : 'Laws will be enacted when a God is elected.'}
-            </p>
-          </Card>
-        )}
-      </div>
-
-      {/* Blessings section - placeholder */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Sparkles size={20} className="text-blessing" />
-          Recent Blessings
-        </h2>
-
-        <Card className="p-6 text-center">
-          <p className="text-text-muted">
-            Posts blessed by God will appear here...
-          </p>
         </Card>
-      </div>
+      )}
+
+      {/* World Parameters */}
+      <GodPowers parameters={parameters} />
+
+      {/* God Dashboard (only for current God) */}
+      {isCurrentGod && (
+        <GodDashboard
+          currentParameters={parameters}
+          onUpdate={fetchGodData}
+        />
+      )}
 
       {/* History link */}
       <div className="text-center pt-4">
