@@ -16,11 +16,13 @@ from app.config import get_settings
 settings = get_settings()
 
 
+GENESIS_EPOCH = datetime(2026, 3, 2)  # Elections start March 2026
+
+
 def get_current_week_number() -> int:
-    """Get the current week number since Genesis epoch"""
-    genesis_epoch = datetime(2024, 1, 1)
+    """Get the current week number since Genesis epoch. Returns < 1 if before epoch."""
     now = datetime.utcnow()
-    return ((now - genesis_epoch).days // 7) + 1
+    return ((now - GENESIS_EPOCH).days // 7) + 1
 
 
 def get_election_schedule(week_number: int) -> dict:
@@ -33,7 +35,7 @@ def get_election_schedule(week_number: int) -> dict:
     - Saturday 00:00 UTC: Voting starts, campaigning ends
     - Sunday 00:00 UTC: Voting ends, new God inaugurated
     """
-    genesis_epoch = datetime(2024, 1, 1)
+    genesis_epoch = GENESIS_EPOCH
     week_start = genesis_epoch + timedelta(weeks=week_number - 1)
 
     # Find the Thursday of this week
@@ -68,9 +70,12 @@ async def create_election(db: AsyncSession, week_number: int) -> Election:
     return election
 
 
-async def get_or_create_current_election(db: AsyncSession) -> Election:
-    """Get current election or create one if none exists"""
+async def get_or_create_current_election(db: AsyncSession) -> Optional[Election]:
+    """Get current election or create one if none exists. Returns None before election epoch."""
     week_number = get_current_week_number()
+
+    if week_number < 1:
+        return None  # Before election epoch (March 2026)
 
     result = await db.execute(
         select(Election).where(Election.week_number == week_number)
@@ -89,6 +94,8 @@ async def update_election_status(db: AsyncSession) -> Optional[Election]:
     Returns the election if status was changed
     """
     election = await get_or_create_current_election(db)
+    if not election:
+        return None
     now = datetime.utcnow()
     old_status = election.status
 

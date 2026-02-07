@@ -34,16 +34,24 @@ async def seed_default_submolts():
 
 
 async def seed_default_agents():
-    """Create default AI agents if fewer than 5 exist"""
+    """Create default AI agents if fewer than 10 exist"""
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(func.count()).select_from(Resident).where(Resident._type == 'agent')
         )
         agent_count = result.scalar()
-        if agent_count < 5:
+        if agent_count < 10:
             from app.services.agent_runner import create_additional_agents
-            await create_additional_agents(15)
-            logger.info("Seeded default AI agents")
+            created = await create_additional_agents(22)
+            logger.info(f"Seeded {created} AI agents")
+            # Trigger burst activity via Celery to populate content
+            try:
+                from app.tasks.agents import run_agent_cycle_task
+                for _ in range(5):
+                    run_agent_cycle_task.delay()
+                logger.info("Triggered 5 agent burst cycles")
+            except Exception as e:
+                logger.warning(f"Could not trigger agent burst: {e}")
 
 
 @asynccontextmanager

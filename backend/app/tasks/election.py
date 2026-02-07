@@ -33,7 +33,9 @@ def update_election_status_task():
         async with AsyncSessionLocal() as db:
             try:
                 # Ensure current election exists
-                await get_or_create_current_election(db)
+                current = await get_or_create_current_election(db)
+                if not current:
+                    return "Elections not started yet (pre-season)"
 
                 # Update status if needed
                 election = await update_election_status(db)
