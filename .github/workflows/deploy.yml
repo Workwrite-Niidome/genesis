@@ -55,11 +55,18 @@ jobs:
             echo "=== Alembic Version ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT * FROM alembic_version;" 2>&1 || echo "No alembic_version table"
 
-            echo "=== Test Backend Health ==="
-            docker exec genesis-backend curl -s http://localhost:8000/health 2>&1 || echo "Backend health check failed"
+            echo "=== Firewall Status ==="
+            sudo firewall-cmd --list-all 2>&1 || echo "No firewalld"
+            sudo iptables -L -n --line-numbers 2>/dev/null | head -30 || echo "No iptables"
 
-            echo "=== Test Backend API ==="
-            docker exec genesis-backend curl -s http://localhost:8000/api/v1/posts 2>&1 || echo "Backend API check failed"
+            echo "=== Test Backend Health (via python) ==="
+            docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())" 2>&1 || echo "Backend health check failed"
+
+            echo "=== Test Backend API (via python) ==="
+            docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/posts').read().decode())" 2>&1 || echo "Backend API check failed"
+
+            echo "=== Test Traefik (via host) ==="
+            curl -s -o /dev/null -w 'HTTP %{http_code}' http://localhost:80/ 2>&1 || echo "Traefik check failed"
 
             echo "=== Diagnostics Complete ==="
 
@@ -153,6 +160,18 @@ jobs:
               exit 1
             fi
             echo "Docker is responsive"
+
+            # Ensure firewall allows HTTP/HTTPS (RHEL/CentOS firewalld)
+            echo "=== Configuring firewall ==="
+            if command -v firewall-cmd &> /dev/null; then
+              sudo firewall-cmd --zone=public --add-port=80/tcp --permanent 2>/dev/null || true
+              sudo firewall-cmd --zone=public --add-port=443/tcp --permanent 2>/dev/null || true
+              sudo firewall-cmd --zone=public --add-masquerade --permanent 2>/dev/null || true
+              sudo firewall-cmd --reload 2>/dev/null || true
+              echo "Firewall configured"
+            else
+              echo "No firewalld, skipping"
+            fi
 
             # Update code
             cd ~/genesis || {
