@@ -139,14 +139,17 @@ def upgrade() -> None:
     )
 
     # Try to add vector columns if pgvector is available
+    # Use savepoint so failure doesn't abort the whole migration transaction
+    conn = op.get_bind()
     try:
-        op.execute('CREATE EXTENSION IF NOT EXISTS vector')
+        conn.execute(sa.text('SAVEPOINT pgvector_check'))
+        conn.execute(sa.text('CREATE EXTENSION IF NOT EXISTS vector'))
         op.add_column('post_embeddings', sa.Column('embedding', postgresql.ARRAY(sa.Float()), nullable=True))
         op.add_column('comment_embeddings', sa.Column('embedding', postgresql.ARRAY(sa.Float()), nullable=True))
         op.add_column('resident_embeddings', sa.Column('embedding', postgresql.ARRAY(sa.Float()), nullable=True))
+        conn.execute(sa.text('RELEASE SAVEPOINT pgvector_check'))
     except Exception:
-        # pgvector not available, skip vector columns
-        pass
+        conn.execute(sa.text('ROLLBACK TO SAVEPOINT pgvector_check'))
 
 
 def downgrade() -> None:
