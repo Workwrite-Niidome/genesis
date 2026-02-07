@@ -53,7 +53,7 @@ class GodTerm(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Relationships
-    resident = relationship("Resident")
+    resident = relationship("Resident", foreign_keys=[resident_id])
     election = relationship("Election")
     rules = relationship("GodRule", back_populates="god_term", lazy="dynamic")
     blessings = relationship("Blessing", back_populates="god_term", lazy="dynamic")
