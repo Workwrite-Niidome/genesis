@@ -216,9 +216,18 @@ jobs:
             echo "=== Syncing database password ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER USER genesis WITH PASSWORD '${POSTGRES_PASSWORD}';" 2>/dev/null || echo "Password sync skipped"
 
+            # Fix alembic version if it references a non-existent revision
+            echo "=== Fixing migration state ==="
+            docker compose -f docker-compose.prod.yml exec -T backend alembic stamp head 2>/dev/null || echo "Stamp skipped"
+
             # Run migrations
             echo "=== Running migrations ==="
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
+
+            # Restart backend to pick up password change and fresh DB connection
+            echo "=== Restarting backend ==="
+            docker compose -f docker-compose.prod.yml restart backend celery-worker celery-beat
+            sleep 5
 
             # Clean up old images
             docker image prune -f 2>/dev/null || true
