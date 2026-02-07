@@ -38,32 +38,28 @@ jobs:
             uname -a
             free -h
             df -h /
-            df -h /var/lib/docker 2>/dev/null || true
-
-            echo "=== Docker Version ==="
-            docker version 2>&1 || echo "Docker not responding"
-
-            echo "=== Docker Info ==="
-            timeout 30 docker info 2>&1 || echo "Docker info timed out"
-
-            echo "=== Docker Storage ==="
-            timeout 30 docker system df 2>&1 || echo "Docker system df timed out"
 
             echo "=== Running Containers ==="
-            timeout 30 docker ps -a 2>&1 || echo "Docker ps timed out"
+            docker ps -a 2>&1
 
-            echo "=== Docker Images ==="
-            timeout 30 docker images 2>&1 || echo "Docker images timed out"
+            echo "=== Backend Logs (last 50 lines) ==="
+            docker logs genesis-backend --tail 50 2>&1 || echo "No backend logs"
 
-            echo "=== Test Pull (alpine) ==="
-            timeout 60 docker pull alpine:latest 2>&1 || echo "Alpine pull failed/timed out"
+            echo "=== Frontend Logs (last 20 lines) ==="
+            docker logs genesis-frontend --tail 20 2>&1 || echo "No frontend logs"
 
-            echo "=== Test Pull (small GHCR image) ==="
-            timeout 120 docker pull ghcr.io/actions/cache:latest 2>&1 || echo "GHCR pull failed/timed out"
+            echo "=== Database Tables ==="
+            cd ~/genesis 2>/dev/null
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\dt" 2>&1 || echo "DB query failed"
 
-            echo "=== Disk I/O Test ==="
-            dd if=/dev/zero of=/tmp/testfile bs=1M count=100 oflag=direct 2>&1 || true
-            rm -f /tmp/testfile
+            echo "=== Alembic Version ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT * FROM alembic_version;" 2>&1 || echo "No alembic_version table"
+
+            echo "=== Test Backend Health ==="
+            docker exec genesis-backend curl -s http://localhost:8000/health 2>&1 || echo "Backend health check failed"
+
+            echo "=== Test Backend API ==="
+            docker exec genesis-backend curl -s http://localhost:8000/api/v1/posts 2>&1 || echo "Backend API check failed"
 
             echo "=== Diagnostics Complete ==="
 
