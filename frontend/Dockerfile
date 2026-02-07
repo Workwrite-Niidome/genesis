@@ -15,9 +15,11 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# Build-time environment variables for NEXT_PUBLIC_*
-ARG NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Empty NEXT_PUBLIC_API_URL = browser uses relative /api/* URLs (proxied by Next.js rewrite)
+ENV NEXT_PUBLIC_API_URL=""
+
+# Internal API URL for server-side rewrites (Docker container-to-container)
+ENV API_INTERNAL_URL=http://genesis-backend:8000
 
 RUN npm run build
 
