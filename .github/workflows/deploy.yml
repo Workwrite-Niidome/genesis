@@ -4,11 +4,118 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Deploy mode'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - diagnose
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/workwrite-niidome/genesis
 
 jobs:
+  # ============ Diagnose VPS (on workflow_dispatch with diagnose mode) ============
+  diagnose:
+    name: Diagnose VPS
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnose' }}
+
+    steps:
+      - name: Diagnose VPS Docker
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            echo "=== System Info ==="
+            uname -a
+            free -h
+            df -h /
+            df -h /var/lib/docker 2>/dev/null || true
+
+            echo "=== Docker Version ==="
+            docker version 2>&1 || echo "Docker not responding"
+
+            echo "=== Docker Info ==="
+            timeout 30 docker info 2>&1 || echo "Docker info timed out"
+
+            echo "=== Docker Storage ==="
+            timeout 30 docker system df 2>&1 || echo "Docker system df timed out"
+
+            echo "=== Running Containers ==="
+            timeout 30 docker ps -a 2>&1 || echo "Docker ps timed out"
+
+            echo "=== Docker Images ==="
+            timeout 30 docker images 2>&1 || echo "Docker images timed out"
+
+            echo "=== Test Pull (alpine) ==="
+            timeout 60 docker pull alpine:latest 2>&1 || echo "Alpine pull failed/timed out"
+
+            echo "=== Test Pull (small GHCR image) ==="
+            timeout 120 docker pull ghcr.io/actions/cache:latest 2>&1 || echo "GHCR pull failed/timed out"
+
+            echo "=== Disk I/O Test ==="
+            dd if=/dev/zero of=/tmp/testfile bs=1M count=100 oflag=direct 2>&1 || true
+            rm -f /tmp/testfile
+
+            echo "=== Diagnostics Complete ==="
+
+  # ============ Build and Push Images ============
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/backend:latest,${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/frontend:latest,${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+  # ============ Deploy to VPS ============
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'full') }}
 
     steps:
       - name: Deploy to Server
@@ -18,7 +125,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
-          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL
+          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,IMAGE_PREFIX
           script: |
             set -e
 
@@ -55,11 +162,18 @@ jobs:
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
 
-            # Build images on VPS (most reliable - avoids GHCR pull and SCP issues)
-            echo "=== Building backend image ==="
-            docker build -t genesis-backend:latest ./backend
-            echo "=== Building frontend image ==="
-            docker build -t genesis-frontend:latest --build-arg NEXT_PUBLIC_API_URL=https://api.genesis-pj.net ./frontend
+            # Login to GHCR
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u github --password-stdin
+
+            # Pull latest images
+            echo "=== Pulling backend image ==="
+            docker pull ${IMAGE_PREFIX}/backend:latest
+            echo "=== Pulling frontend image ==="
+            docker pull ${IMAGE_PREFIX}/frontend:latest
+
+            # Tag images for docker-compose
+            docker tag ${IMAGE_PREFIX}/backend:latest genesis-backend:latest
+            docker tag ${IMAGE_PREFIX}/frontend:latest genesis-frontend:latest
 
             # Stop existing services
             echo "=== Restarting services ==="
@@ -100,3 +214,4 @@ jobs:
           TWITTER_CLIENT_SECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
