@@ -292,6 +292,11 @@ jobs:
             echo "=== Syncing database password ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER USER genesis WITH PASSWORD '${POSTGRES_PASSWORD}';" 2>/dev/null || echo "Password sync skipped"
 
+            # Fix missing columns on submolts table (VPS schema predates is_restricted column)
+            echo "=== Fixing submolts schema ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE submolts ADD COLUMN IF NOT EXISTS is_restricted BOOLEAN DEFAULT FALSE;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE submolts ADD COLUMN IF NOT EXISTS creator_id UUID;" 2>/dev/null || true
+
             # Fix alembic version if needed
             echo "=== Fixing migration state ==="
             # Remove stale revisions from old schema
