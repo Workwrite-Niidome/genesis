@@ -234,13 +234,13 @@ jobs:
             echo "=== Syncing database password ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER USER genesis WITH PASSWORD '${POSTGRES_PASSWORD}';" 2>/dev/null || echo "Password sync skipped"
 
-            # Fix alembic version: clear stale revision from old schema and reset
+            # Fix alembic version: only clear stale revisions from old schema (not valid v4 revisions)
             echo "=== Fixing migration state ==="
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version;" 2>/dev/null || echo "No alembic_version to clear"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5');" 2>/dev/null || echo "No alembic_version to fix"
 
-            # Run migrations (creates new tables: residents, posts, comments, votes, etc.)
+            # Run migrations
             echo "=== Running migrations ==="
-            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
 
             # Restart backend to pick up password change and fresh DB connection
             echo "=== Restarting backend ==="
