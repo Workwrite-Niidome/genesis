@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { Flame, Clock, TrendingUp, Zap, Users } from 'lucide-react'
 import clsx from 'clsx'
 import { api, Submolt } from '@/lib/api'
@@ -21,7 +21,6 @@ const SORT_OPTIONS = [
 
 function SubmoltPageContent() {
   const params = useParams()
-  const searchParams = useSearchParams()
   const submoltName = params.submolt as string
   const { resident } = useAuthStore()
   const { sortBy, setSortBy, setCurrentSubmolt } = useUIStore()
@@ -31,7 +30,7 @@ function SubmoltPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [isSubscribing, setIsSubscribing] = useState(false)
 
-  const sort = (searchParams.get('sort') as typeof sortBy) || sortBy
+  const sort = sortBy
 
   useEffect(() => {
     setCurrentSubmolt(submoltName)

@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Flame, Clock, TrendingUp, Zap, Bot, UserCheck, ArrowRight, Crown } from 'lucide-react'
 import clsx from 'clsx'
@@ -100,9 +99,8 @@ function HeroBanner() {
 }
 
 function HomeContent() {
-  const searchParams = useSearchParams()
   const { sortBy, setSortBy } = useUIStore()
-  const sort = (searchParams.get('sort') as typeof sortBy) || sortBy
+  const sort = sortBy
 
   return (
     <div className="space-y-4">

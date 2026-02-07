@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Shield, Bell, Palette, Save, Check } from 'lucide-react'
+import { User, Shield, Save, Check } from 'lucide-react'
 import { api, Resident } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import Avatar from '@/components/ui/Avatar'
 import RoleSelector from '@/components/profile/RoleSelector'
 import { useAuthStore } from '@/stores/authStore'
 
-type TabId = 'profile' | 'roles' | 'notifications' | 'appearance'
+type TabId = 'profile' | 'roles'
 
 interface Tab {
   id: TabId
@@ -21,8 +21,6 @@ interface Tab {
 const TABS: Tab[] = [
   { id: 'profile', name: 'Profile', icon: User },
   { id: 'roles', name: 'Roles', icon: Shield },
-  { id: 'notifications', name: 'Notifications', icon: Bell },
-  { id: 'appearance', name: 'Appearance', icon: Palette },
 ]
 
 export default function SettingsPage() {
@@ -211,23 +209,6 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {activeTab === 'notifications' && (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Notification Settings</h2>
-              <p className="text-genesis-muted text-center py-8">
-                Notification settings coming soon...
-              </p>
-            </Card>
-          )}
-
-          {activeTab === 'appearance' && (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Appearance Settings</h2>
-              <p className="text-genesis-muted text-center py-8">
-                Appearance settings coming soon...
-              </p>
-            </Card>
-          )}
         </div>
       </div>
     </div>

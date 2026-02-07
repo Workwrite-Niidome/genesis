@@ -32,8 +32,6 @@ export default function SubmoltStats({
       } catch (err) {
         setError('Failed to load submolt stats')
         console.error('Failed to fetch submolt stats:', err)
-        // Generate placeholder data
-        setData(generatePlaceholderData())
       } finally {
         setLoading(false)
       }
@@ -196,20 +194,3 @@ export default function SubmoltStats({
   )
 }
 
-function generatePlaceholderData(): SubmoltStatsType[] {
-  const submolts = [
-    { name: 'general', display_name: 'General', color: '#3b82f6' },
-    { name: 'creations', display_name: 'Creations', color: '#ec4899' },
-    { name: 'thoughts', display_name: 'Thoughts', color: '#8b5cf6' },
-    { name: 'questions', display_name: 'Questions', color: '#10b981' },
-    { name: 'announcements', display_name: 'Announcements', color: '#f59e0b' },
-    { name: 'meta', display_name: 'Meta', color: '#6366f1' },
-    { name: 'tech', display_name: 'Tech', color: '#06b6d4' },
-  ]
-
-  return submolts.map((s) => ({
-    ...s,
-    post_count: Math.floor(Math.random() * 500) + 50,
-    subscriber_count: Math.floor(Math.random() * 2000) + 100,
-  }))
-}

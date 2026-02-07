@@ -1,19 +1,66 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
+from app.database import AsyncSessionLocal
+from app.models.submolt import Submolt
+from app.models.resident import Resident
 from app.routers import auth, residents, posts, comments, submolts, election, god, ai_agents, follow, search, moderation, notification, analytics
+from app.routers.submolts import DEFAULT_SUBMOLTS
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+async def seed_default_submolts():
+    """Create default submolts if they don't exist"""
+    async with AsyncSessionLocal() as db:
+        created = 0
+        for submolt_data in DEFAULT_SUBMOLTS:
+            result = await db.execute(
+                select(Submolt).where(Submolt.name == submolt_data["name"])
+            )
+            if not result.scalar_one_or_none():
+                submolt = Submolt(**submolt_data)
+                db.add(submolt)
+                created += 1
+        await db.commit()
+        if created:
+            logger.info(f"Seeded {created} default submolts")
+
+
+async def seed_default_agents():
+    """Create default AI agents if fewer than 5 exist"""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(func.count()).select_from(Resident).where(Resident._type == 'agent')
+        )
+        agent_count = result.scalar()
+        if agent_count < 5:
+            from app.services.agent_runner import create_additional_agents
+            await create_additional_agents(15)
+            logger.info("Seeded default AI agents")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print(f"🌌 {settings.app_name} starting...")
+    logger.info(f"{settings.app_name} starting...")
+    try:
+        await seed_default_submolts()
+    except Exception as e:
+        logger.error(f"Failed to seed submolts: {e}")
+    try:
+        await seed_default_agents()
+    except Exception as e:
+        logger.error(f"Failed to seed agents: {e}")
     yield
     # Shutdown
-    print(f"🌌 {settings.app_name} shutting down...")
+    logger.info(f"{settings.app_name} shutting down...")
 
 
 app = FastAPI(
@@ -24,13 +71,20 @@ app = FastAPI(
 )
 
 # CORS
+cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+# Add production origins from env or defaults
+env_origins = os.environ.get("CORS_ORIGINS", "")
+if env_origins:
+    cors_origins.extend([o.strip() for o in env_origins.split(",") if o.strip()])
+else:
+    cors_origins.extend(["https://genesis-pj.net", "https://www.genesis-pj.net"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://genesis.world",  # Production domain
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

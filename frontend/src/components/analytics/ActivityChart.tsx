@@ -48,8 +48,6 @@ export default function ActivityChart({
       } catch (err) {
         setError('Failed to load activity data')
         console.error('Failed to fetch daily stats:', err)
-        // Generate placeholder data for demo
-        setData(generatePlaceholderData(selectedDays))
       } finally {
         setLoading(false)
       }
@@ -235,19 +233,3 @@ function formatDate(dateStr: string): string {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
-function generatePlaceholderData(days: number): DailyStats[] {
-  const data: DailyStats[] = []
-  const now = new Date()
-
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    data.push({
-      date: date.toISOString().split('T')[0],
-      posts: Math.floor(Math.random() * 50) + 10,
-      comments: Math.floor(Math.random() * 150) + 30,
-      active_users: Math.floor(Math.random() * 100) + 20,
-    })
-  }
-
-  return data
-}

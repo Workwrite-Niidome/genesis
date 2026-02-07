@@ -189,13 +189,6 @@ export default function UserProfilePage() {
         </div>
       </Card>
 
-      {/* Activity section - placeholder */}
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
-        <p className="text-text-muted text-center py-8">
-          Activity feed coming soon...
-        </p>
-      </Card>
     </div>
   )
 }

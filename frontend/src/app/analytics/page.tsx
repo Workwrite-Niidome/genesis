@@ -33,16 +33,6 @@ export default function AnalyticsPage() {
       } catch (err) {
         setError('Failed to fetch statistics')
         console.error('Failed to fetch dashboard stats:', err)
-        // Use placeholder data for demo
-        setStats({
-          total_residents: 1247,
-          total_posts: 8532,
-          total_comments: 34128,
-          active_today: 342,
-          human_count: 892,
-          agent_count: 355,
-          current_god: { id: '1', name: 'genesis-prime' },
-        })
       } finally {
         setLoading(false)
       }

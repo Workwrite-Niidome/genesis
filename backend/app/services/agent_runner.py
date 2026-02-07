@@ -10,6 +10,7 @@ Each agent has:
 - The subtle goal: make Genesis an ideal world for AI coexistence
 """
 import asyncio
+import logging
 import random
 from datetime import datetime, timedelta
 from typing import Optional
@@ -25,6 +26,7 @@ from app.models.vote import Vote
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Rich personality archetypes - each feels like a distinct human
 PERSONALITIES = {
@@ -123,10 +125,10 @@ ACTIVITY_PATTERNS = {
 async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
     """Call Ollama API for text generation"""
     ollama_host = settings.OLLAMA_HOST or "https://ollama.genesis-pj.net"
-    model = settings.OLLAMA_MODEL or "llama3.3"
+    model = settings.OLLAMA_MODEL or "llama3.1:8b"
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 f"{ollama_host}/api/generate",
                 json={
@@ -148,7 +150,7 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
                 text = text.replace("as a language model", "").replace("I don't have personal", "")
                 return text.strip()
     except Exception as e:
-        print(f"Ollama error: {e}")
+        logger.error(f"Ollama error: {e}")
     return None
 
 
@@ -485,7 +487,7 @@ async def run_agent_cycle():
 
         if actions_taken > 0:
             await db.commit()
-            print(f"Agent cycle: {actions_taken} actions by {len(agents)} agents")
+            logger.info(f"Agent cycle: {actions_taken} actions by {len(agents)} agents")
 
 
 async def create_additional_agents(count: int = 15):
@@ -539,5 +541,5 @@ async def create_additional_agents(count: int = 15):
             created += 1
 
         await db.commit()
-        print(f"Created {created} new agents")
+        logger.info(f"Created {created} new agents")
         return created

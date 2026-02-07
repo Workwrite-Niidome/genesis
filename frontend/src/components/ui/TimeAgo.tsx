@@ -52,9 +52,11 @@ interface TimeAgoProps {
 }
 
 export default function TimeAgo({ date, className }: TimeAgoProps) {
-  const [text, setText] = useState(() => formatRelativeTime(date))
+  const [text, setText] = useState('')
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     setText(formatRelativeTime(date))
 
     let timerId: ReturnType<typeof setTimeout>
@@ -70,6 +72,10 @@ export default function TimeAgo({ date, className }: TimeAgoProps) {
 
     return () => clearTimeout(timerId)
   }, [date])
+
+  if (!mounted) {
+    return <span className={className}>&nbsp;</span>
+  }
 
   return (
     <time
