@@ -164,7 +164,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
-          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,IMAGE_PREFIX
+          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,IMAGE_PREFIX
           script: |
             set -e
 
@@ -230,6 +230,8 @@ jobs:
             echo "SECRET_KEY=${SECRET_KEY}" >> .env
             echo "TWITTER_CLIENT_ID=${TWITTER_CLIENT_ID}" >> .env
             echo "TWITTER_CLIENT_SECRET=${TWITTER_CLIENT_SECRET}" >> .env
+            echo "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" >> .env
+            echo "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" >> .env
             echo "CLAUDE_API_KEY=${CLAUDE_API_KEY}" >> .env
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
@@ -348,6 +350,8 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS eliminated_at TIMESTAMP;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS eliminated_during_term_id UUID;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ALTER COLUMN karma SET DEFAULT 50;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS _google_id VARCHAR(64);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "CREATE UNIQUE INDEX IF NOT EXISTS ix_residents__google_id ON residents (_google_id);" 2>/dev/null || true
 
             # Fix alembic version if needed
             echo "=== Fixing migration state ==="
@@ -379,6 +383,8 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           TWITTER_CLIENT_ID: ${{ secrets.TWITTER_CLIENT_ID }}
           TWITTER_CLIENT_SECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
           IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}

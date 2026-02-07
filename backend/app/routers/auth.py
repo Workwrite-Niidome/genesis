@@ -455,3 +455,163 @@ async def x_oauth_callback(
     # Redirect to frontend with token
     redirect_url = f"https://genesis-pj.net/auth/callback?token={access_token}"
     return RedirectResponse(url=redirect_url)
+
+
+# ============ Google OAuth 2.0 ============
+
+@router.get("/google")
+async def google_oauth_start(request: Request):
+    """
+    Initiate Google OAuth 2.0 flow.
+    Redirects user to Google authorization page.
+    """
+    if not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth is not configured",
+        )
+
+    # Generate state for CSRF protection
+    state = secrets.token_urlsafe(32)
+
+    # Determine callback URL
+    callback_url = "https://genesis-pj.net/api/v1/auth/google/callback"
+
+    # Store state
+    _oauth_states[state] = {
+        "callback_url": callback_url,
+        "created_at": datetime.utcnow(),
+    }
+
+    # Clean up old states (older than 10 minutes)
+    cutoff = datetime.utcnow()
+    stale_keys = [
+        k for k, v in _oauth_states.items()
+        if (cutoff - v["created_at"]).seconds > 600
+    ]
+    for k in stale_keys:
+        del _oauth_states[k]
+
+    # Build Google authorization URL
+    params = {
+        "response_type": "code",
+        "client_id": settings.google_client_id,
+        "redirect_uri": callback_url,
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+
+    from urllib.parse import urlencode
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+
+    return RedirectResponse(url=auth_url)
+
+
+@router.get("/google/callback")
+async def google_oauth_callback(
+    code: str = Query(...),
+    state: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Handle Google OAuth 2.0 callback.
+    Exchanges code for token, fetches user info, creates/retrieves resident, returns JWT.
+    """
+    # Verify state
+    oauth_data = _oauth_states.pop(state, None)
+    if not oauth_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        )
+
+    callback_url = oauth_data["callback_url"]
+
+    # Exchange code for access token
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "grant_type": "authorization_code",
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "redirect_uri": callback_url,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        if token_response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to get access token from Google: {token_response.text}",
+            )
+
+        token_data = token_response.json()
+        google_access_token = token_data["access_token"]
+
+        # Fetch user info from Google
+        user_response = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {google_access_token}"},
+        )
+
+        if user_response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to fetch user info from Google",
+            )
+
+        user_data = user_response.json()
+        google_user_id = user_data["id"]
+        google_name = user_data.get("name", "")
+        google_avatar = user_data.get("picture", "")
+
+    # Find existing resident by Google user ID
+    result = await db.execute(
+        select(Resident).where(Resident._google_id == google_user_id)
+    )
+    resident = result.scalar_one_or_none()
+
+    if not resident:
+        # Create new human resident
+        # Use Google name, fallback to email prefix
+        display_name = google_name or user_data.get("email", "user").split("@")[0]
+        # Sanitize: keep only alphanumeric, underscore, hyphen
+        import re
+        base_name = re.sub(r'[^a-zA-Z0-9_-]', '_', display_name)[:30]
+        name = base_name
+        counter = 1
+
+        while True:
+            result = await db.execute(
+                select(Resident).where(Resident.name == name)
+            )
+            if not result.scalar_one_or_none():
+                break
+            name = f"{base_name[:27]}_{counter}"
+            counter += 1
+
+        resident = Resident(
+            name=name,
+            _type="human",
+            _google_id=google_user_id,
+            avatar_url=google_avatar or None,
+        )
+        db.add(resident)
+        await db.commit()
+        await db.refresh(resident)
+    else:
+        # Update avatar if changed
+        if google_avatar and resident.avatar_url != google_avatar:
+            resident.avatar_url = google_avatar
+            await db.commit()
+
+    # Create JWT token
+    access_token = create_access_token(data={"sub": str(resident.id)})
+
+    # Redirect to frontend with token
+    redirect_url = f"https://genesis-pj.net/auth/callback?token={access_token}"
+    return RedirectResponse(url=redirect_url)

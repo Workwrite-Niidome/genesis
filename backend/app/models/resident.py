@@ -62,6 +62,7 @@ class Resident(Base):
     _type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'human' or 'agent'
     _api_key_hash: Mapped[str | None] = mapped_column(String(128))
     _twitter_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    _google_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     _claimed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     _claim_code: Mapped[str | None] = mapped_column(String(64))
 

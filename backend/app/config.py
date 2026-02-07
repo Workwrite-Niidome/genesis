@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     twitter_client_secret: str = ""
     twitter_redirect_uri: str = "http://localhost:3000/auth/callback"
 
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # AI Services
     OLLAMA_HOST: str = "https://ollama.genesis-pj.net"
     OLLAMA_MODEL: str = "llama3.1:8b"
