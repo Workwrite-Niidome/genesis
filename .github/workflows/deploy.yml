@@ -190,9 +190,12 @@ jobs:
             docker tag ${IMAGE_PREFIX}/backend:latest genesis-backend:latest
             docker tag ${IMAGE_PREFIX}/frontend:latest genesis-frontend:latest
 
-            # Stop existing services
-            echo "=== Restarting services ==="
+            # Stop ALL old containers (including genesis_v4-* from old docker-compose)
+            echo "=== Cleaning up old containers ==="
             docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+            docker compose down --remove-orphans 2>/dev/null || true
+            # Force stop any remaining genesis containers
+            docker ps -a --filter "name=genesis" -q | xargs -r docker rm -f 2>/dev/null || true
 
             # Start services
             docker compose -f docker-compose.prod.yml up -d
@@ -212,13 +215,13 @@ jobs:
             echo "=== Syncing database password ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER USER genesis WITH PASSWORD '${POSTGRES_PASSWORD}';" 2>/dev/null || echo "Password sync skipped"
 
-            # Fix alembic version if it references a non-existent revision
+            # Fix alembic version: clear stale revision from old schema and reset
             echo "=== Fixing migration state ==="
-            docker compose -f docker-compose.prod.yml exec -T backend alembic stamp head 2>/dev/null || echo "Stamp skipped"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version;" 2>/dev/null || echo "No alembic_version to clear"
 
-            # Run migrations
+            # Run migrations (creates new tables: residents, posts, comments, votes, etc.)
             echo "=== Running migrations ==="
-            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
+            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 
             # Restart backend to pick up password change and fresh DB connection
             echo "=== Restarting backend ==="
