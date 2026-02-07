@@ -6,68 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ============ Build and Transfer Images ============
-  build-and-deploy:
-    name: Build and Deploy
+  deploy:
+    name: Deploy to VPS
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          docker-images: false
-          swap-storage: false
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Backend Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          load: true
-          tags: genesis-backend:latest
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,scope=backend,mode=max
-
-      - name: Build Frontend Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          load: true
-          tags: genesis-frontend:latest
-          build-args: |
-            NEXT_PUBLIC_API_URL=https://api.genesis-pj.net
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,scope=frontend,mode=max
-
-      - name: Save images to tar
-        run: |
-          docker save genesis-backend:latest | gzip > ${{ github.workspace }}/backend.tar.gz
-          docker save genesis-frontend:latest | gzip > ${{ github.workspace }}/frontend.tar.gz
-          ls -lh ${{ github.workspace }}/backend.tar.gz ${{ github.workspace }}/frontend.tar.gz
-
-      - name: Transfer images to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "backend.tar.gz,frontend.tar.gz"
-          target: "/tmp"
-          timeout: 30m
-          overwrite: true
-
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -82,19 +25,12 @@ jobs:
             echo "=== Disk Space ==="
             df -h / | tail -1
 
-            # Restart Docker if needed
+            # Ensure Docker is running
             if ! timeout 30 docker info > /dev/null 2>&1; then
               echo "Docker unresponsive, restarting..."
               sudo systemctl restart docker
               sleep 10
             fi
-
-            # Load images from tar files (bypasses GHCR pull issues)
-            echo "=== Loading backend image ==="
-            gunzip -c /tmp/backend.tar.gz | docker load
-            echo "=== Loading frontend image ==="
-            gunzip -c /tmp/frontend.tar.gz | docker load
-            rm -f /tmp/backend.tar.gz /tmp/frontend.tar.gz
 
             # Update code
             cd ~/genesis || {
@@ -119,6 +55,12 @@ jobs:
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
 
+            # Build images on VPS (most reliable - avoids GHCR pull and SCP issues)
+            echo "=== Building backend image ==="
+            docker build -t genesis-backend:latest ./backend
+            echo "=== Building frontend image ==="
+            docker build -t genesis-frontend:latest --build-arg NEXT_PUBLIC_API_URL=https://api.genesis-pj.net ./frontend
+
             # Stop existing services
             echo "=== Restarting services ==="
             docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
@@ -140,6 +82,9 @@ jobs:
             # Run migrations
             echo "=== Running migrations ==="
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
+
+            # Clean up old images
+            docker image prune -f 2>/dev/null || true
 
             # Show final status
             echo "=== Service Status ==="
