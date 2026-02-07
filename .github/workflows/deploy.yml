@@ -212,6 +212,10 @@ jobs:
               sleep 2
             done
 
+            # Sync PostgreSQL password with .env (volume may have been initialized with a different password)
+            echo "=== Syncing database password ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER USER genesis WITH PASSWORD '${POSTGRES_PASSWORD}';" 2>/dev/null || echo "Password sync skipped"
+
             # Run migrations
             echo "=== Running migrations ==="
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
