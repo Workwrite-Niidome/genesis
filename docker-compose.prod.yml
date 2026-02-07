@@ -163,5 +163,7 @@ networks:
 
 volumes:
   postgres_data:
+    external: true
+    name: genesis_v4_postgres_data
   redis_data:
   traefik_certs:
