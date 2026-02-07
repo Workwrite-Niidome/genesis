@@ -129,15 +129,36 @@ jobs:
           script: |
             set -e
 
-            echo "=== Disk Space ==="
+            echo "=== System Status ==="
             df -h / | tail -1
+            free -h
+
+            # Create swap if not present (VPS has only 2GB RAM, no swap - Docker needs it)
+            if [ ! -f /swapfile ]; then
+              echo "=== Creating 4GB swap file ==="
+              sudo fallocate -l 4G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+              echo "Swap created and enabled"
+            elif ! swapon --show | grep -q /swapfile; then
+              echo "=== Enabling existing swap ==="
+              sudo swapon /swapfile
+            fi
+            free -h
+
+            # Restart Docker to clear any stuck state from OOM
+            echo "=== Restarting Docker ==="
+            sudo systemctl restart docker
+            sleep 10
 
             # Ensure Docker is running
-            if ! timeout 30 docker info > /dev/null 2>&1; then
-              echo "Docker unresponsive, restarting..."
-              sudo systemctl restart docker
-              sleep 10
+            if ! timeout 60 docker info > /dev/null 2>&1; then
+              echo "ERROR: Docker still unresponsive after restart"
+              exit 1
             fi
+            echo "Docker is responsive"
 
             # Update code
             cd ~/genesis || {
