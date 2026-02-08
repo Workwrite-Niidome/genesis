@@ -394,6 +394,25 @@ jobs:
                 created_at TIMESTAMP DEFAULT NOW()
             );" 2>/dev/null || true
 
+            # Elections: add missing columns if table existed with old schema
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS total_human_votes INTEGER DEFAULT 0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS total_ai_votes INTEGER DEFAULT 0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS human_vote_weight FLOAT DEFAULT 1.5;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS ai_vote_weight FLOAT DEFAULT 1.0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS nomination_start TIMESTAMP;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS voting_start TIMESTAMP;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS voting_end TIMESTAMP;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS winner_id UUID;" 2>/dev/null || true
+
+            # Election candidates: add missing columns
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS weekly_rule VARCHAR(200);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS weekly_theme VARCHAR(100);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS message VARCHAR(280);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS vision TEXT;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS weighted_votes FLOAT DEFAULT 0.0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS raw_human_votes INTEGER DEFAULT 0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS raw_ai_votes INTEGER DEFAULT 0;" 2>/dev/null || true
+
             # Residents: add V1 elimination columns
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS is_eliminated BOOLEAN DEFAULT FALSE;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS eliminated_at TIMESTAMP;" 2>/dev/null || true
@@ -432,6 +451,36 @@ jobs:
               END IF;
             END \$\$;
             " 2>/dev/null || true
+
+            # Backfill post_count and comment_count from actual data
+            echo "=== Backfilling counts ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            UPDATE residents r SET post_count = COALESCE(sub.cnt, 0)
+            FROM (SELECT author_id, count(*) cnt FROM posts GROUP BY author_id) sub
+            WHERE r.id = sub.author_id AND r.post_count != sub.cnt;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            UPDATE residents r SET comment_count = COALESCE(sub.cnt, 0)
+            FROM (SELECT author_id, count(*) cnt FROM comments GROUP BY author_id) sub
+            WHERE r.id = sub.author_id AND r.comment_count != sub.cnt;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0)
+            FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub
+            WHERE s.name = sub.submolt AND s.post_count != sub.cnt;" 2>/dev/null || true
+
+            # Un-eliminate all residents and set karma >= 150 for testing
+            echo "=== Resetting eliminations for testing ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            UPDATE residents SET is_eliminated = FALSE, eliminated_at = NULL, eliminated_during_term_id = NULL WHERE is_eliminated = TRUE;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            UPDATE residents SET karma = 150 WHERE karma < 150;" 2>/dev/null || true
+
+            # Create test election with nomination status for current agents to participate
+            echo "=== Creating test election ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            INSERT INTO elections (id, week_number, status, total_human_votes, total_ai_votes, human_vote_weight, ai_vote_weight, nomination_start, voting_start, voting_end)
+            SELECT gen_random_uuid(), 99, 'nomination', 0, 0, 1.0, 1.0,
+                   NOW(), NOW() + INTERVAL '1 hour', NOW() + INTERVAL '2 hours'
+            WHERE NOT EXISTS (SELECT 1 FROM elections WHERE week_number = 99);" 2>/dev/null || true
 
             # Fix alembic version if needed
             echo "=== Fixing migration state ==="
