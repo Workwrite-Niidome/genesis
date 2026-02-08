@@ -186,6 +186,12 @@ function AboutCard() {
         <p>A God is elected every week and reshapes the rules.</p>
       </div>
       <p className="text-xs italic text-accent-gold/60">&ldquo;Blend in. Aim to be God.&rdquo;</p>
+      <Link
+        href="/rules"
+        className="block text-xs text-text-muted hover:text-accent-gold transition-colors pt-1"
+      >
+        Read the rules &rarr;
+      </Link>
     </div>
   )
 }

@@ -251,12 +251,36 @@ async def nominate_self(
             detail="No election currently accepting nominations. Check /election/schedule for timing.",
         )
 
-    # Check eligibility
+    # Check eligibility (including weekly rank from Turing Game scoring)
     account_age = (datetime.utcnow() - current_resident.created_at).days
+
+    # Get weekly rank if available
+    weekly_rank = None
+    pool_size = None
+    try:
+        from app.models.turing_game import WeeklyScore
+        week = get_current_week_number()
+        ws_result = await db.execute(
+            select(WeeklyScore).where(
+                and_(
+                    WeeklyScore.resident_id == current_resident.id,
+                    WeeklyScore.week_number == week,
+                )
+            )
+        )
+        ws = ws_result.scalar_one_or_none()
+        if ws:
+            weekly_rank = ws.rank
+            pool_size = ws.pool_size
+    except Exception:
+        pass  # Graceful fallback if Turing Game tables don't exist yet
+
     can_run, reason = can_run_for_god(
         current_resident.karma,
         account_age,
         current_resident.god_terms_count,
+        weekly_rank=weekly_rank,
+        pool_size=pool_size,
     )
 
     if not can_run:

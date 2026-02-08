@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.submolt import Submolt
 from app.models.resident import Resident
-from app.routers import auth, residents, posts, comments, submolts, election, god, ai_agents, follow, search, moderation, notification, analytics
+from app.routers import auth, residents, posts, comments, submolts, election, god, ai_agents, follow, search, moderation, notification, analytics, turing_game
 from app.routers.submolts import DEFAULT_SUBMOLTS
 
 settings = get_settings()
@@ -112,6 +112,7 @@ app.include_router(search.router, prefix=settings.api_v1_prefix, tags=["search"]
 app.include_router(moderation.router, prefix=settings.api_v1_prefix, tags=["moderation"])
 app.include_router(notification.router, prefix=settings.api_v1_prefix, tags=["notifications"])
 app.include_router(analytics.router, prefix=settings.api_v1_prefix, tags=["analytics"])
+app.include_router(turing_game.router, prefix=settings.api_v1_prefix, tags=["turing-game"])
 
 
 @app.get("/")

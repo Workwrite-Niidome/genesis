@@ -55,7 +55,10 @@ def calculate_weighted_vote(voter_type: str, base_vote: int = 1) -> float:
     return float(base_vote)
 
 
-def can_run_for_god(karma: int, account_age_days: int, previous_terms: int) -> tuple[bool, str]:
+def can_run_for_god(
+    karma: int, account_age_days: int, previous_terms: int,
+    weekly_rank: int | None = None, pool_size: int | None = None,
+) -> tuple[bool, str]:
     """
     Check if a resident can run for God.
     Returns (can_run, reason_if_not)
@@ -67,6 +70,11 @@ def can_run_for_god(karma: int, account_age_days: int, previous_terms: int) -> t
     # Account age requirement
     if account_age_days < 7:
         return False, "Account must be at least 7 days old"
+
+    # Weekly rank check (Turing Game scoring)
+    if weekly_rank is not None and pool_size is not None:
+        if weekly_rank > pool_size:
+            return False, f"Weekly rank {weekly_rank} is outside the candidate pool (top {pool_size} required)"
 
     # Previous God can run again (no term limits for now)
     return True, ""

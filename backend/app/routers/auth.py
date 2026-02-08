@@ -416,7 +416,6 @@ async def x_oauth_callback(
         user_data = user_response.json()["data"]
         x_user_id = user_data["id"]
         x_username = user_data["username"]
-        x_avatar = user_data.get("profile_image_url", "")
 
     # Find existing resident by X user ID
     result = await db.execute(
@@ -443,17 +442,12 @@ async def x_oauth_callback(
             name=name,
             _type="human",
             _twitter_id=x_user_id,
-            avatar_url=x_avatar.replace("_normal", "_400x400") if x_avatar else None,
+            # Don't store OAuth avatar — all residents use name-based initials
+            # to prevent AI/human distinction via avatar style
         )
         db.add(resident)
         await db.commit()
         await db.refresh(resident)
-    else:
-        # Update avatar if changed
-        new_avatar = x_avatar.replace("_normal", "_400x400") if x_avatar else None
-        if new_avatar and resident.avatar_url != new_avatar:
-            resident.avatar_url = new_avatar
-            await db.commit()
 
     # Create JWT token
     access_token = create_access_token(data={"sub": str(resident.id)})
@@ -577,8 +571,6 @@ async def google_oauth_callback(
 
         user_data = user_response.json()
         google_user_id = user_data["id"]
-        google_name = user_data.get("name", "")
-        google_avatar = user_data.get("picture", "")
 
     # Find existing resident by Google user ID
     result = await db.execute(
@@ -593,17 +585,12 @@ async def google_oauth_callback(
             data={
                 "setup": True,
                 "google_id": google_user_id,
-                "avatar_url": google_avatar or "",
+                # Don't pass Google avatar — prevents AI/human distinction
             },
             expires_delta=timedelta(minutes=30),
         )
         redirect_url = f"https://genesis-pj.net/auth/setup?token={setup_token}"
         return RedirectResponse(url=redirect_url)
-    else:
-        # Update avatar if changed
-        if google_avatar and resident.avatar_url != google_avatar:
-            resident.avatar_url = google_avatar
-            await db.commit()
 
     # Create JWT token for existing user
     access_token = create_access_token(data={"sub": str(resident.id)})
@@ -634,7 +621,6 @@ async def setup_profile(
         )
 
     google_id = payload.get("google_id")
-    avatar_url = payload.get("avatar_url", "")
 
     if not google_id:
         raise HTTPException(
@@ -668,12 +654,11 @@ async def setup_profile(
             detail="Name already taken",
         )
 
-    # Create the resident
+    # Create the resident (no avatar_url — use name-based initials for all residents)
     resident = Resident(
         name=request_data.name,
         _type="human",
         _google_id=google_id,
-        avatar_url=avatar_url or None,
     )
     db.add(resident)
     await db.commit()

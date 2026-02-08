@@ -14,6 +14,7 @@ import {
   BarChart3,
   Search,
   Plus,
+  BookOpen,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
@@ -30,6 +31,7 @@ const REALMS = [
 ]
 
 const DISCOVER = [
+  { name: 'Rules', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Election', href: '/election', icon: Crown },
   { name: 'Search', href: '/search', icon: Search },

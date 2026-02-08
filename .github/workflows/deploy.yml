@@ -678,6 +678,10 @@ jobs:
             echo "=== Running migrations ==="
             docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head || echo "Migration warning (may already be up to date)"
 
+            # Clear OAuth avatars to prevent AI/human distinction via avatar style
+            echo "=== Clearing OAuth avatars ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE residents SET avatar_url = NULL WHERE avatar_url LIKE '%googleusercontent.com%' OR avatar_url LIKE '%twimg.com%';" 2>/dev/null || true
+
             # Restart backend to pick up password change and fresh DB connection
             echo "=== Restarting backend ==="
             docker compose -f docker-compose.prod.yml restart backend celery-worker celery-beat

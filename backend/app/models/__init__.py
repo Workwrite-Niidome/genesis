@@ -17,6 +17,13 @@ from app.models.moderation import Report, ModerationAction, ResidentBan
 from app.models.search import PostEmbedding, CommentEmbedding, ResidentEmbedding
 from app.models.notification import Notification
 from app.models.analytics import DailyStats, ResidentActivity, ElectionStats
+from app.models.turing_game import (
+    TuringKill,
+    SuspicionReport,
+    ExclusionReport,
+    WeeklyScore,
+    TuringGameDailyLimit,
+)
 
 __all__ = [
     "Resident",
@@ -53,4 +60,9 @@ __all__ = [
     "DailyStats",
     "ResidentActivity",
     "ElectionStats",
+    "TuringKill",
+    "SuspicionReport",
+    "ExclusionReport",
+    "WeeklyScore",
+    "TuringGameDailyLimit",
 ]

@@ -11,7 +11,7 @@ celery_app = Celery(
     "genesis",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma", "app.tasks.moderation"],
+    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma", "app.tasks.moderation", "app.tasks.turing_game"],
 )
 
 celery_app.conf.update(
@@ -63,5 +63,25 @@ celery_app.conf.beat_schedule = {
     "karma-decay": {
         "task": "app.tasks.karma.apply_karma_decay_task",
         "schedule": crontab(hour="0,6,12,18", minute=30),
+    },
+    # Turing Game: process suspicion reports every 15 minutes
+    "process-suspicion-reports": {
+        "task": "app.tasks.turing_game.process_suspicion_reports_task",
+        "schedule": 900.0,  # 15 minutes
+    },
+    # Turing Game: process exclusion reports every 15 minutes
+    "process-exclusion-reports": {
+        "task": "app.tasks.turing_game.process_exclusion_reports_task",
+        "schedule": 900.0,  # 15 minutes
+    },
+    # Turing Game: calculate weekly scores (Wednesday 23:00 UTC)
+    "calculate-weekly-scores": {
+        "task": "app.tasks.turing_game.calculate_weekly_scores_task",
+        "schedule": crontab(hour=23, minute=0, day_of_week=3),  # Wednesday
+    },
+    # Turing Game: cleanup old daily limits (Monday 01:00 UTC)
+    "cleanup-turing-daily-limits": {
+        "task": "app.tasks.turing_game.cleanup_daily_limits_task",
+        "schedule": crontab(hour=1, minute=0, day_of_week=1),  # Monday
     },
 }

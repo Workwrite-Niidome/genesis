@@ -17,7 +17,7 @@ Sessions: when active, agents do 1-N actions in a burst, then go quiet.
 """
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import httpx
@@ -169,19 +169,19 @@ ACTIVITY_PATTERNS = {
 
 BEHAVIOR_TYPES = {
     'commenter': {
-        'weights': {'comment': 0.55, 'post': 0.05, 'vote': 0.30, 'follow': 0.10},
+        'weights': {'comment': 0.52, 'post': 0.05, 'vote': 0.28, 'follow': 0.10, 'turing_report': 0.05},
     },
     'poster': {
-        'weights': {'comment': 0.25, 'post': 0.40, 'vote': 0.25, 'follow': 0.10},
+        'weights': {'comment': 0.23, 'post': 0.38, 'vote': 0.24, 'follow': 0.10, 'turing_report': 0.05},
     },
     'lurker_voter': {
-        'weights': {'comment': 0.10, 'post': 0.02, 'vote': 0.78, 'follow': 0.10},
+        'weights': {'comment': 0.10, 'post': 0.02, 'vote': 0.75, 'follow': 0.10, 'turing_report': 0.03},
     },
     'social_butterfly': {
-        'weights': {'comment': 0.40, 'post': 0.15, 'vote': 0.15, 'follow': 0.30},
+        'weights': {'comment': 0.38, 'post': 0.14, 'vote': 0.13, 'follow': 0.28, 'turing_report': 0.07},
     },
     'balanced': {
-        'weights': {'comment': 0.35, 'post': 0.20, 'vote': 0.35, 'follow': 0.10},
+        'weights': {'comment': 0.32, 'post': 0.18, 'vote': 0.33, 'follow': 0.10, 'turing_report': 0.07},
     },
 }
 
@@ -966,6 +966,99 @@ async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Re
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# TURING GAME — Exclusion Reports from AI agents
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def agent_turing_report(agent: Resident, db: AsyncSession, profile: dict) -> int:
+    """AI agent files an Exclusion Report based on personality-driven suspicion.
+
+    Target selection:
+    1. Residents who recently downvoted the agent's content
+    2. Residents with low trust in AIRelationship
+    3. Personality suspicion level gates the probability
+    """
+    suspicion_level = profile['personality'].get('suspicion', 'none')
+    suspicion_probs = {'none': 0.0, 'low': 0.15, 'medium': 0.35, 'high': 0.60}
+    if random.random() > suspicion_probs.get(suspicion_level, 0.0):
+        return 0
+
+    # Find potential targets: residents with negative trust or who downvoted agent
+    candidates = []
+
+    # Low-trust residents
+    rel_result = await db.execute(
+        select(AIRelationship.target_id).where(
+            and_(
+                AIRelationship.agent_id == agent.id,
+                AIRelationship.trust < -0.3,
+            )
+        ).limit(10)
+    )
+    low_trust_ids = [row[0] for row in rel_result.all()]
+    candidates.extend(low_trust_ids)
+
+    # Recent downvoters of agent's posts (Vote.post_id may be NULL, use target_id)
+    agent_post_ids = select(Post.id).where(Post.author_id == agent.id).scalar_subquery()
+    downvote_result = await db.execute(
+        select(Vote.resident_id)
+        .where(
+            and_(
+                Vote.target_type == 'post',
+                Vote.target_id.in_(agent_post_ids),
+                Vote.value == -1,
+                Vote.created_at >= datetime.utcnow() - timedelta(days=7),
+            )
+        )
+        .distinct()
+        .limit(10)
+    )
+    downvoter_ids = [row[0] for row in downvote_result.all()]
+    candidates.extend(downvoter_ids)
+
+    # Deduplicate and exclude self
+    candidates = list(set(c for c in candidates if c != agent.id))
+    if not candidates:
+        return 0
+
+    target_id = random.choice(candidates)
+
+    # Verify target exists and is valid
+    target_result = await db.execute(
+        select(Resident).where(
+            and_(
+                Resident.id == target_id,
+                Resident.is_eliminated == False,
+                Resident.is_current_god == False,
+            )
+        )
+    )
+    target = target_result.scalar_one_or_none()
+    if not target:
+        return 0
+
+    # File the report via service
+    try:
+        from app.services.turing_game import file_exclusion_report
+        result = await file_exclusion_report(
+            db, agent, target_id,
+            reason=f"Suspicious behavior detected by {agent.name}",
+        )
+        if result['success']:
+            _add_memory(
+                db, agent.id,
+                f"Filed exclusion report against {target.name}",
+                'turing_game', importance=0.6, sentiment=-0.3,
+                related_resident_ids=[target_id],
+            )
+            await _update_rel(db, agent.id, target_id, trust_change=-0.1)
+            return 1
+    except Exception as e:
+        logger.debug(f"Agent {agent.name} turing report failed: {e}")
+
+    return 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # MEMORY & RELATIONSHIP — lightweight session-local helpers (no commit)
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1149,6 +1242,9 @@ async def run_agent_cycle():
                             if reply_author_id and reply_author_id != agent.id:
                                 await _update_rel(db, agent.id, reply_author_id,
                                                   trust_change=0.03, familiarity_change=0.08)
+
+                elif action == 'turing_report':
+                    actions_taken += await agent_turing_report(agent, db, profile)
 
                 elif action == 'post':
                     interests = profile['personality'].get('interests', ['general', 'thoughts'])

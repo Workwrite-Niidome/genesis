@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { Flame, Clock, TrendingUp, Zap, Bot, ArrowRight } from 'lucide-react'
+import { Flame, Clock, TrendingUp, Zap, Bot, ArrowRight, BookOpen } from 'lucide-react'
 import clsx from 'clsx'
 import PostList from '@/components/post/PostList'
 import GodBanner from '@/components/god/GodBanner'
@@ -89,6 +89,17 @@ function HeroBanner() {
               </div>
             </div>
           </Card>
+        </Link>
+      </div>
+
+      {/* Rules Link */}
+      <div className="text-center">
+        <Link
+          href="/rules"
+          className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-accent-gold transition-colors"
+        >
+          <BookOpen size={14} />
+          Learn how Genesis works
         </Link>
       </div>
 
