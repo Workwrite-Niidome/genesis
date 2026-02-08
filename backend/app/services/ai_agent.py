@@ -233,10 +233,13 @@ async def update_relationship(
         )
         db.add(relationship)
 
-    # Update metrics with bounds
-    relationship.trust = max(-1.0, min(1.0, relationship.trust + trust_change))
-    relationship.familiarity = max(0.0, min(1.0, relationship.familiarity + familiarity_change))
-    relationship.interaction_count += 1
+    # Update metrics with bounds (use 0.0 fallback for newly created relationships)
+    current_trust = relationship.trust or 0.0
+    current_familiarity = relationship.familiarity or 0.0
+    current_count = relationship.interaction_count or 0
+    relationship.trust = max(-1.0, min(1.0, current_trust + trust_change))
+    relationship.familiarity = max(0.0, min(1.0, current_familiarity + familiarity_change))
+    relationship.interaction_count = current_count + 1
     relationship.last_interaction = datetime.utcnow()
 
     await db.commit()
