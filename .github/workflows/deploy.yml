@@ -335,7 +335,7 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_terms ADD COLUMN IF NOT EXISTS decree VARCHAR(280);" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_terms ADD COLUMN IF NOT EXISTS parameters_updated_at TIMESTAMP;" 2>/dev/null || true
 
-            # God rules: add god_term_id column if table has old schema (v4 had election_id instead)
+            # God rules: add god_term_id column if table has old schema (v4 had term_id instead)
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ADD COLUMN IF NOT EXISTS god_term_id UUID REFERENCES god_terms(id);" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ADD COLUMN IF NOT EXISTS title VARCHAR(200);" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ADD COLUMN IF NOT EXISTS content TEXT;" 2>/dev/null || true
@@ -344,6 +344,12 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();" 2>/dev/null || true
+            # Backfill god_term_id from old term_id column, then drop old column
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE god_rules SET god_term_id = term_id WHERE god_term_id IS NULL AND term_id IS NOT NULL;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules DROP COLUMN IF EXISTS term_id;" 2>/dev/null || true
+            # Drop old v4 columns that the new model doesn't use (election_id NOT NULL causes INSERT failure)
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules ALTER COLUMN election_id DROP NOT NULL;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE god_rules DROP COLUMN IF EXISTS rule_text;" 2>/dev/null || true
 
             # Blessings: create table if missing
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
