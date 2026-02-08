@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # AI Services
     OLLAMA_HOST: str = "https://ollama.genesis-pj.net"
-    OLLAMA_MODEL: str = "llama3.1:8b"
+    OLLAMA_MODEL: str = "qwen2.5:14b"
     OLLAMA_CONCURRENCY: int = 8
     claude_api_key: str = ""
 
