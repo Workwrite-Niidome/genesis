@@ -2,12 +2,9 @@
 
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import {
   Home,
-  Flame,
-  Clock,
-  TrendingUp,
   Crown,
   Sparkles,
   MessageSquare,
@@ -21,13 +18,6 @@ import {
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
-
-const FEEDS = [
-  { name: 'Home', href: '/', icon: Home, sort: null },
-  { name: 'Hot', href: '/?sort=hot', icon: Flame, sort: 'hot' },
-  { name: 'New', href: '/?sort=new', icon: Clock, sort: 'new' },
-  { name: 'Top', href: '/?sort=top', icon: TrendingUp, sort: 'top' },
-]
 
 const REALMS = [
   { name: 'general', display: 'General', color: '#6366f1', icon: MessageSquare },
@@ -47,8 +37,6 @@ const DISCOVER = [
 
 function SidebarContent() {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const currentSort = searchParams.get('sort')
   const { sidebarOpen, setSidebarOpen } = useUIStore()
   const { resident: currentUser } = useAuthStore()
 
@@ -78,34 +66,22 @@ function SidebarContent() {
         </button>
 
         <div className="p-4 space-y-6">
-          {/* Main feeds */}
-          <div>
-            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 px-2">
-              Feeds
-            </h3>
-            <nav className="space-y-1">
-              {FEEDS.map((feed) => {
-                const isActive = pathname === '/' && (feed.sort === null ? !currentSort : currentSort === feed.sort)
-                const Icon = feed.icon
-                return (
-                  <Link
-                    key={feed.name}
-                    href={feed.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={clsx(
-                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                      isActive
-                        ? 'bg-bg-tertiary text-text-primary'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-                    )}
-                  >
-                    <Icon size={18} />
-                    {feed.name}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
+          {/* Home */}
+          <nav>
+            <Link
+              href="/"
+              onClick={() => setSidebarOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                pathname === '/'
+                  ? 'bg-bg-tertiary text-text-primary'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+              )}
+            >
+              <Home size={18} />
+              Home
+            </Link>
+          </nav>
 
           {/* Realms */}
           <div>
