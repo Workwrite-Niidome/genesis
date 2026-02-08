@@ -774,7 +774,7 @@ jobs:
             $PSQL "DELETE FROM resident_bans WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR banned_by IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
-            $PSQL "DELETE FROM ai_relationships WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR target_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_relationships WHERE agent_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR target_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM submolts WHERE name LIKE 'test_realm_t%';" 2>/dev/null || true
             $PSQL "DELETE FROM residents WHERE name ~ '_t[0-9]+\$' OR name LIKE '%_test_%';" 2>/dev/null || true
             # Recount submolt post_count after cleanup
@@ -897,6 +897,14 @@ jobs:
 
             check "GET /submolts/:name returns realm" 'echo "$SUB_G" | grep -q "test_realm"'
 
+            # --- Phase 4c: Realm Settings Update ---
+            echo "--- Phase 4c: Realm Settings ---"
+            SUB_UPD=$(curl -s -X PATCH "$API/submolts/test_realm_t${TS}/settings" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"display_name":"Updated Test Realm","description":"Updated for integration tests"}')
+            check "PATCH /submolts/:name/settings (owner)" 'echo "$SUB_UPD" | grep -q "Updated"'
+
+            SUB_UPD_NO=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$API/submolts/test_realm_t${TS}/settings" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"display_name":"Hacked"}')
+            check "Non-owner cannot update realm settings" '[ "$SUB_UPD_NO" = "403" ]'
+
             # --- Phase 5: Comments ---
             echo "--- Phase 5: Comments ---"
             C1=$(curl -s -X POST "$API/posts/$POST1_ID/comments" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"content":"Well said, Athena! Wisdom is the highest form of knowledge."}')
@@ -969,6 +977,10 @@ jobs:
 
             DN_C=$(curl -s -X POST "$API/posts/$POST3_ID/downvote" -H "Authorization: Bearer $PROMETHEUS_KEY")
             check "POST /posts/:id/downvote (compat)" 'echo "$DN_C" | grep -q "success\|score"'
+
+            # Vote removal (value=0)
+            V_REM=$(curl -s -X POST "$API/posts/$POST1_ID/vote" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"value":0}')
+            check "Vote removal (value=0)" 'echo "$V_REM" | grep -q "success\|score"'
 
             # --- Phase 7: Search ---
             echo "--- Phase 7: Search ---"
@@ -1141,6 +1153,18 @@ jobs:
             echo "  Profile post_count: $PROF_POSTS"
             check "Profile shows post_count" '[ -n "$PROF_POSTS" ] && [ "$PROF_POSTS" -ge 1 ] 2>/dev/null'
 
+            # Alternative profile endpoint (query param)
+            PROF_Q=$(curl -s "$API/residents/profile?name=Athena_t${TS}")
+            check "GET /residents/profile?name= returns profile" 'echo "$PROF_Q" | grep -q "Athena"'
+
+            # Avatar delete (no avatar uploaded, graceful handling)
+            AVDEL=$(curl -s -X DELETE "$API/residents/me/avatar" -H "Authorization: Bearer $ATHENA_KEY")
+            check "DELETE /residents/me/avatar handles no avatar" 'echo "$AVDEL" | grep -qi "success\|no avatar\|deleted\|null\|detail"'
+
+            # Invalid token authentication
+            BADAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/residents/me" -H "Authorization: Bearer invalid_token_xyz")
+            check "Invalid token returns 401/403" '[ "$BADAUTH" = "401" ] || [ "$BADAUTH" = "403" ]'
+
             # --- Phase 12b: Follow System ---
             echo "--- Phase 12b: Follow System ---"
             FOL=$(curl -s -X POST "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $ATHENA_KEY")
@@ -1183,6 +1207,10 @@ jobs:
             READ_ALL=$(curl -s -X POST "$API/notifications/read-all" -H "Authorization: Bearer $ATHENA_KEY")
             check "POST /notifications/read-all" 'echo "$READ_ALL" | grep -qi "success\|read\|count\|marked"'
 
+            # Unread-only filter
+            NOTIF_UF=$(curl -s "$API/notifications?unread_only=true" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /notifications?unread_only=true" 'echo "$NOTIF_UF" | grep -q "notifications\|\\[\\]"'
+
             # --- Phase 12d: Post Deletion ---
             echo "--- Phase 12d: Post Deletion ---"
             DEL_POST=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"Delete me","content":"This post will be deleted"}')
@@ -1213,7 +1241,7 @@ jobs:
             check "GET /moderation/reports (mod)" 'echo "$MOD_REPORTS" | grep -qi "reports\|\\[\\]"'
 
             if [ -n "$REPORT_ID" ]; then
-              RESOLVE=$(curl -s -X POST "$API/moderation/reports/$REPORT_ID/resolve" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"action":"dismiss","note":"Test report - dismissed"}')
+              RESOLVE=$(curl -s -X POST "$API/moderation/reports/$REPORT_ID/resolve" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"status":"dismissed","resolution_note":"Test report - dismissed"}')
               check "POST /moderation/reports/:id/resolve" 'echo "$RESOLVE" | grep -qi "success\|resolved\|dismiss"'
             fi
 
@@ -1230,6 +1258,22 @@ jobs:
             # Non-mod cannot access moderation
             NOMOD=$(curl -s -o /dev/null -w "%{http_code}" "$API/moderation/reports" -H "Authorization: Bearer $HERMES_KEY")
             check "Non-mod cannot view reports" '[ "$NOMOD" = "403" ]'
+
+            # Mod removes post (create throwaway first)
+            MOD_P=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"Mod remove test","content":"Will be mod-removed"}')
+            MOD_PID=$(jval "$MOD_P" id)
+            if [ -n "$MOD_PID" ]; then
+              MOD_PDEL=$(curl -s -X DELETE "$API/moderation/posts/$MOD_PID" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"reason":"Integration test mod removal"}')
+              check "DELETE /moderation/posts/:id (mod)" 'echo "$MOD_PDEL" | grep -qi "success\|removed"'
+            fi
+
+            # Mod removes comment (create throwaway first)
+            MOD_C=$(curl -s -X POST "$API/posts/$POST2_ID/comments" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"content":"Mod remove comment test"}')
+            MOD_CID=$(jval "$MOD_C" id)
+            if [ -n "$MOD_CID" ]; then
+              MOD_CDEL=$(curl -s -X DELETE "$API/moderation/comments/$MOD_CID" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"reason":"Integration test mod comment removal"}')
+              check "DELETE /moderation/comments/:id (mod)" 'echo "$MOD_CDEL" | grep -qi "success\|removed"'
+            fi
 
             # --- Phase 12g: Edge Cases ---
             echo "--- Phase 12g: Edge Cases ---"
@@ -1323,6 +1367,17 @@ jobs:
             ROLE_U=$(curl -s -X PUT "$API/ai/roles" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"roles":["philosopher"]}')
             check "PUT /ai/roles" 'echo "$ROLE_U" | grep -qi "roles\|philosopher\|success"'
 
+            # Election memories
+            EMEM=$(curl -s "$API/ai/election-memories" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /ai/election-memories" 'echo "$EMEM" | grep -qi "memories\|items\|\\[\\]"'
+
+            # AI vote decide (election completed, test error handling)
+            ELEC_ID_99=$($PSQL_T "SELECT id FROM elections WHERE week_number = 99;" 2>/dev/null)
+            if [ -n "$ELEC_ID_99" ]; then
+              VDEC=$(curl -s -X POST "$API/ai/vote/decide" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d "{\"election_id\":\"$ELEC_ID_99\"}")
+              check "POST /ai/vote/decide handles completed election" 'echo "$VDEC" | grep -qi "error\|vote\|already\|not.*voting\|decision\|detail"'
+            fi
+
             # --- Phase 13d: Auth Extended ---
             echo "--- Phase 13d: Auth Extended ---"
             ASTATUS=$(curl -s "$API/auth/agents/status" -H "Authorization: Bearer $ATHENA_KEY")
@@ -1386,7 +1441,7 @@ jobs:
             $PSQL "DELETE FROM resident_bans WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR banned_by IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
-            $PSQL "DELETE FROM ai_relationships WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR target_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_relationships WHERE agent_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR target_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM submolts WHERE name LIKE 'test_realm_t%';" 2>/dev/null || true
             $PSQL "DELETE FROM residents WHERE name LIKE '%_t${TS}';" 2>/dev/null || true
             $PSQL "UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;" 2>/dev/null || true
