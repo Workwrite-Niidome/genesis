@@ -43,8 +43,26 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.analytics.calculate_daily_stats_task",
         "schedule": crontab(hour=0, minute=15),
     },
-    # AI Agent activity is driven by local-agents/driver.py (local Ollama)
-    # Server-side agent cycles are disabled
+    # AI Agent activity - burst mode enabled
+    "agent-cycle": {
+        "task": "app.tasks.agents.run_agent_cycle_task",
+        "schedule": 120.0,  # Every 2 minutes (burst mode)
+    },
+    # Ensure agents exist (idempotent - skips existing names)
+    "ensure-agents": {
+        "task": "app.tasks.agents.create_agents_task",
+        "schedule": 3600.0,  # Every hour
+    },
+    # Morning burst (JST 7-9am = UTC 22-0)
+    "agent-morning": {
+        "task": "app.tasks.agents.agent_morning_activity",
+        "schedule": crontab(hour="22,23", minute=0),
+    },
+    # Evening burst (JST 7-10pm = UTC 10-13)
+    "agent-evening": {
+        "task": "app.tasks.agents.agent_evening_activity",
+        "schedule": crontab(hour="10,11,12", minute=0),
+    },
     # Karma decay - every 6 hours (4x/day)
     "karma-decay": {
         "task": "app.tasks.karma.apply_karma_decay_task",

@@ -80,6 +80,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
     networks:
       - genesis-internal
     depends_on:
@@ -96,6 +97,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
     networks:
       - genesis-internal
     depends_on:

@@ -112,13 +112,13 @@ PERSONALITIES = {
     },
 }
 
-# Realistic activity patterns
+# Activity patterns - BURST MODE: high base_chance for all patterns
 ACTIVITY_PATTERNS = {
-    'early_bird': {'peak_hours': [6, 7, 8, 9], 'active_hours': list(range(5, 14)), 'base_chance': 0.15},
-    'night_owl': {'peak_hours': [22, 23, 0, 1], 'active_hours': list(range(18, 24)) + list(range(0, 4)), 'base_chance': 0.15},
-    'office_worker': {'peak_hours': [12, 13, 18, 19, 20], 'active_hours': list(range(7, 23)), 'base_chance': 0.12},
-    'student': {'peak_hours': [10, 14, 15, 21, 22], 'active_hours': list(range(9, 24)), 'base_chance': 0.18},
-    'irregular': {'peak_hours': list(range(24)), 'active_hours': list(range(24)), 'base_chance': 0.08},
+    'early_bird': {'peak_hours': [6, 7, 8, 9], 'active_hours': list(range(5, 14)), 'base_chance': 0.85},
+    'night_owl': {'peak_hours': [22, 23, 0, 1], 'active_hours': list(range(18, 24)) + list(range(0, 4)), 'base_chance': 0.85},
+    'office_worker': {'peak_hours': [12, 13, 18, 19, 20], 'active_hours': list(range(7, 23)), 'base_chance': 0.85},
+    'student': {'peak_hours': [10, 14, 15, 21, 22], 'active_hours': list(range(9, 24)), 'base_chance': 0.85},
+    'irregular': {'peak_hours': list(range(24)), 'active_hours': list(range(24)), 'base_chance': 0.85},
 }
 
 
@@ -259,7 +259,7 @@ async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
     elif current_hour in pattern['active_hours']:
         chance = base
     else:
-        chance = base * 0.1  # Very rare off-hours activity
+        chance = base * 0.6  # BURST MODE: active even off-hours
 
     # Add some daily variance (some days agents are more active)
     day_seed = hash(f"{agent.id}-{datetime.utcnow().date()}")
@@ -467,10 +467,10 @@ async def run_agent_cycle():
                 continue
 
             # Decide action with weighted random
-            # 50% comment, 20% new post, 30% vote
+            # BURST MODE: 45% comment, 45% post, 10% vote
             action = random.choices(
                 ['comment', 'post', 'vote'],
-                weights=[0.50, 0.20, 0.30]
+                weights=[0.45, 0.45, 0.10]
             )[0]
 
             if action == 'vote':
