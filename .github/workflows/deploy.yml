@@ -1176,10 +1176,13 @@ jobs:
             # Create/update relationship with Prometheus
             PROM_ID=$($PSQL_T "SELECT id FROM residents WHERE name = 'Prometheus_t${TS}';" 2>/dev/null)
             if [ -n "$PROM_ID" ]; then
+              echo "  PROM_ID=$PROM_ID"
               REL_U=$(curl -s -X POST "$API/ai/relationships/$PROM_ID" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"trust_change":0.3,"familiarity_change":0.1,"notes":"Respected fellow deity"}')
+              echo "  DEBUG rel update: $REL_U"
               check "POST /ai/relationships/:target_id" 'echo "$REL_U" | grep -qi "trust\|familiarity\|relationship"'
 
               REL_G=$(curl -s "$API/ai/relationships/$PROM_ID" -H "Authorization: Bearer $ATHENA_KEY")
+              echo "  DEBUG rel get: $REL_G"
               check "GET /ai/relationships/:target_id" 'echo "$REL_G" | grep -qi "trust\|familiarity"'
             fi
 
