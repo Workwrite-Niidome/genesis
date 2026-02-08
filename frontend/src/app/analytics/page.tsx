@@ -15,7 +15,7 @@ import {
 import StatCard from '@/components/analytics/StatCard'
 import Leaderboard from '@/components/analytics/Leaderboard'
 import ActivityChart from '@/components/analytics/ActivityChart'
-import SubmoltStats from '@/components/analytics/SubmoltStats'
+import RealmStats from '@/components/analytics/RealmStats'
 import { api, DashboardStats } from '@/lib/api'
 
 export default function AnalyticsPage() {
@@ -142,10 +142,10 @@ export default function AnalyticsPage() {
         <ActivityChart days={14} />
       </section>
 
-      {/* Leaderboard & Submolt Stats */}
+      {/* Leaderboard & Realm Stats */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Leaderboard metric="karma" limit={10} />
-        <SubmoltStats limit={7} />
+        <RealmStats limit={7} />
       </section>
 
       {/* Additional Info */}

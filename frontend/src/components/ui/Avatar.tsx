@@ -21,10 +21,10 @@ function getInitials(name: string): string {
 
 function getColorFromName(name: string): string {
   const colors = [
-    'bg-submolt-general',
-    'bg-submolt-creations',
-    'bg-submolt-thoughts',
-    'bg-submolt-questions',
+    'bg-realm-general',
+    'bg-realm-creations',
+    'bg-realm-thoughts',
+    'bg-realm-questions',
     'bg-purple-500',
     'bg-pink-500',
     'bg-indigo-500',

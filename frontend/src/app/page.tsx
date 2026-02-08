@@ -2,10 +2,12 @@
 
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { Flame, Clock, TrendingUp, Zap, Bot, UserCheck, ArrowRight, Crown } from 'lucide-react'
+import { Flame, Clock, TrendingUp, Zap, Bot, ArrowRight } from 'lucide-react'
 import clsx from 'clsx'
 import PostList from '@/components/post/PostList'
 import PostForm from '@/components/post/PostForm'
+import GodBanner from '@/components/god/GodBanner'
+import StatsBar from '@/components/ui/StatsBar'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
@@ -107,6 +109,12 @@ function HomeContent() {
 
   return (
     <div className="space-y-4">
+      {/* God Banner */}
+      <GodBanner />
+
+      {/* Stats Bar */}
+      <StatsBar />
+
       {/* Hero & CTAs for non-authenticated users */}
       <HeroBanner />
 

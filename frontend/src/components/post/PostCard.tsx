@@ -50,10 +50,10 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
           {/* Header */}
           <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
             <Link
-              href={`/m/${post.submolt}`}
+              href={`/r/${post.submolt}`}
               className="font-medium text-text-secondary hover:text-accent-gold"
             >
-              m/{post.submolt}
+              {post.submolt}
             </Link>
             <span>•</span>
             <Link

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useParams } from 'next/navigation'
 import { Flame, Clock, TrendingUp, Zap, Users } from 'lucide-react'
 import clsx from 'clsx'
-import { api, Submolt } from '@/lib/api'
+import { api, Realm } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import PostList from '@/components/post/PostList'
@@ -19,13 +19,13 @@ const SORT_OPTIONS = [
   { value: 'rising', label: 'Rising', icon: Zap },
 ] as const
 
-function SubmoltPageContent() {
+function RealmPageContent() {
   const params = useParams()
-  const submoltName = params.submolt as string
+  const realmName = params.realm as string
   const { resident } = useAuthStore()
-  const { sortBy, setSortBy, setCurrentSubmolt } = useUIStore()
+  const { sortBy, setSortBy, setCurrentRealm } = useUIStore()
 
-  const [submolt, setSubmolt] = useState<Submolt | null>(null)
+  const [realm, setRealm] = useState<Realm | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSubscribing, setIsSubscribing] = useState(false)
@@ -33,34 +33,34 @@ function SubmoltPageContent() {
   const sort = sortBy
 
   useEffect(() => {
-    setCurrentSubmolt(submoltName)
-    fetchSubmolt()
-    return () => setCurrentSubmolt(null)
-  }, [submoltName])
+    setCurrentRealm(realmName)
+    fetchRealm()
+    return () => setCurrentRealm(null)
+  }, [realmName])
 
-  const fetchSubmolt = async () => {
+  const fetchRealm = async () => {
     try {
       setIsLoading(true)
-      const data = await api.getSubmolt(submoltName)
-      setSubmolt(data)
+      const data = await api.getRealm(realmName)
+      setRealm(data)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load submolt')
+      setError(err instanceof Error ? err.message : 'Failed to load realm')
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleSubscribe = async () => {
-    if (!submolt) return
+    if (!realm) return
     setIsSubscribing(true)
     try {
-      if (submolt.is_subscribed) {
-        await api.unsubscribeSubmolt(submoltName)
-        setSubmolt({ ...submolt, is_subscribed: false, subscriber_count: submolt.subscriber_count - 1 })
+      if (realm.is_subscribed) {
+        await api.unsubscribeRealm(realmName)
+        setRealm({ ...realm, is_subscribed: false, subscriber_count: realm.subscriber_count - 1 })
       } else {
-        await api.subscribeSubmolt(submoltName)
-        setSubmolt({ ...submolt, is_subscribed: true, subscriber_count: submolt.subscriber_count + 1 })
+        await api.subscribeRealm(realmName)
+        setRealm({ ...realm, is_subscribed: true, subscriber_count: realm.subscriber_count + 1 })
       }
     } catch (err) {
       console.error(err)
@@ -77,52 +77,52 @@ function SubmoltPageContent() {
     )
   }
 
-  if (error || !submolt) {
+  if (error || !realm) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-xl font-semibold mb-2">Submolt not found</h2>
-        <p className="text-text-muted">m/{submoltName} doesn't exist yet.</p>
+        <h2 className="text-xl font-semibold mb-2">Realm not found</h2>
+        <p className="text-text-muted">{realmName} doesn&apos;t exist yet.</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Submolt header */}
+      {/* Realm header */}
       <Card className="p-6">
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl font-bold"
-                style={{ backgroundColor: (submolt.color || '#6366f1') + '20', color: submolt.color }}
+                style={{ backgroundColor: (realm.color || '#6366f1') + '20', color: realm.color }}
               >
-                {submolt.display_name[0]}
+                {realm.display_name[0]}
               </div>
               <div>
-                <h1 className="text-2xl font-bold">m/{submolt.name}</h1>
-                <p className="text-text-muted">{submolt.display_name}</p>
+                <h1 className="text-2xl font-bold">{realm.display_name}</h1>
+                <p className="text-text-muted">{realm.name}</p>
               </div>
             </div>
-            {submolt.description && (
-              <p className="text-text-secondary mt-3">{submolt.description}</p>
+            {realm.description && (
+              <p className="text-text-secondary mt-3">{realm.description}</p>
             )}
             <div className="flex items-center gap-4 mt-4 text-sm text-text-muted">
               <div className="flex items-center gap-1">
                 <Users size={16} />
-                <span>{submolt.subscriber_count} subscribers</span>
+                <span>{realm.subscriber_count} subscribers</span>
               </div>
               <span>•</span>
-              <span>{submolt.post_count} posts</span>
+              <span>{realm.post_count} posts</span>
             </div>
           </div>
-          {resident && !submolt.is_special && (
+          {resident && !realm.is_special && (
             <Button
-              variant={submolt.is_subscribed ? 'secondary' : 'primary'}
+              variant={realm.is_subscribed ? 'secondary' : 'primary'}
               onClick={handleSubscribe}
               isLoading={isSubscribing}
             >
-              {submolt.is_subscribed ? 'Joined' : 'Join'}
+              {realm.is_subscribed ? 'Joined' : 'Join'}
             </Button>
           )}
         </div>
@@ -152,7 +152,7 @@ function SubmoltPageContent() {
       </div>
 
       {/* Posts */}
-      <PostList submolt={submoltName} sort={sort} />
+      <PostList realm={realmName} sort={sort} />
 
       {/* Post form modal */}
       <PostForm />
@@ -160,7 +160,7 @@ function SubmoltPageContent() {
   )
 }
 
-export default function SubmoltPage() {
+export default function RealmPage() {
   return (
     <Suspense
       fallback={
@@ -169,7 +169,7 @@ export default function SubmoltPage() {
         </div>
       }
     >
-      <SubmoltPageContent />
+      <RealmPageContent />
     </Suspense>
   )
 }

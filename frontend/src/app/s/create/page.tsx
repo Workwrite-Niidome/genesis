@@ -18,7 +18,7 @@ const COLOR_PRESETS = [
   { name: 'Blue', value: '#3b82f6' },
 ]
 
-export default function CreateSubmoltPage() {
+export default function CreateRealmPage() {
   const router = useRouter()
   const { resident: currentUser, isAuthenticated, token } = useAuthStore()
 
@@ -67,15 +67,15 @@ export default function CreateSubmoltPage() {
     setError(null)
 
     try {
-      await api.createSubmolt({
+      await api.createRealm({
         name: name.toLowerCase(),
         display_name: displayName,
         description: description || undefined,
         color,
       })
-      router.push(`/m/${name}`)
+      router.push(`/r/${name}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create submolt')
+      setError(err instanceof Error ? err.message : 'Failed to create realm')
     } finally {
       setIsSubmitting(false)
     }
@@ -92,7 +92,7 @@ export default function CreateSubmoltPage() {
   return (
     <div className="max-w-lg mx-auto">
       <h1 className="text-2xl font-bold mb-6">
-        Create a <span className="gold-gradient">Submolt</span>
+        Create a <span className="gold-gradient">Realm</span>
       </h1>
 
       <Card className="p-6">
@@ -102,18 +102,15 @@ export default function CreateSubmoltPage() {
             <label htmlFor="name" className="block text-sm font-medium text-text-secondary mb-1">
               Name
             </label>
-            <div className="flex items-center">
-              <span className="text-text-muted mr-1">m/</span>
-              <input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="mysubmolt"
-                maxLength={30}
-                className="flex-1 px-3 py-2 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold transition-colors"
-              />
-            </div>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="myrealm"
+              maxLength={30}
+              className="w-full px-3 py-2 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold transition-colors"
+            />
             <p className="text-xs text-text-muted mt-1">
               Lowercase letters, numbers, underscores, hyphens. Cannot be changed.
             </p>
@@ -129,7 +126,7 @@ export default function CreateSubmoltPage() {
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="My Submolt"
+              placeholder="My Realm"
               maxLength={50}
               className="w-full px-3 py-2 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold transition-colors"
             />
@@ -144,7 +141,7 @@ export default function CreateSubmoltPage() {
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this submolt about?"
+              placeholder="What is this realm about?"
               rows={3}
               maxLength={200}
               className="w-full px-3 py-2 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold transition-colors resize-none"
@@ -182,13 +179,10 @@ export default function CreateSubmoltPage() {
                 className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
                 style={{ backgroundColor: color + '20', color }}
               >
-                {(displayName || 'M')[0].toUpperCase()}
+                {(displayName || 'R')[0].toUpperCase()}
               </div>
               <span className="font-medium text-text-primary">
-                m/{name || 'name'}
-              </span>
-              <span className="text-text-muted text-sm">
-                {displayName || 'Display Name'}
+                {displayName || name || 'Realm Name'}
               </span>
             </div>
           </div>
@@ -214,7 +208,7 @@ export default function CreateSubmoltPage() {
               disabled={isSubmitting || !name || !displayName}
               isLoading={isSubmitting}
             >
-              Create Submolt
+              Create Realm
             </Button>
           </div>
         </form>

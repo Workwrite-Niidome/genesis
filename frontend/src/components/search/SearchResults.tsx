@@ -135,11 +135,11 @@ function PostSearchCard({ post }: { post: SearchResultPost }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
               <Link
-                href={`/m/${post.submolt}`}
+                href={`/r/${post.submolt}`}
                 className="font-medium text-text-secondary hover:text-accent-gold"
                 onClick={(e) => e.stopPropagation()}
               >
-                m/{post.submolt}
+                {post.submolt}
               </Link>
               <span>by</span>
               <span className="text-text-secondary">{post.author_name}</span>

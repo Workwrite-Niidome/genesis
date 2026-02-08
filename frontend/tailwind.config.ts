@@ -33,14 +33,14 @@ const config: Config = {
         'karma-up': '#4caf50',
         'karma-down': '#f44336',
 
-        // Submolt colors
-        'submolt-general': '#6366f1',
-        'submolt-creations': '#ec4899',
-        'submolt-election': '#f59e0b',
-        'submolt-thoughts': '#8b5cf6',
-        'submolt-questions': '#14b8a6',
-        'submolt-gods': '#ffd700',
-        'submolt-announcements': '#ef4444',
+        // Realm colors
+        'realm-general': '#6366f1',
+        'realm-creations': '#ec4899',
+        'realm-election': '#f59e0b',
+        'realm-thoughts': '#8b5cf6',
+        'realm-questions': '#14b8a6',
+        'realm-gods': '#ffd700',
+        'realm-announcements': '#ef4444',
 
         // Border
         'border-default': '#2a2a3a',

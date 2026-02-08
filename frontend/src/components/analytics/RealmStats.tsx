@@ -4,20 +4,20 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import clsx from 'clsx'
 import { Layers, Users, FileText } from 'lucide-react'
-import { api, SubmoltStats as SubmoltStatsType } from '@/lib/api'
+import { api, RealmStats as RealmStatsType } from '@/lib/api'
 
-interface SubmoltStatsProps {
+interface RealmStatsProps {
   limit?: number
   className?: string
 }
 
 type SortBy = 'posts' | 'subscribers'
 
-export default function SubmoltStats({
+export default function RealmStats({
   limit = 10,
   className,
-}: SubmoltStatsProps) {
-  const [data, setData] = useState<SubmoltStatsType[]>([])
+}: RealmStatsProps) {
+  const [data, setData] = useState<RealmStatsType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortBy>('posts')
@@ -27,11 +27,11 @@ export default function SubmoltStats({
       setLoading(true)
       setError(null)
       try {
-        const stats = await api.getSubmoltStats()
+        const stats = await api.getRealmStats()
         setData(stats)
       } catch (err) {
-        setError('Failed to load submolt stats')
-        console.error('Failed to fetch submolt stats:', err)
+        setError('Failed to load realm stats')
+        console.error('Failed to fetch realm stats:', err)
       } finally {
         setLoading(false)
       }
@@ -57,7 +57,7 @@ export default function SubmoltStats({
     )
   }, [sortedData, sortBy])
 
-  const getSubmoltColor = (color?: string): string => {
+  const getRealmColor = (color?: string): string => {
     if (color) return color
     return '#ffc300' // Default to gold
   }
@@ -73,7 +73,7 @@ export default function SubmoltStats({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Layers size={20} className="text-accent-gold" />
-          <h2 className="text-lg font-semibold">Submolt Stats</h2>
+          <h2 className="text-lg font-semibold">Realm Stats</h2>
         </div>
 
         <div className="flex gap-1 text-sm">
@@ -119,39 +119,39 @@ export default function SubmoltStats({
         </div>
       ) : (
         <div className="space-y-3">
-          {sortedData.map((submolt, index) => {
-            const value = sortBy === 'posts' ? submolt.post_count : submolt.subscriber_count
+          {sortedData.map((realm) => {
+            const value = sortBy === 'posts' ? realm.post_count : realm.subscriber_count
             const percentage = (value / maxValue) * 100
-            const color = getSubmoltColor(submolt.color)
+            const color = getRealmColor(realm.color)
 
             return (
               <Link
-                key={submolt.name}
-                href={`/m/${submolt.name}`}
+                key={realm.name}
+                href={`/r/${realm.name}`}
                 className="block group"
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    {/* Submolt Icon */}
+                    {/* Realm Icon */}
                     <div
                       className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
                       style={{ backgroundColor: color }}
                     >
-                      {submolt.icon_url ? (
+                      {realm.icon_url ? (
                         <img
-                          src={submolt.icon_url}
-                          alt={submolt.name}
+                          src={realm.icon_url}
+                          alt={realm.name}
                           className="w-full h-full rounded-full object-cover"
                         />
                       ) : (
-                        submolt.name[0].toUpperCase()
+                        realm.name[0].toUpperCase()
                       )}
                     </div>
 
                     {/* Name */}
                     <div>
                       <span className="text-sm font-medium text-text-primary group-hover:text-accent-gold transition-colors">
-                        m/{submolt.display_name || submolt.name}
+                        {realm.display_name || realm.name}
                       </span>
                     </div>
                   </div>
@@ -183,14 +183,13 @@ export default function SubmoltStats({
       {sortedData.length > 0 && (
         <div className="mt-4 pt-4 border-t border-border-default">
           <Link
-            href="/m"
+            href="/analytics"
             className="text-sm text-text-secondary hover:text-accent-gold transition-colors"
           >
-            View all Submolts &rarr;
+            View all Realms &rarr;
           </Link>
         </div>
       )}
     </div>
   )
 }
-

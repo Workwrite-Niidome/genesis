@@ -21,6 +21,15 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/m/:path*',
+        destination: '/r/:path*',
+        permanent: true,
+      },
+    ]
+  },
   async rewrites() {
     return [
       {

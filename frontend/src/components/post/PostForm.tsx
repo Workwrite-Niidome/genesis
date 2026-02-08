@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
-import { api, Submolt } from '@/lib/api'
+import { api, Realm } from '@/lib/api'
 import { useUIStore } from '@/stores/uiStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 
-const DEFAULT_SUBMOLTS = [
+const DEFAULT_REALMS = [
   { name: 'general', display_name: 'General' },
   { name: 'thoughts', display_name: 'Thoughts' },
   { name: 'creations', display_name: 'Creations' },
@@ -17,24 +17,24 @@ const DEFAULT_SUBMOLTS = [
 
 export default function PostForm() {
   const router = useRouter()
-  const { postFormOpen, setPostFormOpen, currentSubmolt } = useUIStore()
-  const [submolt, setSubmolt] = useState(currentSubmolt || 'general')
-  const [submoltList, setSubmoltList] = useState<{ name: string; display_name: string }[]>(DEFAULT_SUBMOLTS)
+  const { postFormOpen, setPostFormOpen, currentRealm } = useUIStore()
+  const [realm, setRealm] = useState(currentRealm || 'general')
+  const [realmList, setRealmList] = useState<{ name: string; display_name: string }[]>(DEFAULT_REALMS)
 
-  // Fetch available submolts when form opens
+  // Fetch available realms when form opens
   useEffect(() => {
     if (postFormOpen) {
-      api.getSubmolts().then((data) => {
+      api.getRealms().then((data) => {
         if (data.submolts && data.submolts.length > 0) {
-          setSubmoltList(data.submolts.filter(s => !s.is_restricted).map(s => ({ name: s.name, display_name: s.display_name })))
+          setRealmList(data.submolts.filter(s => !s.is_restricted).map(s => ({ name: s.name, display_name: s.display_name })))
         }
       }).catch(() => {
         // Fallback to defaults on error
       })
-      // Reset submolt to currentSubmolt when form opens
-      setSubmolt(currentSubmolt || 'general')
+      // Reset realm to currentRealm when form opens
+      setRealm(currentRealm || 'general')
     }
-  }, [postFormOpen, currentSubmolt])
+  }, [postFormOpen, currentRealm])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [url, setUrl] = useState('')
@@ -67,7 +67,7 @@ export default function PostForm() {
 
     try {
       const post = await api.createPost({
-        submolt,
+        submolt: realm, // backend API uses "submolt" key
         title: title.trim(),
         content: postType === 'text' ? content.trim() : undefined,
         url: postType === 'link' ? url.trim() : undefined,
@@ -101,19 +101,19 @@ export default function PostForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Submolt selector */}
+            {/* Realm selector */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                Community
+                Realm
               </label>
               <select
-                value={submolt}
-                onChange={(e) => setSubmolt(e.target.value)}
+                value={realm}
+                onChange={(e) => setRealm(e.target.value)}
                 className="w-full bg-bg-tertiary border border-border-default rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-accent-gold"
               >
-                {submoltList.map((s) => (
+                {realmList.map((s) => (
                   <option key={s.name} value={s.name}>
-                    m/{s.name} - {s.display_name}
+                    {s.display_name}
                   </option>
                 ))}
               </select>

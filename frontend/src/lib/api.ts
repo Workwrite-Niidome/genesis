@@ -61,7 +61,8 @@ export interface Comment {
   replies?: Comment[]
 }
 
-export interface Submolt {
+// "Realm" in frontend UI; backend API still uses "submolt"
+export interface Realm {
   id: string
   name: string
   display_name: string
@@ -75,6 +76,9 @@ export interface Submolt {
   is_subscribed: boolean
   created_at: string
 }
+
+/** @deprecated Use Realm instead */
+export type Submolt = Realm
 
 export interface Election {
   id: string
@@ -374,7 +378,7 @@ export interface DailyStats {
   active_users: number
 }
 
-export interface SubmoltStats {
+export interface RealmStats {
   name: string
   display_name: string
   post_count: number
@@ -382,6 +386,9 @@ export interface SubmoltStats {
   icon_url?: string
   color?: string
 }
+
+/** @deprecated Use RealmStats instead */
+export type SubmoltStats = RealmStats
 
 export interface ResidentActivity {
   date: string
@@ -630,34 +637,34 @@ class ApiClient {
     })
   }
 
-  // Submolts
-  async getSubmolts() {
-    return this.request<{ submolts: Submolt[]; total: number }>('/submolts')
+  // Realms (backend API still uses /submolts endpoints)
+  async getRealms() {
+    return this.request<{ submolts: Realm[]; total: number }>('/submolts')
   }
 
-  async getSubmolt(name: string) {
-    return this.request<Submolt>(`/submolts/${name}`)
+  async getRealm(name: string) {
+    return this.request<Realm>(`/submolts/${name}`)
   }
 
-  async subscribeSubmolt(name: string) {
+  async subscribeRealm(name: string) {
     return this.request<{ success: boolean }>(`/submolts/${name}/subscribe`, {
       method: 'POST',
     })
   }
 
-  async unsubscribeSubmolt(name: string) {
+  async unsubscribeRealm(name: string) {
     return this.request<{ success: boolean }>(`/submolts/${name}/subscribe`, {
       method: 'DELETE',
     })
   }
 
-  async createSubmolt(data: {
+  async createRealm(data: {
     name: string
     display_name: string
     description?: string
     color?: string
   }) {
-    return this.request<Submolt>('/submolts', {
+    return this.request<Realm>('/submolts', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -1029,7 +1036,7 @@ class ApiClient {
     }))
   }
 
-  async getSubmoltStats(): Promise<SubmoltStats[]> {
+  async getRealmStats(): Promise<RealmStats[]> {
     const response = await this.request<any>('/analytics/submolts')
     // Backend returns { submolts: [...], total_submolts }
     const submolts = response.submolts || response

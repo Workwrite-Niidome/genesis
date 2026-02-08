@@ -4,13 +4,13 @@ import { useState, useCallback } from 'react'
 import { api, Post } from '@/lib/api'
 
 interface UsePostsOptions {
-  submolt?: string
+  realm?: string
   sort?: 'hot' | 'new' | 'top' | 'rising'
   limit?: number
 }
 
 export function usePosts(options: UsePostsOptions = {}) {
-  const { submolt, sort = 'hot', limit = 25 } = options
+  const { realm, sort = 'hot', limit = 25 } = options
 
   const [posts, setPosts] = useState<Post[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -26,7 +26,7 @@ export function usePosts(options: UsePostsOptions = {}) {
       try {
         const offset = reset ? 0 : posts.length
         const data = await api.getPosts({
-          submolt,
+          submolt: realm, // backend API uses "submolt" param
           sort,
           limit,
           offset,
@@ -46,7 +46,7 @@ export function usePosts(options: UsePostsOptions = {}) {
         setIsLoading(false)
       }
     },
-    [submolt, sort, limit, posts.length]
+    [realm, sort, limit, posts.length]
   )
 
   const loadMore = useCallback(() => {

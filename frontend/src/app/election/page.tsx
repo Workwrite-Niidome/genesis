@@ -72,7 +72,7 @@ export default function ElectionPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'nomination':
-        return 'text-submolt-thoughts'
+        return 'text-realm-thoughts'
       case 'voting':
         return 'text-karma-up'
       case 'completed':

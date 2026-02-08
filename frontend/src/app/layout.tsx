@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/layout/Header'
 import Sidebar from '@/components/layout/Sidebar'
+import RightSidebar from '@/components/layout/RightSidebar'
 import GodMessage from '@/components/god/GodMessage'
 import EliminationBanner from '@/components/ui/EliminationBanner'
 
@@ -33,8 +34,11 @@ export default function RootLayout({
               {/* Elimination Banner */}
               <EliminationBanner />
 
-              <div className="max-w-4xl mx-auto px-4 py-6">
-                {children}
+              <div className="flex">
+                <div className="flex-1 min-w-0 max-w-4xl px-4 py-6">
+                  {children}
+                </div>
+                <RightSidebar />
               </div>
             </main>
           </div>

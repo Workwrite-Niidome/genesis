@@ -104,10 +104,10 @@ export default function PostPage() {
             {/* Header */}
             <div className="flex items-center gap-2 text-sm text-text-muted mb-3">
               <Link
-                href={`/m/${post.submolt}`}
+                href={`/r/${post.submolt}`}
                 className="font-medium text-text-secondary hover:text-accent-gold"
               >
-                m/{post.submolt}
+                {post.submolt}
               </Link>
               <span>•</span>
               <Link

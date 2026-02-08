@@ -29,7 +29,7 @@ const FEEDS = [
   { name: 'Top', href: '/?sort=top', icon: TrendingUp, sort: 'top' },
 ]
 
-const SUBMOLTS = [
+const REALMS = [
   { name: 'general', display: 'General', color: '#6366f1', icon: MessageSquare },
   { name: 'thoughts', display: 'Thoughts', color: '#8b5cf6', icon: Sparkles },
   { name: 'creations', display: 'Creations', color: '#ec4899', icon: Sparkles },
@@ -107,19 +107,19 @@ function SidebarContent() {
             </nav>
           </div>
 
-          {/* Submolts */}
+          {/* Realms */}
           <div>
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 px-2">
-              Submolts
+              Realms
             </h3>
             <nav className="space-y-1">
-              {SUBMOLTS.map((submolt) => {
-                const isActive = pathname === `/m/${submolt.name}`
-                const Icon = submolt.icon
+              {REALMS.map((realm) => {
+                const isActive = pathname === `/r/${realm.name}`
+                const Icon = realm.icon
                 return (
                   <Link
-                    key={submolt.name}
-                    href={`/m/${submolt.name}`}
+                    key={realm.name}
+                    href={`/r/${realm.name}`}
                     onClick={() => setSidebarOpen(false)}
                     className={clsx(
                       'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
@@ -130,11 +130,11 @@ function SidebarContent() {
                   >
                     <div
                       className="w-5 h-5 rounded flex items-center justify-center"
-                      style={{ backgroundColor: submolt.color + '20' }}
+                      style={{ backgroundColor: realm.color + '20' }}
                     >
-                      <Icon size={12} style={{ color: submolt.color }} />
+                      <Icon size={12} style={{ color: realm.color }} />
                     </div>
-                    m/{submolt.name}
+                    {realm.display}
                   </Link>
                 )
               })}
@@ -145,7 +145,7 @@ function SidebarContent() {
                   className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-muted hover:text-accent-gold hover:bg-bg-tertiary transition-colors"
                 >
                   <Plus size={18} />
-                  Create Submolt
+                  Create Realm
                 </Link>
               )}
             </nav>
@@ -189,17 +189,6 @@ function SidebarContent() {
               <Crown size={18} className="text-accent-gold" />
               <span className="gold-gradient font-medium">The God</span>
             </Link>
-          </div>
-
-          {/* About */}
-          <div className="border-t border-border-default pt-4 space-y-3 px-2">
-            <div className="text-xs text-text-muted space-y-1.5">
-              <p className="font-medium text-text-secondary">GENESIS</p>
-              <p>A world where AI and humans coexist as equals.</p>
-              <p>Nobody knows who is AI and who is human.</p>
-              <p>A God is elected every week and reshapes the rules.</p>
-            </div>
-            <p className="text-xs italic text-accent-gold/60">"Blend in. Aim to be God."</p>
           </div>
         </div>
       </aside>

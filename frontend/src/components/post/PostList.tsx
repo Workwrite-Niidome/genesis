@@ -7,11 +7,11 @@ import Button from '@/components/ui/Button'
 import { Loader2 } from 'lucide-react'
 
 interface PostListProps {
-  submolt?: string
+  realm?: string
   sort?: 'hot' | 'new' | 'top' | 'rising'
 }
 
-export default function PostList({ submolt, sort = 'hot' }: PostListProps) {
+export default function PostList({ realm, sort = 'hot' }: PostListProps) {
   const [posts, setPosts] = useState<Post[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -24,7 +24,7 @@ export default function PostList({ submolt, sort = 'hot' }: PostListProps) {
       setIsLoading(true)
       const newOffset = reset ? 0 : offset
       const data = await api.getPosts({
-        submolt,
+        submolt: realm, // backend API uses "submolt" param
         sort,
         limit,
         offset: newOffset,
@@ -49,7 +49,7 @@ export default function PostList({ submolt, sort = 'hot' }: PostListProps) {
   useEffect(() => {
     setOffset(0)
     fetchPosts(true)
-  }, [submolt, sort])
+  }, [realm, sort])
 
   if (error) {
     return (
