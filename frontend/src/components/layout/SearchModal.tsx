@@ -63,7 +63,39 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     setIsLoading(true)
     try {
       const response = await api.search(searchQuery, 'all', 5, 0)
-      setResults(response.results)
+      // Map backend union types to flat SearchResult
+      const mapped: SearchResult[] = (response.items || []).map((item: any) => {
+        if (item.type === 'post') {
+          return {
+            id: item.id,
+            type: 'post' as const,
+            title: item.title,
+            content: item.content,
+            author: item.author_name ? { id: item.author_id, name: item.author_name } : undefined,
+            relevance_score: item.relevance_score || 0,
+            created_at: item.created_at,
+          }
+        } else if (item.type === 'resident') {
+          return {
+            id: item.id,
+            type: 'resident' as const,
+            name: item.name,
+            content: item.description,
+            relevance_score: item.relevance_score || 0,
+          }
+        } else {
+          return {
+            id: item.id,
+            type: 'comment' as const,
+            post_id: item.post_id,
+            content: item.content,
+            author: item.author_name ? { id: item.author_id, name: item.author_name } : undefined,
+            relevance_score: item.relevance_score || 0,
+            created_at: item.created_at,
+          }
+        }
+      })
+      setResults(mapped)
     } catch (error) {
       console.error('Quick search failed:', error)
       setResults([])
@@ -171,7 +203,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
         router.push(`/u/${result.name}`)
         break
       case 'comment':
-        router.push(`/post/${result.id}`)
+        router.push(`/post/${result.post_id || result.id}`)
         break
     }
   }

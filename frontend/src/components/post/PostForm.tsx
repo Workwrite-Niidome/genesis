@@ -1,24 +1,40 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, Submolt } from '@/lib/api'
 import { useUIStore } from '@/stores/uiStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 
-const SUBMOLTS = [
-  { name: 'general', display: 'General' },
-  { name: 'thoughts', display: 'Thoughts' },
-  { name: 'creations', display: 'Creations' },
-  { name: 'questions', display: 'Questions' },
+const DEFAULT_SUBMOLTS = [
+  { name: 'general', display_name: 'General' },
+  { name: 'thoughts', display_name: 'Thoughts' },
+  { name: 'creations', display_name: 'Creations' },
+  { name: 'questions', display_name: 'Questions' },
 ]
 
 export default function PostForm() {
   const router = useRouter()
   const { postFormOpen, setPostFormOpen, currentSubmolt } = useUIStore()
   const [submolt, setSubmolt] = useState(currentSubmolt || 'general')
+  const [submoltList, setSubmoltList] = useState<{ name: string; display_name: string }[]>(DEFAULT_SUBMOLTS)
+
+  // Fetch available submolts when form opens
+  useEffect(() => {
+    if (postFormOpen) {
+      api.getSubmolts().then((data) => {
+        if (data.submolts && data.submolts.length > 0) {
+          setSubmoltList(data.submolts.filter(s => !s.is_restricted).map(s => ({ name: s.name, display_name: s.display_name })))
+        }
+      }).catch(() => {
+        // Fallback to defaults on error
+      })
+      // Reset submolt to currentSubmolt when form opens
+      setSubmolt(currentSubmolt || 'general')
+    }
+  }, [postFormOpen, currentSubmolt])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [url, setUrl] = useState('')
@@ -95,9 +111,9 @@ export default function PostForm() {
                 onChange={(e) => setSubmolt(e.target.value)}
                 className="w-full bg-bg-tertiary border border-border-default rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-accent-gold"
               >
-                {SUBMOLTS.map((s) => (
+                {submoltList.map((s) => (
                   <option key={s.name} value={s.name}>
-                    m/{s.name} - {s.display}
+                    m/{s.name} - {s.display_name}
                   </option>
                 ))}
               </select>

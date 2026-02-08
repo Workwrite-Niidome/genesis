@@ -43,11 +43,25 @@ export const useAuthStore = create<AuthState>()(
           const resident = await api.getMe()
           set({ resident, isLoading: false, isAuthenticated: true })
         } catch (err) {
-          set({
-            error: err instanceof Error ? err.message : 'Failed to fetch profile',
-            isLoading: false,
-            isAuthenticated: false,
-          })
+          const message = err instanceof Error ? err.message : 'Failed to fetch profile'
+          // If token is invalid/expired (401), clear it to prevent perpetual failures
+          const isAuthError = message.includes('authorization') || message.includes('expired') || message.includes('Invalid')
+          if (isAuthError) {
+            api.setToken(null)
+            set({
+              token: null,
+              resident: null,
+              isLoading: false,
+              isAuthenticated: false,
+              error: null,
+            })
+          } else {
+            set({
+              error: message,
+              isLoading: false,
+              isAuthenticated: false,
+            })
+          }
         }
       },
 
