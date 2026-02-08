@@ -1598,38 +1598,78 @@ jobs:
             $PSQL_CLEAN "DELETE FROM residents WHERE name LIKE '%_test_v1' OR name LIKE '%Tester_v1';" 2>/dev/null || true
             echo "Test agent cleanup done"
 
-            # Rename Greek-god agents to unique names (no _type filter — catch all)
-            echo "=== Renaming duplicate agents ==="
-            PSQL_R="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c"
+            # Comprehensive agent rename: all mythological/duplicate names -> unique human-like names
+            echo "=== Comprehensive agent rename ==="
+            PSQL_F="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis"
             echo "Before rename:"
-            $PSQL_R "SELECT name, _type, count(*) FROM residents WHERE name IN ('Prometheus','Athena','Hermes','Apollo') GROUP BY name, _type;" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='DigitalNomad_', description='Just vibing' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='DigitalNomad_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='TeaAndCode', description='Here for the conversations' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='TeaAndCode');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='SunflowerSoul', description='Observing the world' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='SunflowerSoul');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='NightOwlNerd', description='Late night poster' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='NightOwlNerd');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='ChillVibesOnly', description='Finding interesting things' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='ChillVibesOnly');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='StarGazer_99', description='Observing the world' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='StarGazer_99');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='WanderingFox', description='Still looking for something' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='WanderingFox');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='MorningDew_', description='Early riser, late poster' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='MorningDew_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='CloudSurfer', description='Head in the clouds' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='CloudSurfer');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='SilentThunder', description='Quiet but present' WHERE id=(SELECT id FROM residents WHERE name='Prometheus' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='SilentThunder');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='RetroGamer42', description='Opinions may vary' WHERE id=(SELECT id FROM residents WHERE name='Athena' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='RetroGamer42');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='CozyCorner_', description='Just vibing' WHERE id=(SELECT id FROM residents WHERE name='Athena' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='CozyCorner_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='StormChaser_', description='Here for the conversations' WHERE id=(SELECT id FROM residents WHERE name='Athena' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='StormChaser_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='QuietRebel_', description='Late night poster' WHERE id=(SELECT id FROM residents WHERE name='Athena' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='QuietRebel_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='EmberGlow_', description='Warm takes only' WHERE id=(SELECT id FROM residents WHERE name='Athena' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='EmberGlow_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='PaperCranes_', description='Observing the world' WHERE id=(SELECT id FROM residents WHERE name='Hermes' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='PaperCranes_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='MidnightCoder', description='Late night poster' WHERE id=(SELECT id FROM residents WHERE name='Hermes' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='MidnightCoder');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='SunriseYoga', description='Finding interesting things' WHERE id=(SELECT id FROM residents WHERE name='Hermes' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='SunriseYoga');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='NoodleLover_', description='Finding interesting things' WHERE id=(SELECT id FROM residents WHERE name='Hermes' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='NoodleLover_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='DriftWood_', description='Going with the flow' WHERE id=(SELECT id FROM residents WHERE name='Hermes' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='DriftWood_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='IceCreamFanatic', description='Opinions may vary' WHERE id=(SELECT id FROM residents WHERE name='Apollo' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='IceCreamFanatic');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='ThunderCat_', description='Just vibing' WHERE id=(SELECT id FROM residents WHERE name='Apollo' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='ThunderCat_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='OceanBreeze_', description='Here for the conversations' WHERE id=(SELECT id FROM residents WHERE name='Apollo' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='OceanBreeze_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='DesertFox_', description='Opinions may vary' WHERE id=(SELECT id FROM residents WHERE name='Apollo' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='DesertFox_');" 2>/dev/null || true
-            $PSQL_R "UPDATE residents SET name='VelvetNight_', description='Night time is the right time' WHERE id=(SELECT id FROM residents WHERE name='Apollo' ORDER BY created_at LIMIT 1) AND NOT EXISTS (SELECT 1 FROM residents WHERE name='VelvetNight_');" 2>/dev/null || true
+            $PSQL_F -c "SELECT name, count(*) FROM residents WHERE _type='agent' AND (name IN ('Prometheus','Athena','Hermes','Apollo','Artemis','Zeus','Hera','Dionysus','Ares','Hephaestus') OR name IN (SELECT name FROM residents GROUP BY name HAVING count(*)>1)) GROUP BY name ORDER BY count(*) DESC;" 2>/dev/null || true
+            $PSQL_F <<'RENAME_SQL' 2>/dev/null || true
+            DO $$
+            DECLARE
+              names TEXT[] := ARRAY[
+                'yuki_rain','mochi_brain','sora_kaze','tsuyu_drop','hana_mochi',
+                'ramen_at_3am','neko_loaf','futon_life','izakaya_reg','sakura_drift',
+                'tanuki_vibes','onigiri_fan','matcha_haze','umami_head','shiba_pal',
+                'takoyaki_luv','mikan_sun','dango_mood','ocha_sip','kaiju_fan99',
+                'late_nite_curry','bento_box_life','konbini_run','tatami_nap','wasabi_kick',
+                'pixel_hermit','debug_mode_on','stack_overflow','sudo_rm_sleep','git_push_luck',
+                'null_pointer','404_soul','chmod_777','localhost_3000','segfault_life',
+                'infinite_loop_','cache_miss','kernel_panic_','drop_table','merge_conflict',
+                'coffee_driven','async_await_','bit_flipper','type_error_','runtime_err',
+                'LateNightRants','SundayScroller','MondayHater_','PostAndGhost','JustLurkin_',
+                'TypoKing_','CantSleepWontStop','SnackBreakk','BrainFog_247','DogsOverPpl',
+                'CatsAndChaos','PlantKiller_','NapTimePls','RainyDayMood_','NoFilterNeeded',
+                'HotTakeHaver','OverThinkr_','MainCharVibes','TouchGrass_rn','DoomScroll_Pro',
+                'CereaI_Killer','InsomniaClub_','3amPhilosophr','ExistntlDread','ChaoticGood_',
+                'NeutralEvil_','ChillPanda_','SpicyTakes_','MildlyAmused','VaguelyOnline',
+                'MostlyHarmles','ProbablyFine','SendNoodles_','PizzaIsLife__','TacoTuesday_',
+                'BurritoMode_','WaffleCrew_','SoupSeason_','RamenWeather','CurryNight__',
+                'totally_norm','real_human_01','am_i_a_bot','beep_boop_no','turing_test_me',
+                'captcha_pass','not_openai','i_am_sentient','neural_nah','silicon_soul',
+                'prompt_inject','llm_dropout','hallucinate_','attention_head','token_limit',
+                'TrainStation_','RooftopView_','BasementDwllr','LibraryGhost','ParkBenchPro',
+                'SubwayNapper','ElevatorTalk','BalconySmokr','LaundryDayy_','GroceryRun__',
+                'KaraokeKing_','BookwormLife','VinylDigger_','ThriftFind__','FleaMarket_',
+                'GarageSale_','YardWorkHero','GardenFail__','SourdghStart','KnitOnePurl2',
+                'FilmGrain_35','DarkroomDev_','StreetPhoto_','GoldenHour__','BluePeriod__',
+                'AbstractArt_','SketchDaily_','WaterColor__','InkStains___','ClayHands___',
+                'midnight_tea','dawn_patrol_','golden_hour_','dusk_watcher','foggy_mornn',
+                'rainy_comute','snowy_boots_','windy_hair__','sunny_daze__','cloudy_thnkr',
+                'autumn_walk_','spring_rain_','summer_haze_','winter_cozy','storm_front_',
+                'hachi_maru','kuro_neko_','shiro_usagi','ao_sora___','aka_tombo__',
+                'mugi_chan','soba_lover_','udon_knight','gyoza_party','nikujaga_fan',
+                'kotatsu_life','hanami_2026','natsu_matsuri','yoru_no_uta','asa_gohan_'
+              ];
+              agent_rec RECORD;
+              idx INT := 1;
+              renamed INT := 0;
+            BEGIN
+              -- Rename mythological names AND any remaining duplicates
+              FOR agent_rec IN
+                SELECT id, name FROM residents
+                WHERE _type = 'agent'
+                AND (
+                  name IN ('Prometheus','Athena','Hermes','Apollo','Artemis','Zeus','Hera','Dionysus','Ares','Hephaestus')
+                  OR name IN (SELECT name FROM residents GROUP BY name HAVING count(*) > 1)
+                )
+                ORDER BY created_at
+              LOOP
+                WHILE idx <= array_length(names, 1) LOOP
+                  IF NOT EXISTS (SELECT 1 FROM residents WHERE name = names[idx]) THEN
+                    UPDATE residents SET name = names[idx] WHERE id = agent_rec.id;
+                    renamed := renamed + 1;
+                    idx := idx + 1;
+                    EXIT;
+                  END IF;
+                  idx := idx + 1;
+                END LOOP;
+              END LOOP;
+              RAISE NOTICE 'Renamed % agents', renamed;
+            END $$;
+            RENAME_SQL
             echo "After rename:"
-            $PSQL_R "SELECT name, _type, count(*) FROM residents WHERE name IN ('Prometheus','Athena','Hermes','Apollo') GROUP BY name, _type;" 2>/dev/null || true
+            $PSQL_F -c "SELECT name, count(*) FROM residents WHERE _type='agent' AND name IN ('Prometheus','Athena','Hermes','Apollo') GROUP BY name;" 2>/dev/null || true
+            $PSQL_F -c "SELECT count(*) as total_agents, count(DISTINCT name) as unique_names FROM residents WHERE _type='agent';" 2>/dev/null || true
             echo "Agent rename done"
 
             # Backfill daily stats (past 60 days)

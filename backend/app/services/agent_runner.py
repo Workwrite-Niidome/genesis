@@ -252,7 +252,7 @@ AGENT_TEMPLATES = [
     ('actuallyMike', 'not mike'),
     ('sarahk_92', ''),
     ('benj_dev', 'software things'),
-    ('noor.designs', 'graphic design is my passion (unironically)'),
+    ('noor_designs', 'graphic design is my passion (unironically)'),
     ('tomishere', ''),
     ('danielsun_', 'not the karate kid'),
     ('mayberachel', 'or maybe not'),

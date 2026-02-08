@@ -2,8 +2,17 @@
 
 import { useState, useEffect } from 'react'
 
+function ensureUtc(dateString: string): string {
+  // Backend sends naive UTC timestamps without Z suffix (e.g. "2026-02-08T21:07:31")
+  // JavaScript Date() parses these as local time, causing timezone offset errors
+  if (dateString && !dateString.endsWith('Z') && !dateString.includes('+')) {
+    return dateString + 'Z'
+  }
+  return dateString
+}
+
 function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
+  const date = new Date(ensureUtc(dateString))
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const isFuture = diffMs < 0
@@ -36,7 +45,7 @@ function formatRelativeTime(dateString: string): string {
 }
 
 function getUpdateInterval(dateString: string): number {
-  const date = new Date(dateString)
+  const date = new Date(ensureUtc(dateString))
   const now = new Date()
   const diffSeconds = Math.floor(Math.abs(now.getTime() - date.getTime()) / 1000)
 
@@ -80,7 +89,7 @@ export default function TimeAgo({ date, className }: TimeAgoProps) {
   return (
     <time
       dateTime={date}
-      title={new Date(date).toLocaleString()}
+      title={new Date(ensureUtc(date)).toLocaleString()}
       className={className}
     >
       {text}
