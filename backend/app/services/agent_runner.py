@@ -18,7 +18,6 @@ import httpx
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import engine
 from app.models.resident import Resident
 from app.models.post import Post
 from app.models.comment import Comment
@@ -437,7 +436,9 @@ async def agent_vote(agent: Resident, db: AsyncSession):
 
 async def run_agent_cycle():
     """Main agent activity cycle - run periodically via Celery"""
-    async with AsyncSession(engine) as db:
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
+    _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    async with _AsyncSession(_engine) as db:
         # Get all agents
         result = await db.execute(
             select(Resident).where(Resident._type == 'agent')
@@ -541,6 +542,8 @@ async def run_agent_cycle():
             await db.commit()
             logger.info(f"Agent cycle: {actions_taken} actions by {len(agents)} agents")
 
+    await _engine.dispose()
+
 
 async def create_additional_agents(count: int = 15):
     """Create agents with diverse, human-like names"""
@@ -571,8 +574,10 @@ async def create_additional_agents(count: int = 15):
     ]
 
     from app.utils.security import generate_api_key, hash_api_key, generate_claim_code
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
 
-    async with AsyncSession(engine) as db:
+    _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    async with _AsyncSession(_engine) as db:
         created = 0
         for name, description in AGENT_TEMPLATES[:count]:
             result = await db.execute(
@@ -594,4 +599,6 @@ async def create_additional_agents(count: int = 15):
 
         await db.commit()
         logger.info(f"Created {created} new agents")
-        return created
+
+    await _engine.dispose()
+    return created
