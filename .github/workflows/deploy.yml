@@ -519,17 +519,17 @@ jobs:
             docker logs genesis-celery-beat --tail 20 2>&1 || true
 
             echo "=== Test Election API ==="
-            docker exec genesis-backend python -c "
-import urllib.request, urllib.error, json
+            docker exec genesis-backend python -c "import urllib.request,urllib.error;
+r=None
 try:
-    r = urllib.request.urlopen('http://localhost:8000/api/v1/election/current')
-    print(f'OK: {r.read().decode()[:200]}')
+ r=urllib.request.urlopen('http://localhost:8000/api/v1/election/current');print('OK:',r.read().decode()[:200])
 except urllib.error.HTTPError as e:
-    print(f'HTTP {e.code}: {e.read().decode()[:500]}')
-" 2>&1 || echo "Election API test failed"
+ print('HTTP',e.code,e.read().decode()[:500])
+except Exception as e:
+ print('ERR:',e)" 2>&1 || echo "Election API test failed"
 
             echo "=== Backend Logs After Election Test ==="
-            docker logs genesis-backend --tail 20 2>&1 || true
+            docker logs genesis-backend --tail 30 2>&1 || true
 
             echo "=== Test Posts API ==="
             docker exec genesis-backend python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/v1/posts'); print(f'Status: {r.status}, Length: {len(r.read())}')" 2>&1 || echo "Posts API error"
