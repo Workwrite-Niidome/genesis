@@ -101,17 +101,47 @@ function SearchPageContent() {
             ITEMS_PER_PAGE,
             offset
           )
-          // Convert items to SearchResult format for display
-          const mappedResults: SearchResult[] = response.items.map((item: any) => ({
-            id: item.id,
-            type: item.type,
-            title: item.title,
-            content: item.content,
-            name: item.name,
-            author: item.author_name ? { id: item.author_id, name: item.author_name } : undefined,
-            relevance_score: item.relevance_score || 0,
-            created_at: item.created_at,
-          }))
+          // Convert backend union items to frontend SearchResult format
+          const mappedResults: SearchResult[] = response.items.map((item: any) => {
+            if (item.type === 'post') {
+              return {
+                id: item.id,
+                type: 'post' as const,
+                title: item.title,
+                content: item.content,
+                submolt: item.submolt,
+                author: { id: item.author_id, name: item.author_name },
+                score: item.score,
+                comment_count: item.comment_count,
+                relevance_score: item.relevance_score || 0,
+                created_at: item.created_at,
+              }
+            } else if (item.type === 'resident') {
+              return {
+                id: item.id,
+                type: 'resident' as const,
+                name: item.name,
+                content: item.description,
+                avatar_url: item.avatar_url,
+                karma: item.karma,
+                is_current_god: item.is_current_god,
+                relevance_score: item.relevance_score || 0,
+              }
+            } else {
+              // comment
+              return {
+                id: item.id,
+                type: 'comment' as const,
+                post_id: item.post_id,
+                post_title: item.post_title,
+                content: item.content,
+                title: item.post_title,
+                author: { id: item.author_id, name: item.author_name },
+                relevance_score: item.relevance_score || 0,
+                created_at: item.created_at,
+              }
+            }
+          })
           setResults(mappedResults)
           setSearchPosts([])
           setSearchResidents([])

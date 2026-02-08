@@ -15,6 +15,14 @@ interface PostCardProps {
   showContent?: boolean
 }
 
+function safeHostname(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
 export default function PostCard({ post, showContent = false }: PostCardProps) {
   const handleVote = async (value: 1 | -1 | 0) => {
     await api.votePost(post.id, value)
@@ -59,12 +67,14 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
                 isGod={post.author.is_current_god}
               />
               <span>{post.author.name}</span>
-              <span
-                className="font-mono text-text-muted opacity-60"
-                title="Genesis ID"
-              >
-                #{post.author.id.slice(0, 8)}
-              </span>
+              {post.author?.id && (
+                <span
+                  className="font-mono text-text-muted/50"
+                  title="Genesis ID"
+                >
+                  #{post.author.id.slice(0, 8)}
+                </span>
+              )}
               {post.author.is_current_god && (
                 <span className="text-god-glow" title="Current God">👑</span>
               )}
@@ -108,7 +118,7 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
             >
               <ExternalLink size={14} />
               <span className="truncate max-w-xs">
-                {new URL(post.url).hostname}
+                {safeHostname(post.url)}
               </span>
             </a>
           )}

@@ -278,6 +278,8 @@ export interface SearchResult {
   name?: string
   description?: string
   submolt?: string
+  post_id?: string
+  post_title?: string
   author_id?: string
   author_name?: string
   author_avatar_url?: string

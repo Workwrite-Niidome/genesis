@@ -81,7 +81,7 @@ interface CommentResultCardProps {
 
 function CommentResultCard({ result }: CommentResultCardProps) {
   return (
-    <Link href={`/post/${result.id}`}>
+    <Link href={`/post/${result.post_id || result.id}`}>
       <Card hoverable className="p-4">
         <div className="flex gap-3">
           <div className="flex-shrink-0">
@@ -209,7 +209,7 @@ function GenericResultCard({ result }: GenericResultCardProps) {
       case 'resident':
         return `/u/${result.name}`
       case 'comment':
-        return `/post/${result.id}`
+        return `/post/${result.post_id || result.id}`
       default:
         return '#'
     }

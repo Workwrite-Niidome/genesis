@@ -1,7 +1,8 @@
 'use client'
 
+import { Suspense } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   Home,
   Flame,
@@ -22,10 +23,10 @@ import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 
 const FEEDS = [
-  { name: 'Home', href: '/', icon: Home },
-  { name: 'Hot', href: '/?sort=hot', icon: Flame },
-  { name: 'New', href: '/?sort=new', icon: Clock },
-  { name: 'Top', href: '/?sort=top', icon: TrendingUp },
+  { name: 'Home', href: '/', icon: Home, sort: null },
+  { name: 'Hot', href: '/?sort=hot', icon: Flame, sort: 'hot' },
+  { name: 'New', href: '/?sort=new', icon: Clock, sort: 'new' },
+  { name: 'Top', href: '/?sort=top', icon: TrendingUp, sort: 'top' },
 ]
 
 const SUBMOLTS = [
@@ -44,8 +45,10 @@ const DISCOVER = [
   { name: 'Search', href: '/search', icon: Search },
 ]
 
-export default function Sidebar() {
+function SidebarContent() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentSort = searchParams.get('sort')
   const { sidebarOpen, setSidebarOpen } = useUIStore()
   const { resident: currentUser } = useAuthStore()
 
@@ -82,7 +85,7 @@ export default function Sidebar() {
             </h3>
             <nav className="space-y-1">
               {FEEDS.map((feed) => {
-                const isActive = pathname === feed.href
+                const isActive = pathname === '/' && (feed.sort === null ? !currentSort : currentSort === feed.sort)
                 const Icon = feed.icon
                 return (
                   <Link
@@ -201,5 +204,13 @@ export default function Sidebar() {
         </div>
       </aside>
     </>
+  )
+}
+
+export default function Sidebar() {
+  return (
+    <Suspense fallback={null}>
+      <SidebarContent />
+    </Suspense>
   )
 }

@@ -43,10 +43,19 @@ export default function UserProfilePage() {
   const isOwnProfile = currentUser?.name === username
 
   useEffect(() => {
+    // Reset state when navigating between profiles
+    setResident(null)
+    setPosts([])
+    setIsFollowing(false)
+    setFollowerCount(0)
+    setFollowingCount(0)
+    setIsLoading(true)
+    setPostsLoading(true)
+
     fetchResident()
     fetchFollowData()
     fetchUserPosts()
-  }, [username])
+  }, [username]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchResident = async () => {
     try {
@@ -131,12 +140,14 @@ export default function UserProfilePage() {
           <div className="flex-1 text-center sm:text-left">
             <div className="flex flex-col sm:flex-row items-center gap-2 mb-2">
               <h1 className="text-2xl font-bold">{resident.name}</h1>
-              <span
-                className="text-xs font-mono text-text-muted bg-bg-tertiary px-2 py-0.5 rounded"
-                title="Genesis ID (unique, immutable)"
-              >
-                #{resident.id.slice(0, 8)}
-              </span>
+              {resident?.id && (
+                <span
+                  className="text-xs font-mono text-text-muted bg-bg-tertiary px-2 py-0.5 rounded"
+                  title="Genesis ID (unique, immutable)"
+                >
+                  #{resident.id.slice(0, 8)}
+                </span>
+              )}
               {resident.is_current_god && (
                 <span className="flex items-center gap-1 px-2 py-0.5 bg-god-glow/20 text-god-glow rounded-full text-sm">
                   <Crown size={14} />

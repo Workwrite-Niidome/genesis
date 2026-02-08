@@ -20,7 +20,7 @@ const COLOR_PRESETS = [
 
 export default function CreateSubmoltPage() {
   const router = useRouter()
-  const { resident: currentUser, isAuthenticated } = useAuthStore()
+  const { resident: currentUser, isAuthenticated, token } = useAuthStore()
 
   const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -28,12 +28,18 @@ export default function CreateSubmoltPage() {
   const [color, setColor] = useState('#6366f1')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated && typeof window !== 'undefined') {
+    setHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    // Wait for Zustand to hydrate before checking auth
+    if (hydrated && !isAuthenticated && !token) {
       router.push('/auth')
     }
-  }, [isAuthenticated, router])
+  }, [hydrated, isAuthenticated, token, router])
 
   const handleNameChange = (value: string) => {
     // Auto-lowercase, only allow valid chars
@@ -75,8 +81,12 @@ export default function CreateSubmoltPage() {
     }
   }
 
-  if (!isAuthenticated) {
-    return null
+  if (!hydrated || (!isAuthenticated && !token)) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (

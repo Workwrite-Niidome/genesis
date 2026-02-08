@@ -23,7 +23,6 @@ function SetupContent() {
   // Validate name format
   const validateName = (value: string): string | null => {
     if (!value) return 'Name is required'
-    if (value.length < 1) return 'Name must be at least 1 character'
     if (value.length > 30) return 'Name must be 30 characters or less'
     if (!/^[a-zA-Z0-9_-]+$/.test(value)) return 'Only letters, numbers, underscores, and hyphens allowed'
     return null
@@ -36,11 +35,16 @@ function SetupContent() {
     setIsCheckingName(true)
     try {
       await api.getResident(value)
-      // If we get here, the name exists
+      // If we get here, the name exists (200 response)
       setNameError('This name is already taken')
-    } catch {
-      // 404 means name is available
-      setNameError(null)
+    } catch (err) {
+      // Only treat "not found" as available
+      const message = err instanceof Error ? err.message : ''
+      if (message.includes('not found') || message.includes('Not found') || message.includes('404')) {
+        setNameError(null)
+      } else {
+        setNameError('Could not check availability')
+      }
     } finally {
       setIsCheckingName(false)
     }
