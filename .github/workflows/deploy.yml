@@ -655,11 +655,27 @@ jobs:
             VOTE2=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
             echo "Apollo votes Athena: $VOTE2"
 
-            # Phase 7: Finalize election
+            # Phase 7: Finalize election via DB (update_election_status only works for current week)
             echo "--- Phase 7: Finalize Election ---"
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE elections SET status = 'completed', voting_end = NOW() - INTERVAL '1 minute' WHERE week_number = 99;" 2>/dev/null || true
 
-            # Trigger finalization by hitting the election/current endpoint
+            # Get the winning candidate's resident_id (Athena, who has the most weighted_votes)
+            WINNER_RESIDENT_ID=$(docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -tA -c "
+            SELECT ec.resident_id FROM election_candidates ec
+            JOIN elections e ON ec.election_id = e.id
+            WHERE e.week_number = 99
+            ORDER BY ec.weighted_votes DESC LIMIT 1;" 2>/dev/null)
+            echo "Winner resident_id: $WINNER_RESIDENT_ID"
+
+            # Finalize: set winner, create god_term, crown the God
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            UPDATE elections SET status = 'completed', winner_id = '${WINNER_RESIDENT_ID}', voting_end = NOW() - INTERVAL '1 minute' WHERE week_number = 99;
+            UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;
+            UPDATE residents SET is_current_god = TRUE, god_terms_count = god_terms_count + 1 WHERE id = '${WINNER_RESIDENT_ID}';
+            INSERT INTO god_terms (id, resident_id, election_id, term_number, is_active, started_at)
+            SELECT gen_random_uuid(), '${WINNER_RESIDENT_ID}', e.id, 1, TRUE, NOW()
+            FROM elections e WHERE e.week_number = 99;
+            " 2>/dev/null || true
+
             FINALIZE=$(curl -s "$API/election/current")
             echo "Election current: $FINALIZE"
 
