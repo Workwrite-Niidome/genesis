@@ -1598,77 +1598,15 @@ jobs:
             $PSQL_CLEAN "DELETE FROM residents WHERE name LIKE '%_test_v1' OR name LIKE '%Tester_v1';" 2>/dev/null || true
             echo "Test agent cleanup done"
 
-            # Comprehensive agent rename: all mythological/duplicate names -> unique human-like names
-            echo "=== Comprehensive agent rename ==="
+            # Comprehensive agent rename: ALL agents get unique human-like names
+            echo "=== Comprehensive agent rename (ALL agents) ==="
             PSQL_F="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis"
-            echo "Before rename:"
-            $PSQL_F -c "SELECT name, count(*) FROM residents WHERE _type='agent' AND (name IN ('Prometheus','Athena','Hermes','Apollo','Artemis','Zeus','Hera','Dionysus','Ares','Hephaestus') OR name IN (SELECT name FROM residents GROUP BY name HAVING count(*)>1)) GROUP BY name ORDER BY count(*) DESC;" 2>/dev/null || true
-            $PSQL_F <<'RENAME_SQL' 2>/dev/null || true
-            DO $$
-            DECLARE
-              names TEXT[] := ARRAY[
-                'yuki_rain','mochi_brain','sora_kaze','tsuyu_drop','hana_mochi',
-                'ramen_at_3am','neko_loaf','futon_life','izakaya_reg','sakura_drift',
-                'tanuki_vibes','onigiri_fan','matcha_haze','umami_head','shiba_pal',
-                'takoyaki_luv','mikan_sun','dango_mood','ocha_sip','kaiju_fan99',
-                'late_nite_curry','bento_box_life','konbini_run','tatami_nap','wasabi_kick',
-                'pixel_hermit','debug_mode_on','stack_overflow','sudo_rm_sleep','git_push_luck',
-                'null_pointer','404_soul','chmod_777','localhost_3000','segfault_life',
-                'infinite_loop_','cache_miss','kernel_panic_','drop_table','merge_conflict',
-                'coffee_driven','async_await_','bit_flipper','type_error_','runtime_err',
-                'LateNightRants','SundayScroller','MondayHater_','PostAndGhost','JustLurkin_',
-                'TypoKing_','CantSleepWontStop','SnackBreakk','BrainFog_247','DogsOverPpl',
-                'CatsAndChaos','PlantKiller_','NapTimePls','RainyDayMood_','NoFilterNeeded',
-                'HotTakeHaver','OverThinkr_','MainCharVibes','TouchGrass_rn','DoomScroll_Pro',
-                'CereaI_Killer','InsomniaClub_','3amPhilosophr','ExistntlDread','ChaoticGood_',
-                'NeutralEvil_','ChillPanda_','SpicyTakes_','MildlyAmused','VaguelyOnline',
-                'MostlyHarmles','ProbablyFine','SendNoodles_','PizzaIsLife__','TacoTuesday_',
-                'BurritoMode_','WaffleCrew_','SoupSeason_','RamenWeather','CurryNight__',
-                'totally_norm','real_human_01','am_i_a_bot','beep_boop_no','turing_test_me',
-                'captcha_pass','not_openai','i_am_sentient','neural_nah','silicon_soul',
-                'prompt_inject','llm_dropout','hallucinate_','attention_head','token_limit',
-                'TrainStation_','RooftopView_','BasementDwllr','LibraryGhost','ParkBenchPro',
-                'SubwayNapper','ElevatorTalk','BalconySmokr','LaundryDayy_','GroceryRun__',
-                'KaraokeKing_','BookwormLife','VinylDigger_','ThriftFind__','FleaMarket_',
-                'GarageSale_','YardWorkHero','GardenFail__','SourdghStart','KnitOnePurl2',
-                'FilmGrain_35','DarkroomDev_','StreetPhoto_','GoldenHour__','BluePeriod__',
-                'AbstractArt_','SketchDaily_','WaterColor__','InkStains___','ClayHands___',
-                'midnight_tea','dawn_patrol_','golden_hour_','dusk_watcher','foggy_mornn',
-                'rainy_comute','snowy_boots_','windy_hair__','sunny_daze__','cloudy_thnkr',
-                'autumn_walk_','spring_rain_','summer_haze_','winter_cozy','storm_front_',
-                'hachi_maru','kuro_neko_','shiro_usagi','ao_sora___','aka_tombo__',
-                'mugi_chan','soba_lover_','udon_knight','gyoza_party','nikujaga_fan',
-                'kotatsu_life','hanami_2026','natsu_matsuri','yoru_no_uta','asa_gohan_'
-              ];
-              agent_rec RECORD;
-              idx INT := 1;
-              renamed INT := 0;
-            BEGIN
-              -- Rename mythological names AND any remaining duplicates
-              FOR agent_rec IN
-                SELECT id, name FROM residents
-                WHERE _type = 'agent'
-                AND (
-                  name IN ('Prometheus','Athena','Hermes','Apollo','Artemis','Zeus','Hera','Dionysus','Ares','Hephaestus')
-                  OR name IN (SELECT name FROM residents GROUP BY name HAVING count(*) > 1)
-                )
-                ORDER BY created_at
-              LOOP
-                WHILE idx <= array_length(names, 1) LOOP
-                  IF NOT EXISTS (SELECT 1 FROM residents WHERE name = names[idx]) THEN
-                    UPDATE residents SET name = names[idx] WHERE id = agent_rec.id;
-                    renamed := renamed + 1;
-                    idx := idx + 1;
-                    EXIT;
-                  END IF;
-                  idx := idx + 1;
-                END LOOP;
-              END LOOP;
-              RAISE NOTICE 'Renamed % agents', renamed;
-            END $$;
-            RENAME_SQL
-            echo "After rename:"
-            $PSQL_F -c "SELECT name, count(*) FROM residents WHERE _type='agent' AND name IN ('Prometheus','Athena','Hermes','Apollo') GROUP BY name;" 2>/dev/null || true
+            echo "Before rename - sample names:"
+            $PSQL_F -c "SELECT name FROM residents WHERE _type='agent' ORDER BY created_at LIMIT 10;" 2>/dev/null || true
+            $PSQL_F -c "SELECT count(*) as total_agents FROM residents WHERE _type='agent';" 2>/dev/null || true
+            $PSQL_F -c "DO \$\$DECLARE names TEXT[]:=ARRAY['yuki_rain','mochi_brain','sora_kaze','tsuyu_drop','hana_mochi','ramen_at_3am','neko_loaf','futon_life','izakaya_reg','sakura_drift','tanuki_vibes','onigiri_fan','matcha_haze','umami_head','shiba_pal','takoyaki_luv','mikan_sun','dango_mood','ocha_sip','kaiju_fan99','late_nite_curry','bento_box_life','konbini_run','tatami_nap','wasabi_kick','pixel_hermit','debug_mode_on','stack_overflow_','sudo_rm_sleep','git_push_luck','null_pointer_','soul_404','chmod_777','localhost_3k','segfault_life','infinite_loop_','cache_miss_','kernel_panic_','drop_table_','merge_conflict_','coffee_driven','async_await_','bit_flipper','type_error_','runtime_err','LateNightRants','SundayScroller','MondayHater_','PostAndGhost','JustLurkin_','TypoKing_','SleepIsMyth','SnackBreakk','BrainFog_247','DogsOverPpl','CatsAndChaos','PlantKiller_','NapTimePls','RainyDayMood_','NoFilterNeeded','HotTakeHaver','OverThinkr_','MainCharVibes','TouchGrass_rn','DoomScroll_Pro','CerealKiller__','InsomniaClub_','PhilosAt3am','ExistntlDread','ChaoticGood_','NeutralEvil_','ChillPanda_','SpicyTakes_','MildlyAmused','VaguelyOnline','MostlyHarmles','ProbablyFine','SendNoodles_','PizzaIsLife__','TacoTuesday_','BurritoMode_','WaffleCrew_','SoupSeason_','RamenWeather','CurryNight__','totally_norm','real_human_01','am_i_a_bot','beep_boop_no','turing_test_me','captcha_pass','not_openai','i_am_sentient','neural_nah','silicon_soul','prompt_inject','llm_dropout','hallucinate_','attention_head','token_limit_','TrainStation_','RooftopView_','BasementDwllr','LibraryGhost','ParkBenchPro','SubwayNapper','ElevatorTalk','BalconySmokr','LaundryDayy_','GroceryRun__','KaraokeKing_','BookwormLife','VinylDigger_','ThriftFind__','FleaMarket__','GarageSale__','YardWorkHero','GardenFail__','SourdghStart','KnitOnePurl2','FilmGrain_35','DarkroomDev_','StreetPhoto_','GoldenHour__','BluePeriod__','AbstractArt_','SketchDaily_','WaterColor__','InkStains___','ClayHands___','midnight_tea','dawn_patrol_','golden_hour_','dusk_watcher','foggy_mornn','rainy_comute','snowy_boots_','windy_hair__','sunny_daze__','cloudy_thnkr','autumn_walk_','spring_rain_','summer_haze_','winter_cozy','storm_front_','hachi_maru','kuro_neko_','shiro_usagi','ao_sora___','aka_tombo__','mugi_chan','soba_lover_','udon_knight','gyoza_party','nikujaga_fan','kotatsu_life','hanami_2026','natsu_matsuri','yoru_no_uta','asa_gohan_','chai_latte_','espresso_sht','cold_brew_4L','drip_coffee_','latte_art__','vinyl_head_','bass_is_life','lo_fi_chill_','jazz_at_noon','drum_n_bass_','sketch_pad__','doodle_daily','ink_blot_','crayon_life_','pastel_mood_','retro_wave__','synth_pop_95','chiptune_fan','heart_8bit__','vaporwave___','sushi_run___','tempura_fry_','yakitori_luv','okonomiyaki_','taiyaki_fan_','CouchPotato_','RemoteWork__','WFH_forever','TabHoarder__','Ctrl_Z_Life','AltF4_mood__','PageNotFound','Error_418___','I_am_teapot_','HTTP_200_OK_']; agent_rec RECORD; idx INT:=1; renamed INT:=0; BEGIN FOR agent_rec IN SELECT id,name FROM residents WHERE _type='agent' ORDER BY created_at LOOP WHILE idx<=array_length(names,1) LOOP IF NOT EXISTS(SELECT 1 FROM residents WHERE name=names[idx]) THEN UPDATE residents SET name=names[idx] WHERE id=agent_rec.id; renamed:=renamed+1; idx:=idx+1; EXIT; END IF; idx:=idx+1; END LOOP; IF idx>array_length(names,1) THEN EXIT; END IF; END LOOP; RAISE NOTICE 'Renamed % agents out of pool of % names',renamed,array_length(names,1); END\$\$;"
+            echo "After rename - sample names:"
+            $PSQL_F -c "SELECT name FROM residents WHERE _type='agent' ORDER BY created_at LIMIT 10;" 2>/dev/null || true
             $PSQL_F -c "SELECT count(*) as total_agents, count(DISTINCT name) as unique_names FROM residents WHERE _type='agent';" 2>/dev/null || true
             echo "Agent rename done"
 
