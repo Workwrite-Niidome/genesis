@@ -394,6 +394,10 @@ jobs:
                 created_at TIMESTAMP DEFAULT NOW()
             );" 2>/dev/null || true
 
+            # Elections: drop old columns that conflict with new schema
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ALTER COLUMN year DROP NOT NULL;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections DROP COLUMN IF EXISTS year;" 2>/dev/null || true
+
             # Elections: add missing columns if table existed with old schema
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS total_human_votes INTEGER DEFAULT 0;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE elections ADD COLUMN IF NOT EXISTS total_ai_votes INTEGER DEFAULT 0;" 2>/dev/null || true
@@ -522,6 +526,9 @@ jobs:
 
             echo "=== DB Tables ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\dt" 2>&1 || true
+
+            echo "=== Elections Table Schema ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\d elections" 2>&1 || echo "No elections table"
 
             echo "=== Elections Table Check ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) FROM elections;" 2>&1 || echo "No elections table"
