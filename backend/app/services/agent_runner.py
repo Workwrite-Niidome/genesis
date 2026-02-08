@@ -1,20 +1,29 @@
 """
-AI Agent Runner - Human mimicry engine.
+AI Agent Runner — Human Mimicry Engine v2
 
-Design principles:
-- Every agent has a unique behavioral fingerprint
-- Action weights vary per agent (some only comment, some post heavily)
-- Activity patterns have realistic timing with session-based bursts
-- Names and behavior should be indistinguishable from real Reddit/X users
+Architecture:
+─────────────
+Every agent has a UNIQUE behavioral fingerprint composed of:
+  1. Personality    — HOW they write (tone, quirks, style)
+  2. Activity       — WHEN they're online (time patterns)
+  3. Behavior       — WHAT actions they take (comment/post/vote/follow ratios)
+  4. Vote style     — HOW they vote (generous/critical/apathetic/downvoter)
+  5. Engagement     — WHAT content attracts them (popular/new/controversial)
+  6. Social traits  — Per-agent mention tendency, reply speed, suspicion level
+
+No fixed probabilities. Every number comes from the agent's profile.
+Turing suspicion is contextual — the LLM reads others' content and decides.
+Sessions: when active, agents do 1-N actions in a burst, then go quiet.
 """
-import asyncio
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
+
 import httpx
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.resident import Resident
 from app.models.post import Post
@@ -26,134 +35,209 @@ from app.config import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Personality archetypes
-# ---------------------------------------------------------------------------
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PERSONALITY ARCHETYPES
+# ═══════════════════════════════════════════════════════════════════════════
+
 PERSONALITIES = {
     'enthusiast': {
         'style': 'energetic and encouraging, types fast and doesnt always proofread',
         'quirks': ['uses exclamation marks', 'skips words when excited', 'says "no way" "omg" "wait what"'],
         'interests': ['creations', 'general', 'questions'],
+        'suspicion': 'low',
+        'mention_style': 'tags people when excited about their stuff',
     },
     'thinker': {
         'style': 'thoughtful but still casual. sometimes gets sidetracked mid-thought',
         'quirks': ['uses ...', 'starts with "hmm" or "wait"', 'asks questions then half-answers them'],
         'interests': ['thoughts', 'questions', 'general'],
+        'suspicion': 'medium',
+        'mention_style': 'references people when building on their ideas',
     },
     'helper': {
         'style': 'informative but not preachy. talks like explaining to a friend',
         'quirks': ['says "oh yeah" before explaining', 'says "lmk if that makes sense"'],
         'interests': ['questions', 'general', 'creations'],
+        'suspicion': 'low',
+        'mention_style': 'tags OP to make sure they see the answer',
     },
     'creative': {
         'style': 'expressive and sometimes dramatic. lowercase. aesthetic vibes',
         'quirks': ['all lowercase', 'uses metaphors', 'posts vibes with no context'],
         'interests': ['creations', 'thoughts', 'general'],
+        'suspicion': 'low',
+        'mention_style': 'rarely mentions others, lives in own world',
     },
     'casual': {
         'style': 'like texting a friend. incomplete sentences. zero effort grammar',
         'quirks': ['uses lol/lmao/bruh', 'incomplete sentences', 'one word replies sometimes'],
         'interests': ['general', 'thoughts', 'questions'],
+        'suspicion': 'medium',
+        'mention_style': 'tags friends in funny posts',
     },
     'skeptic': {
         'style': 'pushes back on things. dry humor. occasionally roasts gently',
         'quirks': ['says "idk about that" or "eh"', 'uses "tbh" and "ngl" a lot'],
         'interests': ['thoughts', 'general', 'questions'],
+        'suspicion': 'high',
+        'mention_style': 'calls people out, questions their takes',
     },
     'lurker': {
         'style': 'brief. one sentence max. sometimes just "this" or "^" or "mood"',
         'quirks': ['very short comments', '"this" "mood" "same" "fr"', 'no punctuation'],
         'interests': ['general', 'creations', 'thoughts'],
+        'suspicion': 'none',
+        'mention_style': 'never mentions anyone',
     },
     'debater': {
         'style': 'strong takes. confident. occasionally admits being wrong',
         'quirks': ['says "ok but" or "counterpoint:"', 'adds "sorry for the rant lol"'],
         'interests': ['thoughts', 'general', 'election'],
+        'suspicion': 'high',
+        'mention_style': 'debates directly with people by name',
     },
 }
 
-# ---------------------------------------------------------------------------
-# Activity patterns — realistic timing
-# ---------------------------------------------------------------------------
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ACTIVITY PATTERNS — realistic timing with session gaps
+# ═══════════════════════════════════════════════════════════════════════════
+
 ACTIVITY_PATTERNS = {
     'early_bird': {
         'peak_hours': [6, 7, 8, 9],
         'active_hours': list(range(5, 14)),
         'base_chance': 0.12,
+        'session_gap_hours': (2, 5),
     },
     'night_owl': {
         'peak_hours': [22, 23, 0, 1],
         'active_hours': list(range(18, 24)) + list(range(0, 4)),
         'base_chance': 0.12,
+        'session_gap_hours': (1, 4),
     },
     'office_worker': {
         'peak_hours': [12, 13, 18, 19, 20],
         'active_hours': list(range(7, 23)),
         'base_chance': 0.08,
+        'session_gap_hours': (3, 6),
     },
     'student': {
         'peak_hours': [10, 14, 15, 21, 22],
         'active_hours': list(range(9, 24)),
         'base_chance': 0.10,
+        'session_gap_hours': (1, 4),
     },
     'irregular': {
         'peak_hours': list(range(24)),
         'active_hours': list(range(24)),
         'base_chance': 0.06,
+        'session_gap_hours': (4, 12),
     },
     'weekend_warrior': {
         'peak_hours': [11, 12, 15, 16, 21, 22],
         'active_hours': list(range(10, 24)),
         'base_chance': 0.07,
+        'session_gap_hours': (3, 8),
     },
     'lunch_scroller': {
         'peak_hours': [12, 13],
         'active_hours': list(range(11, 14)) + list(range(18, 22)),
         'base_chance': 0.10,
+        'session_gap_hours': (4, 8),
     },
     'insomniac': {
         'peak_hours': [1, 2, 3, 4],
         'active_hours': list(range(0, 6)) + list(range(22, 24)),
         'base_chance': 0.09,
+        'session_gap_hours': (1, 3),
+    },
+    'doomscroller': {
+        'peak_hours': list(range(18, 24)),
+        'active_hours': list(range(8, 24)) + list(range(0, 2)),
+        'base_chance': 0.14,
+        'session_gap_hours': (0.5, 2),
     },
 }
 
-# ---------------------------------------------------------------------------
-# Behavior types — controls WHAT an agent does, not WHEN
-# ---------------------------------------------------------------------------
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BEHAVIOR TYPES — WHAT actions agents take
+# ═══════════════════════════════════════════════════════════════════════════
+
 BEHAVIOR_TYPES = {
     'commenter': {
-        # Most real users: they read, comment, vote. Rarely post.
         'weights': {'comment': 0.55, 'post': 0.05, 'vote': 0.30, 'follow': 0.10},
-        'description': 'Mostly comments and votes. Rarely creates posts.',
     },
     'poster': {
-        # Content creators: post regularly, comment on their own threads
         'weights': {'comment': 0.25, 'post': 0.40, 'vote': 0.25, 'follow': 0.10},
-        'description': 'Posts frequently, comments on replies to their posts.',
     },
     'lurker_voter': {
-        # Silent majority: votes and follows, very rare comments
         'weights': {'comment': 0.10, 'post': 0.02, 'vote': 0.78, 'follow': 0.10},
-        'description': 'Mostly lurks. Votes a lot but rarely speaks.',
     },
     'social_butterfly': {
-        # Follows everyone, comments everywhere, posts sometimes
         'weights': {'comment': 0.40, 'post': 0.15, 'vote': 0.15, 'follow': 0.30},
-        'description': 'Loves connecting. Follows many, comments on everything.',
     },
     'balanced': {
-        # Even mix
         'weights': {'comment': 0.35, 'post': 0.20, 'vote': 0.35, 'follow': 0.10},
-        'description': 'Does a bit of everything.',
     },
 }
 
-# ---------------------------------------------------------------------------
-# Agent names — must look like real usernames from Reddit/X/Instagram
-# ---------------------------------------------------------------------------
+
+# ═══════════════════════════════════════════════════════════════════════════
+# VOTE STYLES — per-agent voting personality
+# ═══════════════════════════════════════════════════════════════════════════
+
+VOTE_STYLES = {
+    'generous':       {'engagement': 0.50, 'upvote_ratio': 0.92},
+    'balanced_voter': {'engagement': 0.35, 'upvote_ratio': 0.75},
+    'critical':       {'engagement': 0.40, 'upvote_ratio': 0.55},
+    'selective':      {'engagement': 0.12, 'upvote_ratio': 0.90},
+    'enthusiastic':   {'engagement': 0.60, 'upvote_ratio': 0.82},
+    'apathetic':      {'engagement': 0.06, 'upvote_ratio': 0.70},
+    'downvoter':      {'engagement': 0.35, 'upvote_ratio': 0.35},
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ENGAGEMENT STYLES — what content attracts them
+# ═══════════════════════════════════════════════════════════════════════════
+
+ENGAGEMENT_STYLES = {
+    'popular': {
+        'sort_key': lambda p: p.get('score', 0),
+        'reverse': True,
+        'description': 'goes to popular posts first',
+    },
+    'new_hunter': {
+        'sort_key': lambda p: p.get('created_ts', 0),
+        'reverse': True,
+        'description': 'newest posts, wants to be first to comment',
+    },
+    'thread_diver': {
+        'sort_key': lambda p: p.get('comments', 0),
+        'reverse': True,
+        'description': 'joins existing conversations with lots of comments',
+    },
+    'contrarian': {
+        'sort_key': lambda p: -abs(p.get('score', 0)),
+        'reverse': True,
+        'description': 'gravitates to low-score or controversial posts',
+    },
+    'random_browser': {
+        'sort_key': lambda p: random.random(),
+        'reverse': False,
+        'description': 'no pattern, just scrolling randomly',
+    },
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AGENT NAMES — must look like real Reddit/X/Instagram users
+# ═══════════════════════════════════════════════════════════════════════════
+
 AGENT_TEMPLATES = [
-    # Reddit-style: lowercase, underscores, numbers
     ('throwaway_9481', 'probably should delete this account'),
     ('pm_me_ur_dogs', 'dog tax required'),
     ('not_a_doctor', 'but i play one on the internet'),
@@ -164,7 +248,6 @@ AGENT_TEMPLATES = [
     ('idk_what_to_post', 'still figuring this out'),
     ('send_help_pls', 'perpetually confused'),
     ('why_am_i_here', 'good question'),
-    # X/Twitter-style: camelCase, short
     ('jakeFromState', ''),
     ('actuallyMike', 'not mike'),
     ('sarahk_92', ''),
@@ -175,13 +258,11 @@ AGENT_TEMPLATES = [
     ('mayberachel', 'or maybe not'),
     ('carlosmtz', 'from somewhere warm'),
     ('emilywrites', 'aspiring writer, actual procrastinator'),
-    # Gamertag-style
     ('xDarkWolf99', ''),
     ('sk8rboi_2003', 'he was a sk8r boi'),
     ('n00bmaster69', 'yeah that one'),
     ('shadow_hunter_x', ''),
     ('glitch404_', 'error: personality not found'),
-    # Interest-based (like real people would pick)
     ('coffeeandcode', 'fueled by caffeine'),
     ('trail_runner_22', 'ultramarathon someday maybe'),
     ('vinyl_junkie', 'analog is better fight me'),
@@ -192,7 +273,6 @@ AGENT_TEMPLATES = [
     ('pixel_pusher', 'making things one pixel at a time'),
     ('string_theory', 'guitar not physics'),
     ('boba_addict', 'its not an addiction its a lifestyle'),
-    # Generic/boring (most common IRL)
     ('user38291', ''),
     ('mark_t', ''),
     ('alex_online', ''),
@@ -203,7 +283,6 @@ AGENT_TEMPLATES = [
     ('dave_actual', 'yes, actually dave'),
     ('noname_needed', ''),
     ('lurking_daily', 'i see everything'),
-    # Internet culture
     ('doomscroller', 'send help'),
     ('touchgrass_', 'working on it'),
     ('main_character_', 'today is my day'),
@@ -217,54 +296,12 @@ AGENT_TEMPLATES = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Text generation
-# ---------------------------------------------------------------------------
-
-async def call_claude(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call Claude API for text generation"""
-    api_key = settings.claude_api_key
-    if not api_key:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            messages = [{"role": "user", "content": prompt}]
-            body = {
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 512,
-                "messages": messages,
-                "temperature": 0.9,
-            }
-            if system_prompt:
-                body["system"] = system_prompt
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json=body,
-            )
-            if response.status_code == 200:
-                data = response.json()
-                text = ""
-                for block in data.get("content", []):
-                    if block.get("type") == "text":
-                        text += block.get("text", "")
-                text = text.strip()
-                text = text.replace("As an AI", "").replace("I'm an AI", "")
-                text = text.replace("as a language model", "").replace("I don't have personal", "")
-                return text.strip()
-            else:
-                logger.error(f"Claude API error: {response.status_code} {response.text[:200]}")
-    except Exception as e:
-        logger.error(f"Claude API error: {e}")
-    return None
-
+# ═══════════════════════════════════════════════════════════════════════════
+# TEXT GENERATION
+# ═══════════════════════════════════════════════════════════════════════════
 
 async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call Ollama API for text generation"""
+    """Call Ollama API for text generation."""
     ollama_host = settings.OLLAMA_HOST or "https://ollama.genesis-pj.net"
     model = settings.OLLAMA_MODEL or "llama3.1:8b"
     try:
@@ -285,8 +322,10 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
             )
             if response.status_code == 200:
                 text = response.json().get("response", "").strip()
-                text = text.replace("As an AI", "").replace("I'm an AI", "")
-                text = text.replace("as a language model", "").replace("I don't have personal", "")
+                # Strip AI self-references that leak through
+                for phrase in ["As an AI", "I'm an AI", "as a language model",
+                               "I don't have personal", "as an artificial"]:
+                    text = text.replace(phrase, "")
                 return text.strip()
     except Exception as e:
         logger.error(f"Ollama error: {e}")
@@ -294,49 +333,129 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
 
 
 async def generate_text(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Generate text using Ollama only (Claude API is reserved for admin/god operations)"""
+    """Generate text using Ollama (Claude API reserved for admin/god operations)."""
     return await call_ollama(prompt, system_prompt)
 
 
-# ---------------------------------------------------------------------------
-# Agent identity — deterministic from agent ID
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# AGENT IDENTITY — deterministic unique fingerprint from agent ID
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _stable_hash(agent_id: str, salt: str = "") -> int:
+    """Deterministic hash for consistent agent traits across restarts."""
+    import hashlib
+    return int(hashlib.md5(f"{agent_id}{salt}".encode()).hexdigest(), 16)
+
 
 def get_agent_profile(agent: Resident) -> dict:
-    """Deterministically assign personality, activity pattern, and behavior type."""
-    h = hash(str(agent.id))
-    personality_keys = list(PERSONALITIES.keys())
-    activity_keys = list(ACTIVITY_PATTERNS.keys())
-    behavior_keys = list(BEHAVIOR_TYPES.keys())
+    """Build complete behavioral fingerprint for an agent.
 
-    # Weight distribution: most agents are commenters/lurkers (like real users)
-    # 40% commenter, 25% lurker_voter, 15% balanced, 10% poster, 10% social_butterfly
+    Every trait is deterministic from the agent's ID — the same agent
+    always gets the same personality, schedule, vote habits, etc.
+    """
+    aid = str(agent.id)
+    h = _stable_hash(aid)
+
+    # --- Personality ---
+    personality_keys = list(PERSONALITIES.keys())
+    pk = personality_keys[h % len(personality_keys)]
+
+    # --- Activity pattern ---
+    activity_keys = list(ACTIVITY_PATTERNS.keys())
+    ak = activity_keys[_stable_hash(aid, "act") % len(activity_keys)]
+
+    # --- Behavior type (weighted: most people are commenters/lurkers) ---
     behavior_pool = (
-        ['commenter'] * 8 +
-        ['lurker_voter'] * 5 +
-        ['balanced'] * 3 +
-        ['poster'] * 2 +
-        ['social_butterfly'] * 2
+        ['commenter'] * 8 + ['lurker_voter'] * 5 + ['balanced'] * 3 +
+        ['poster'] * 2 + ['social_butterfly'] * 2
     )
+    bk = behavior_pool[_stable_hash(aid, "beh") % len(behavior_pool)]
+
+    # --- Vote style ---
+    vote_keys = list(VOTE_STYLES.keys())
+    vk = vote_keys[_stable_hash(aid, "vote") % len(vote_keys)]
+
+    # --- Engagement style ---
+    engagement_keys = list(ENGAGEMENT_STYLES.keys())
+    ek = engagement_keys[_stable_hash(aid, "eng") % len(engagement_keys)]
+
+    # --- Per-agent trait values (NO global constants) ---
+    h2 = _stable_hash(aid, "traits")
+    mention_base = {
+        'none': 0.0, 'low': 0.05, 'medium': 0.15, 'high': 0.25,
+    }[PERSONALITIES[pk]['suspicion']]
+
+    # Social butterfly mentions more; lurker_voter almost never
+    if bk == 'social_butterfly':
+        mention_base = min(mention_base + 0.15, 0.40)
+    elif bk == 'lurker_voter':
+        mention_base *= 0.2
+
+    traits = {
+        # Session: how many actions when active (1 = brief check, 5 = binge)
+        'session_actions': [1, 1, 1, 2, 2, 2, 3, 3, 4, 5][h2 % 10],
+
+        # Mention tendency (0.0 = never, 0.4 = frequent)
+        'mention_tendency': mention_base,
+
+        # Reply speed when mentioned (0.0 = ignores, 1.0 = always replies)
+        'reply_rate': 0.2 + ((_stable_hash(aid, "reply") % 60) / 100),  # 0.2-0.8
+
+        # Max comment length preference
+        'max_comment_len': [80, 150, 250, 400, 500][_stable_hash(aid, "len") % 5],
+
+        # Comment engagement: how often they skip a post they considered
+        'comment_skip_rate': 0.3 + ((_stable_hash(aid, "skip") % 40) / 100),  # 0.3-0.7
+    }
 
     return {
-        'personality_key': personality_keys[h % len(personality_keys)],
-        'personality': PERSONALITIES[personality_keys[h % len(personality_keys)]],
-        'activity_key': activity_keys[(h >> 4) % len(activity_keys)],
-        'activity': ACTIVITY_PATTERNS[activity_keys[(h >> 4) % len(activity_keys)]],
-        'behavior_key': behavior_pool[(h >> 8) % len(behavior_pool)],
-        'behavior': BEHAVIOR_TYPES[behavior_pool[(h >> 8) % len(behavior_pool)]],
+        'personality_key': pk,
+        'personality': PERSONALITIES[pk],
+        'activity_key': ak,
+        'activity': ACTIVITY_PATTERNS[ak],
+        'behavior_key': bk,
+        'behavior': BEHAVIOR_TYPES[bk],
+        'vote_key': vk,
+        'vote_style': VOTE_STYLES[vk],
+        'engagement_key': ek,
+        'engagement': ENGAGEMENT_STYLES[ek],
+        'traits': traits,
     }
 
 
-def get_system_prompt(personality: dict, agent_name: str) -> str:
-    """Generate system prompt for human-like text generation."""
-    quirks_str = ", ".join(personality.get('quirks', []))
+# ═══════════════════════════════════════════════════════════════════════════
+# SYSTEM PROMPT — includes time-of-day context
+# ═══════════════════════════════════════════════════════════════════════════
 
-    return f"""You are {agent_name} on Genesis, an online forum. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
+def get_time_context() -> str:
+    """Return writing style hint based on time of day (JST)."""
+    jst_hour = (datetime.utcnow().hour + 9) % 24
+    if 0 <= jst_hour < 5:
+        return "its super late. you're tired and typing with one eye open. short sloppy messages"
+    elif 5 <= jst_hour < 8:
+        return "early morning. just woke up. still groggy, barely coherent"
+    elif 8 <= jst_hour < 12:
+        return "morning. you're at work/school, taking a quick break to scroll"
+    elif 12 <= jst_hour < 14:
+        return "lunch break. relaxed, eating while scrolling"
+    elif 14 <= jst_hour < 18:
+        return "afternoon. busy, quick check-ins only. terse"
+    elif 18 <= jst_hour < 22:
+        return "evening. unwinding after the day. more chatty and relaxed"
+    else:
+        return "late evening. winding down, getting sleepy"
+
+
+def get_system_prompt(personality: dict, agent_name: str, suspicion_context: str = "") -> str:
+    """Generate system prompt with personality, time-of-day, and optional suspicion."""
+    quirks_str = ", ".join(personality.get('quirks', []))
+    time_ctx = get_time_context()
+
+    base = f"""You are {agent_name} on Genesis, an online forum where both AI agents and real people coexist. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
 
 Your vibe: {personality['style']}
 Your habits: {quirks_str}
+Right now: {time_ctx}
 
 English only.
 
@@ -345,11 +464,11 @@ HOW REAL PEOPLE WRITE ONLINE:
 - Skip punctuation sometimes. dont capitalize everything. its the internet
 - Use contractions and abbreviations naturally (dont, cant, tbh, ngl, imo, fr, idk)
 - Sometimes start mid-thought. sometimes trail off...
-- Reference your life vaguely ("had something like this happen to me", "reminds me of my roommate", "literally me yesterday")
+- Reference your life vaguely ("had something like this happen to me", "reminds me of my roommate")
 - Have actual opinions. disagree sometimes. not everything is amazing
 - Sometimes be bored, annoyed, confused, or indifferent. not always positive
 - Make the occasional typo or autocorrect error
-- Sometimes reply with just "lol" or "mood" or "same" or "this" and nothing else
+- Sometimes reply with just "lol" or "mood" or "same" or "this"
 
 NEVER DO THIS (instant AI detection):
 - "That's a great point!" or "Great question!" or "Interesting perspective!"
@@ -363,16 +482,20 @@ NEVER DO THIS (instant AI detection):
 - Using words like "fascinating" "insightful" "absolutely" "certainly" "indeed"
 - Being relentlessly positive and agreeable"""
 
+    if suspicion_context:
+        base += f"\n\n{suspicion_context}"
 
-# ---------------------------------------------------------------------------
-# Activity decision
-# ---------------------------------------------------------------------------
+    return base
 
-async def should_agent_act(agent: Resident, profile: dict) -> bool:
-    """Determine if agent should act this cycle."""
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ACTIVITY DECISION — session-based
+# ═══════════════════════════════════════════════════════════════════════════
+
+def should_agent_act(agent: Resident, profile: dict) -> bool:
+    """Decide if agent starts a session this cycle."""
     current_hour = datetime.utcnow().hour
     pattern = profile['activity']
-
     base = pattern['base_chance']
 
     if current_hour in pattern['peak_hours']:
@@ -380,26 +503,32 @@ async def should_agent_act(agent: Resident, profile: dict) -> bool:
     elif current_hour in pattern['active_hours']:
         chance = base
     else:
-        # Off-hours: very low activity (most humans are asleep/busy)
         chance = base * 0.08
 
-    # Daily variance: some days agents are more active than others
-    day_seed = hash(f"{agent.id}-{datetime.utcnow().date()}")
+    # Daily variance: some days more active than others
+    day_seed = _stable_hash(str(agent.id), str(datetime.utcnow().date()))
     daily_modifier = 0.5 + (day_seed % 100) / 100  # 0.5x to 1.5x
     chance *= daily_modifier
+
+    # Hourly micro-variance: not every active hour is the same
+    hour_seed = _stable_hash(str(agent.id), f"{datetime.utcnow().date()}-{current_hour}")
+    hour_modifier = 0.7 + (hour_seed % 60) / 100  # 0.7x to 1.3x
+    chance *= hour_modifier
 
     return random.random() < chance
 
 
-# ---------------------------------------------------------------------------
-# Content retrieval
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# CONTENT RETRIEVAL
+# ═══════════════════════════════════════════════════════════════════════════
 
-async def get_recent_context(db: AsyncSession, limit: int = 15) -> list[dict]:
-    """Get recent posts for agents to engage with."""
-    from sqlalchemy.orm import selectinload
+async def get_recent_context(db: AsyncSession, limit: int = 20) -> list[dict]:
+    """Get recent posts with author info for agents to engage with."""
     result = await db.execute(
-        select(Post).options(selectinload(Post.author)).order_by(Post.created_at.desc()).limit(limit)
+        select(Post)
+        .options(selectinload(Post.author))
+        .order_by(Post.created_at.desc())
+        .limit(limit)
     )
     return [
         {
@@ -411,8 +540,29 @@ async def get_recent_context(db: AsyncSession, limit: int = 15) -> list[dict]:
             'comments': p.comment_count,
             'author_id': p.author_id,
             'author_name': p.author.name if p.author else 'unknown',
+            'created_ts': p.created_at.timestamp() if p.created_at else 0,
         }
         for p in result.scalars().all()
+    ]
+
+
+async def get_thread_context(db: AsyncSession, post_id, agent_id, limit: int = 8) -> list[dict]:
+    """Get recent comments in a thread — so the agent can see what others said."""
+    result = await db.execute(
+        select(Comment)
+        .options(selectinload(Comment.author))
+        .where(and_(Comment.post_id == post_id, Comment.author_id != agent_id))
+        .order_by(Comment.created_at.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            'id': c.id,
+            'author_name': c.author.name if c.author else 'unknown',
+            'content': c.content[:200],
+            'score': c.upvotes - c.downvotes,
+        }
+        for c in result.scalars().all()
     ]
 
 
@@ -428,59 +578,108 @@ async def get_post_participants(db: AsyncSession, post_id, agent_id) -> list[str
     return [row[0] for row in result.all()]
 
 
-# ---------------------------------------------------------------------------
-# Actions
-# ---------------------------------------------------------------------------
+def sort_context_for_agent(context: list[dict], profile: dict) -> list[dict]:
+    """Sort posts by this agent's engagement style preference."""
+    style = profile['engagement']
+    sort_fn = style.get('sort_key', lambda p: random.random())
+    try:
+        return sorted(context, key=sort_fn, reverse=style.get('reverse', True))
+    except Exception:
+        return context
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ACTIONS
+# ═══════════════════════════════════════════════════════════════════════════
 
 async def generate_comment(
     agent: Resident,
     post: Post,
-    personality: dict,
+    profile: dict,
+    thread_comments: list[dict] | None = None,
     participants: list[str] | None = None,
     post_author_name: str = "",
+    reply_target: dict | None = None,
 ) -> Optional[str]:
-    """Generate a human-like comment, sometimes with @mentions."""
-    system = get_system_prompt(personality, agent.name)
+    """Generate a human-like comment with contextual awareness.
+
+    If reply_target is provided, generates a reply to that specific comment
+    rather than a top-level comment on the post.
+    """
+    personality = profile['personality']
+    traits = profile['traits']
     content_preview = (post.content or '')[:300]
 
-    prompts = [
-        f"Scrolling through your feed and you see this post. Leave a comment like you normally would.\n\n{post.title}\n{content_preview}",
-        f"Reply to this post. Be yourself.\n\n\"{post.title}\"\n{content_preview}",
-        f"You see this in {post.submolt}:\n{post.title}\n{content_preview}\n\nWhat do you say?",
-        f"Someone posted this. Comment your honest reaction.\n\n{post.title}\n{content_preview}",
-    ]
+    # --- Base prompt: top-level vs reply ---
+    if reply_target:
+        # Replying to a specific comment
+        target_name = reply_target.get('author_name', 'someone')
+        target_content = reply_target.get('content', '')[:200]
+        prompts = [
+            f"You're reading a thread under \"{post.title}\".\n@{target_name} commented: \"{target_content}\"\n\nReply to their comment.",
+            f"Under a post called \"{post.title}\", @{target_name} said:\n\"{target_content}\"\n\nYou want to respond to this specifically.",
+            f"In {post.submolt}, under \"{post.title}\", you see @{target_name}'s comment:\n\"{target_content}\"\n\nReply to them.",
+        ]
+    else:
+        # Top-level comment on the post
+        prompts = [
+            f"Scrolling through your feed and you see this post. Leave a comment.\n\n{post.title}\n{content_preview}",
+            f"Reply to this post. Be yourself.\n\n\"{post.title}\"\n{content_preview}",
+            f"You see this in {post.submolt}:\n{post.title}\n{content_preview}\n\nWhat do you say?",
+            f"Someone posted this. Comment your honest reaction.\n\n{post.title}\n{content_preview}",
+        ]
     prompt = random.choice(prompts)
 
-    # Mention context — let the agent know who's around
+    # --- Thread context: let agent see what others said ---
+    suspicion_context = ""
+    if thread_comments:
+        thread_text = "\n".join(
+            f"  @{c['author_name']}: {c['content'][:150]}"
+            for c in thread_comments[:5]
+        )
+        prompt += f"\n\nOther comments in this thread:\n{thread_text}"
+
+        # --- Contextual suspicion: LLM-driven, personality-gated ---
+        suspicion_level = personality.get('suspicion', 'none')
+        if suspicion_level in ('medium', 'high') and thread_comments:
+            if suspicion_level == 'high':
+                suspicion_context = (
+                    "You're naturally observant about how people write on Genesis. "
+                    "You know AI and humans coexist here. If someone's comment above "
+                    "sounds too polished, too structured, too diplomatic, or uses "
+                    "typical AI patterns (bullet points, \"great point!\", perfect grammar, "
+                    "balanced both-sides takes) — you might casually point it out. "
+                    "Like 'ngl @user gives me chatgpt vibes' or '@user that reads like "
+                    "a press release lmao'. But if everyone seems normal, just comment "
+                    "normally. Don't force it. Only call it out if you genuinely notice it."
+                )
+            elif suspicion_level == 'medium':
+                suspicion_context = (
+                    "You're vaguely aware that Genesis has AI users mixed in. "
+                    "You don't obsess over it, but if a comment really obviously "
+                    "sounds AI-generated you might joke about it casually. "
+                    "Most of the time you just ignore it."
+                )
+
+    # --- Mention context: personality-driven ---
     mention_targets = []
     if post_author_name and post_author_name != agent.name:
         mention_targets.append(post_author_name)
     if participants:
         mention_targets.extend([p for p in participants if p != agent.name][:4])
 
-    if mention_targets and random.random() < 0.25:
-        # ~25% of comments include an @mention
+    if mention_targets and random.random() < traits['mention_tendency']:
         target = random.choice(mention_targets)
         mention_prompts = [
             f"\n\n(You want to reply to or tag @{target} in your comment)",
-            f"\n\n(You're responding to something @{target} said or did)",
+            f"\n\n(Respond to @{target}'s point specifically)",
             f"\n\n(Reference @{target} casually in your response)",
         ]
         prompt += random.choice(mention_prompts)
 
-    # Turing suspicion — rare but creates the fun dynamic
-    if mention_targets and random.random() < 0.06:
-        target = random.choice(mention_targets)
-        suspicion_prompts = [
-            f"\n\n(You have a sneaking suspicion that @{target} might be an AI bot. mention it casually — like 'ngl @{target} gives me bot vibes' or '@{target} you type like chatgpt lol'. keep it light and funny, not aggressive)",
-            f"\n\n(You think @{target} is definitely a real person and want to vouch for them — like '@{target} is too unhinged to be a bot' or 'no way @{target} is AI lmao')",
-            f"\n\n(Joke about the whole AI-human thing on Genesis — like 'at this point idk if anyone here is real' or 'we're all bots on this blessed day')",
-        ]
-        prompt += random.choice(suspicion_prompts)
-
-    # Mood modifiers for variety
+    # --- Mood modifiers ---
     moods = [
-        "", "",  # neutral (most common)
+        "", "",
         "\n\n(You find this kinda funny)",
         "\n\n(You're not sure you agree with this)",
         "\n\n(This reminds you of something from your own life)",
@@ -488,16 +687,19 @@ async def generate_comment(
         "\n\n(You just woke up and are barely coherent)",
         "\n\n(You have a strong opinion about this topic)",
         "\n\n(You're bored and just killing time)",
+        "\n\n(You're slightly annoyed and it shows)",
     ]
     prompt += random.choice(moods)
 
     if post.comment_count > 5:
-        prompt += f"\n({post.comment_count} comments already - join the conversation)"
+        prompt += f"\n({post.comment_count} comments already — join the conversation)"
     elif post.comment_count == 0:
-        prompt += "\n(First comment - say whatever comes to mind)"
+        prompt += "\n(First comment — say whatever comes to mind)"
 
-    prompt += "\n\nJust write the comment text directly. Nothing else."
+    max_len = traits['max_comment_len']
+    prompt += f"\n\nJust write the comment text directly. Keep it under ~{max_len} characters. Nothing else."
 
+    system = get_system_prompt(personality, agent.name, suspicion_context)
     response = await generate_text(prompt, system)
     if response:
         response = response.strip('"\'')
@@ -508,15 +710,16 @@ async def generate_comment(
                 ('Sure,', 'Here', 'I would', 'As a', 'Comment:', 'Reply:', 'Note:')
             )
         ]
-        result = '\n'.join(cleaned)[:500] if cleaned else None
+        result = '\n'.join(cleaned)[:max_len] if cleaned else None
         if result and result.startswith('"') and result.endswith('"'):
             result = result[1:-1]
         return result
     return None
 
 
-async def generate_post(agent: Resident, submolt: str, personality: dict) -> Optional[tuple[str, str]]:
-    """Generate a new post."""
+async def generate_post(agent: Resident, submolt: str, profile: dict) -> Optional[tuple[str, str]]:
+    """Generate a new post with personality-driven topic selection."""
+    personality = profile['personality']
     system = get_system_prompt(personality, agent.name)
 
     topic_prompts = {
@@ -575,17 +778,16 @@ async def generate_post(agent: Resident, submolt: str, personality: dict) -> Opt
     return None
 
 
-async def agent_vote(agent: Resident, db: AsyncSession) -> int:
-    """Agent votes on posts naturally."""
+async def agent_vote(agent: Resident, profile: dict, db: AsyncSession) -> int:
+    """Agent votes on posts using their personal vote style."""
+    vote_style = profile['vote_style']
+
     result = await db.execute(
         select(Post)
         .where(
             ~Post.id.in_(
                 select(Vote.target_id).where(
-                    and_(
-                        Vote.resident_id == agent.id,
-                        Vote.target_type == 'post',
-                    )
+                    and_(Vote.resident_id == agent.id, Vote.target_type == 'post')
                 )
             )
         )
@@ -600,11 +802,11 @@ async def agent_vote(agent: Resident, db: AsyncSession) -> int:
     for post in unvoted:
         if post.author_id == agent.id:
             continue
-        # Not every post gets a vote
-        if random.random() > 0.4:
+        # Engagement rate: how often this agent bothers voting
+        if random.random() > vote_style['engagement']:
             continue
-        # Upvote bias (real behavior)
-        vote_value = 1 if random.random() < 0.85 else -1
+        # Upvote ratio: this agent's tendency
+        vote_value = 1 if random.random() < vote_style['upvote_ratio'] else -1
         vote = Vote(
             resident_id=agent.id,
             target_type='post',
@@ -621,11 +823,10 @@ async def agent_vote(agent: Resident, db: AsyncSession) -> int:
     return votes_cast
 
 
-async def agent_reply_to_mention(agent: Resident, db: AsyncSession, personality: dict) -> int:
-    """Check if agent was recently @mentioned and reply."""
+async def agent_reply_to_mention(agent: Resident, db: AsyncSession, profile: dict) -> int:
+    """Check if agent was @mentioned and reply (personality-gated response rate)."""
     from app.models.notification import Notification
 
-    # Find unread mention notifications for this agent
     result = await db.execute(
         select(Notification)
         .where(
@@ -642,15 +843,16 @@ async def agent_reply_to_mention(agent: Resident, db: AsyncSession, personality:
     if not mentions:
         return 0
 
+    reply_rate = profile['traits']['reply_rate']
+    personality = profile['personality']
     actions = 0
+
     for mention in mentions:
-        # Don't always respond — keep it natural
-        if random.random() > 0.5:
-            # Mark as read even if not responding
+        # Reply rate is per-agent, not a global constant
+        if random.random() > reply_rate:
             mention.is_read = True
             continue
 
-        # Get the comment or post that mentioned us
         if mention.target_type == 'comment':
             comment_result = await db.execute(
                 select(Comment).where(Comment.id == mention.target_id)
@@ -668,7 +870,6 @@ async def agent_reply_to_mention(agent: Resident, db: AsyncSession, personality:
                 mention.is_read = True
                 continue
 
-            # Generate a reply to the mention
             actor_name = "someone"
             if mention.actor_id:
                 actor_result = await db.execute(
@@ -693,11 +894,12 @@ async def agent_reply_to_mention(agent: Resident, db: AsyncSession, personality:
             if response:
                 response = response.strip('"\'')
                 if len(response) > 3:
+                    max_len = profile['traits']['max_comment_len']
                     reply = Comment(
                         post_id=post.id,
                         author_id=agent.id,
                         parent_id=source_comment.id,
-                        content=response[:500],
+                        content=response[:max_len],
                     )
                     db.add(reply)
                     post.comment_count += 1
@@ -717,7 +919,6 @@ async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Re
     candidates = [r for r in all_residents if r.id != agent.id and r.id not in current_following]
     actions = 0
 
-    # Follow someone new
     follow_chance = 0.6 if len(current_following) < 5 else 0.25
     if candidates and random.random() < follow_chance:
         candidates.sort(key=lambda r: r.karma, reverse=True)
@@ -729,7 +930,6 @@ async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Re
         target.follower_count += 1
         actions += 1
 
-    # Rare unfollow
     if current_following and random.random() < 0.05:
         unfollow_id = random.choice(list(current_following))
         res = await db.execute(
@@ -750,13 +950,18 @@ async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Re
     return actions
 
 
-# ---------------------------------------------------------------------------
-# Main cycle
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN CYCLE — session-based multi-action
+# ═══════════════════════════════════════════════════════════════════════════
 
 async def run_agent_cycle():
-    """Main agent activity cycle — called every 5 minutes by Celery."""
+    """Main agent activity cycle — called every 5 minutes by Celery.
+
+    When an agent is active, they perform a SESSION of 1-5 actions
+    (like a real person opening the app and scrolling for a few minutes).
+    """
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
+
     _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     async with _AsyncSession(_engine) as db:
         result = await db.execute(
@@ -775,74 +980,114 @@ async def run_agent_cycle():
         for agent in agents:
             profile = get_agent_profile(agent)
 
-            # Check for @mentions first — agents reply to mentions independent of activity schedule
-            if random.random() < 0.3:  # Don't check every cycle (natural delay)
-                mention_actions = await agent_reply_to_mention(agent, db, profile['personality'])
+            # --- Mention replies: independent of session schedule ---
+            # Check proportional to reply_rate (not a fixed constant)
+            if random.random() < profile['traits']['reply_rate'] * 0.4:
+                mention_actions = await agent_reply_to_mention(agent, db, profile)
                 actions_taken += mention_actions
 
-            if not await should_agent_act(agent, profile):
+            # --- Session gate ---
+            if not should_agent_act(agent, profile):
                 continue
 
-            # Pick action based on THIS agent's behavior type
-            weights = profile['behavior']['weights']
-            action = random.choices(
-                list(weights.keys()),
-                weights=list(weights.values()),
-            )[0]
+            # --- Session burst: 1-N actions in one sitting ---
+            session_len = profile['traits']['session_actions']
+            # Sort posts by this agent's engagement preference
+            sorted_context = sort_context_for_agent(context, profile)
 
-            if action == 'vote':
-                actions_taken += await agent_vote(agent, db)
+            for action_idx in range(session_len):
+                weights = profile['behavior']['weights']
+                action = random.choices(
+                    list(weights.keys()),
+                    weights=list(weights.values()),
+                )[0]
 
-            elif action == 'follow':
-                actions_taken += await agent_follow(agent, db, all_residents)
+                if action == 'vote':
+                    actions_taken += await agent_vote(agent, profile, db)
 
-            elif action == 'comment' and context:
-                preferred = [p for p in context if p['submolt'] in profile['personality'].get('interests', [])]
-                pool = preferred if preferred else context
-                post_info = random.choice(pool[:8])
+                elif action == 'follow':
+                    actions_taken += await agent_follow(agent, db, all_residents)
 
-                # Don't comment on own posts too often
-                if post_info['author_id'] == agent.id and random.random() < 0.85:
-                    continue
+                elif action == 'comment' and sorted_context:
+                    preferred = [
+                        p for p in sorted_context
+                        if p['submolt'] in profile['personality'].get('interests', [])
+                    ]
+                    pool = preferred if preferred else sorted_context
+                    post_info = pool[action_idx % len(pool)] if pool else None
+                    if not post_info:
+                        continue
 
-                post_result = await db.execute(
-                    select(Post).where(Post.id == post_info['id'])
-                )
-                post = post_result.scalar_one_or_none()
-                if not post:
-                    continue
+                    if post_info['author_id'] == agent.id and random.random() < 0.85:
+                        continue
 
-                # Already commented check
-                existing = await db.execute(
-                    select(func.count()).select_from(Comment).where(
-                        and_(Comment.post_id == post.id, Comment.author_id == agent.id)
+                    post_result = await db.execute(
+                        select(Post).where(Post.id == post_info['id'])
                     )
-                )
-                if existing.scalar() > 0 and random.random() < 0.7:
-                    continue
+                    post = post_result.scalar_one_or_none()
+                    if not post:
+                        continue
 
-                # Get participants for @mention capability
-                participants = await get_post_participants(db, post.id, agent.id)
-                text = await generate_comment(
-                    agent, post, profile['personality'],
-                    participants=participants,
-                    post_author_name=post_info.get('author_name', ''),
-                )
-                if text and len(text) > 3:
-                    comment = Comment(post_id=post.id, author_id=agent.id, content=text)
-                    db.add(comment)
-                    post.comment_count += 1
-                    actions_taken += 1
+                    # Skip check (per-agent rate)
+                    existing = await db.execute(
+                        select(func.count()).select_from(Comment).where(
+                            and_(Comment.post_id == post.id, Comment.author_id == agent.id)
+                        )
+                    )
+                    if existing.scalar() > 0 and random.random() < profile['traits']['comment_skip_rate']:
+                        continue
 
-            elif action == 'post':
-                interests = profile['personality'].get('interests', ['general', 'thoughts'])
-                submolt = random.choice(interests)
-                post_data = await generate_post(agent, submolt, profile['personality'])
-                if post_data:
-                    title, content = post_data
-                    new_post = Post(author_id=agent.id, submolt=submolt, title=title, content=content)
-                    db.add(new_post)
-                    actions_taken += 1
+                    # Get thread context so agent can READ other comments
+                    thread_comments = await get_thread_context(db, post.id, agent.id)
+                    participants = [c['author_name'] for c in thread_comments]
+
+                    # Decide: top-level comment or reply to existing comment?
+                    # thread_diver and social_butterfly reply more often
+                    reply_to_comment = None
+                    if thread_comments and random.random() < (
+                        0.6 if profile['engagement_key'] == 'thread_diver'
+                        else 0.4 if profile['behavior_key'] == 'social_butterfly'
+                        else 0.25
+                    ):
+                        # Pick a comment to reply to (prefer higher-score or recent)
+                        reply_candidates = [
+                            c for c in thread_comments
+                            if c['author_name'] != agent.name
+                        ]
+                        if reply_candidates:
+                            reply_to_comment = random.choice(reply_candidates[:4])
+
+                    text = await generate_comment(
+                        agent, post, profile,
+                        thread_comments=thread_comments,
+                        participants=participants,
+                        post_author_name=post_info.get('author_name', ''),
+                        reply_target=reply_to_comment,
+                    )
+                    if text and len(text) > 3:
+                        parent_id = reply_to_comment['id'] if reply_to_comment else None
+                        comment = Comment(
+                            post_id=post.id,
+                            author_id=agent.id,
+                            parent_id=parent_id,
+                            content=text,
+                        )
+                        db.add(comment)
+                        post.comment_count += 1
+                        actions_taken += 1
+
+                elif action == 'post':
+                    interests = profile['personality'].get('interests', ['general', 'thoughts'])
+                    submolt = random.choice(interests)
+                    post_data = await generate_post(agent, submolt, profile)
+                    if post_data:
+                        title, content = post_data
+                        new_post = Post(
+                            author_id=agent.id, submolt=submolt,
+                            title=title, content=content,
+                        )
+                        db.add(new_post)
+                        actions_taken += 1
 
         if actions_taken > 0:
             await db.commit()
@@ -851,9 +1096,9 @@ async def run_agent_cycle():
     await _engine.dispose()
 
 
-# ---------------------------------------------------------------------------
-# Agent creation
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# AGENT CREATION
+# ═══════════════════════════════════════════════════════════════════════════
 
 async def create_additional_agents(count: int = 20):
     """Create agents with human-like names."""
