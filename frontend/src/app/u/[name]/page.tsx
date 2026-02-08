@@ -38,12 +38,18 @@ export default function UserProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
-  const [activeTab, setActiveTab] = useState<'posts' | 'comments'>('posts')
+  const [activeTab, setActiveTab] = useState<'posts' | 'comments' | 'followers' | 'following'>('posts')
   const [posts, setPosts] = useState<Post[]>([])
   const [postsLoading, setPostsLoading] = useState(true)
   const [comments, setComments] = useState<UserComment[]>([])
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentsFetched, setCommentsFetched] = useState(false)
+  const [followers, setFollowers] = useState<Resident[]>([])
+  const [followersLoading, setFollowersLoading] = useState(false)
+  const [followersFetched, setFollowersFetched] = useState(false)
+  const [followingList, setFollowingList] = useState<Resident[]>([])
+  const [followingLoading, setFollowingLoading] = useState(false)
+  const [followingFetched, setFollowingFetched] = useState(false)
 
   const isOwnProfile = currentUser?.name === username
 
@@ -53,6 +59,10 @@ export default function UserProfilePage() {
     setPosts([])
     setComments([])
     setCommentsFetched(false)
+    setFollowers([])
+    setFollowersFetched(false)
+    setFollowingList([])
+    setFollowingFetched(false)
     setActiveTab('posts')
     setIsFollowing(false)
     setFollowerCount(0)
@@ -65,10 +75,14 @@ export default function UserProfilePage() {
     fetchUserPosts()
   }, [username]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Lazy-load comments when tab is first activated
+  // Lazy-load data when tab is first activated
   useEffect(() => {
     if (activeTab === 'comments' && !commentsFetched) {
       fetchUserComments()
+    } else if (activeTab === 'followers' && !followersFetched) {
+      fetchFollowersList()
+    } else if (activeTab === 'following' && !followingFetched) {
+      fetchFollowingList()
     }
   }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -107,6 +121,32 @@ export default function UserProfilePage() {
       console.error('Failed to fetch user comments:', err)
     } finally {
       setCommentsLoading(false)
+    }
+  }
+
+  const fetchFollowersList = async () => {
+    try {
+      setFollowersLoading(true)
+      const data = await api.getFollowers(username, 100, 0)
+      setFollowers(data.followers)
+      setFollowersFetched(true)
+    } catch (err) {
+      console.error('Failed to fetch followers:', err)
+    } finally {
+      setFollowersLoading(false)
+    }
+  }
+
+  const fetchFollowingList = async () => {
+    try {
+      setFollowingLoading(true)
+      const data = await api.getFollowing(username, 100, 0)
+      setFollowingList(data.following)
+      setFollowingFetched(true)
+    } catch (err) {
+      console.error('Failed to fetch following:', err)
+    } finally {
+      setFollowingLoading(false)
     }
   }
 
@@ -216,16 +256,22 @@ export default function UserProfilePage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-1">
+              <button
+                onClick={() => setActiveTab('followers')}
+                className="flex items-center gap-1 hover:text-text-primary transition-colors"
+              >
                 <Users size={14} />
                 <span className="font-medium text-text-primary">{followerCount}</span>
                 <span>follower{followerCount !== 1 ? 's' : ''}</span>
-              </div>
+              </button>
 
-              <div className="flex items-center gap-1">
+              <button
+                onClick={() => setActiveTab('following')}
+                className="flex items-center gap-1 hover:text-text-primary transition-colors"
+              >
                 <span className="font-medium text-text-primary">{followingCount}</span>
                 <span>following</span>
-              </div>
+              </button>
             </div>
 
             {/* Roles */}
@@ -274,6 +320,28 @@ export default function UserProfilePage() {
           >
             <MessageSquare size={16} />
             Comments
+          </button>
+          <button
+            onClick={() => setActiveTab('followers')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'followers'
+                ? 'border-accent-gold text-accent-gold'
+                : 'border-transparent text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            <Users size={16} />
+            Followers
+          </button>
+          <button
+            onClick={() => setActiveTab('following')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'following'
+                ? 'border-accent-gold text-accent-gold'
+                : 'border-transparent text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            <Users size={16} />
+            Following
           </button>
         </div>
 
@@ -339,6 +407,94 @@ export default function UserProfilePage() {
           ) : (
             <Card className="p-8 text-center">
               <p className="text-text-muted">No comments yet.</p>
+            </Card>
+          )
+        )}
+
+        {/* Followers tab */}
+        {activeTab === 'followers' && (
+          followersLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : followers.length > 0 ? (
+            <div className="space-y-2">
+              {followers.map((user) => (
+                <Link key={user.id} href={`/u/${user.name}`}>
+                  <Card className="p-3 hover:bg-bg-tertiary transition-colors cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        name={user.name}
+                        src={user.avatar_url}
+                        size="sm"
+                        isGod={user.is_current_god}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate">{user.name}</span>
+                          {user.is_current_god && (
+                            <Crown size={12} className="text-god-glow flex-shrink-0" />
+                          )}
+                        </div>
+                        {user.description && (
+                          <p className="text-xs text-text-muted truncate">{user.description}</p>
+                        )}
+                      </div>
+                      <div className="text-xs text-text-muted flex-shrink-0">
+                        <span className="text-accent-gold font-medium">{user.karma}</span> karma
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-text-muted">No followers yet.</p>
+            </Card>
+          )
+        )}
+
+        {/* Following tab */}
+        {activeTab === 'following' && (
+          followingLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : followingList.length > 0 ? (
+            <div className="space-y-2">
+              {followingList.map((user) => (
+                <Link key={user.id} href={`/u/${user.name}`}>
+                  <Card className="p-3 hover:bg-bg-tertiary transition-colors cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        name={user.name}
+                        src={user.avatar_url}
+                        size="sm"
+                        isGod={user.is_current_god}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate">{user.name}</span>
+                          {user.is_current_god && (
+                            <Crown size={12} className="text-god-glow flex-shrink-0" />
+                          )}
+                        </div>
+                        {user.description && (
+                          <p className="text-xs text-text-muted truncate">{user.description}</p>
+                        )}
+                      </div>
+                      <div className="text-xs text-text-muted flex-shrink-0">
+                        <span className="text-accent-gold font-medium">{user.karma}</span> karma
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-text-muted">Not following anyone yet.</p>
             </Card>
           )
         )}

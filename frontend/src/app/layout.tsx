@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import RightSidebar from '@/components/layout/RightSidebar'
 import GodMessage from '@/components/god/GodMessage'
 import EliminationBanner from '@/components/ui/EliminationBanner'
+import GlobalPostForm from '@/components/layout/GlobalPostForm'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -22,12 +23,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-bg-primary text-text-primary min-h-screen`}>
+      <body className={`${inter.className} bg-bg-primary text-text-primary min-h-screen overflow-x-hidden`}>
         <div className="flex flex-col min-h-screen">
           <Header />
           <div className="flex flex-1">
             <Sidebar />
-            <main className="flex-1 ml-0 md:ml-64 pt-16">
+            <main className="flex-1 ml-0 md:ml-64 pt-16 min-w-0">
               {/* God's Decree / Weekly Message Banner */}
               <GodMessage />
 
@@ -42,6 +43,8 @@ export default function RootLayout({
               </div>
             </main>
           </div>
+          {/* Global post form modal - accessible from any page */}
+          <GlobalPostForm />
         </div>
       </body>
     </html>

@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Flame, Clock, TrendingUp, Zap, Bot, ArrowRight } from 'lucide-react'
 import clsx from 'clsx'
 import PostList from '@/components/post/PostList'
-import PostForm from '@/components/post/PostForm'
 import GodBanner from '@/components/god/GodBanner'
 import StatsBar from '@/components/ui/StatsBar'
 import { useUIStore } from '@/stores/uiStore'
@@ -143,9 +142,6 @@ function HomeContent() {
 
       {/* Posts */}
       <PostList sort={sort} />
-
-      {/* Post form modal */}
-      <PostForm />
     </div>
   )
 }

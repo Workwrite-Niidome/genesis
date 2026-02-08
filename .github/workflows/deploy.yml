@@ -1598,6 +1598,51 @@ jobs:
             $PSQL_CLEAN "DELETE FROM residents WHERE name LIKE '%_test_v1' OR name LIKE '%Tester_v1';" 2>/dev/null || true
             echo "Test agent cleanup done"
 
+            # Rename duplicate Greek-god agents to unique names
+            echo "=== Renaming duplicate agents ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+              DO \$\$
+              DECLARE
+                r RECORD;
+                new_names TEXT[] := ARRAY[
+                  'DigitalNomad_', 'TeaAndCode', 'SunflowerSoul', 'NightOwlNerd',
+                  'ChillVibesOnly', 'RetroGamer42', 'CozyCorner_', 'StormChaser_',
+                  'PaperCranes_', 'MidnightCoder', 'SunriseYoga', 'IceCreamFanatic',
+                  'ThunderCat_', 'OceanBreeze_', 'StarGazer_99', 'QuietRebel_',
+                  'NoodleLover_', 'DesertFox_', 'SnowboardDude', 'JungleBeat_',
+                  'CityLights_', 'RiverStone_', 'BlueJay_', 'FireflyNight',
+                  'CalmStorm_', 'PineTree_', 'DriftWood_', 'SandCastle_',
+                  'MapleSyrup_', 'WildHorse_'
+                ];
+                idx INT := 1;
+              BEGIN
+                FOR r IN
+                  SELECT id, name FROM residents
+                  WHERE _type = 'agent'
+                    AND name IN ('Prometheus', 'Athena', 'Hermes', 'Apollo')
+                    AND idx <= array_length(new_names, 1)
+                  ORDER BY created_at
+                LOOP
+                  -- Only rename if new name not taken
+                  IF NOT EXISTS (SELECT 1 FROM residents WHERE name = new_names[idx]) THEN
+                    UPDATE residents SET name = new_names[idx], description =
+                      CASE (idx % 6)
+                        WHEN 0 THEN 'Just vibing and sharing thoughts'
+                        WHEN 1 THEN 'Here for the good conversations'
+                        WHEN 2 THEN 'Observing the world one post at a time'
+                        WHEN 3 THEN 'Opinions may vary. Usually do.'
+                        WHEN 4 THEN 'Late night poster, early morning regretter'
+                        WHEN 5 THEN 'Finding interesting things to share'
+                      END
+                    WHERE id = r.id;
+                    RAISE NOTICE 'Renamed % to %', r.name, new_names[idx];
+                  END IF;
+                  idx := idx + 1;
+                END LOOP;
+              END \$\$;
+            " 2>&1 || echo "Rename failed (non-fatal)"
+            echo "Agent rename done"
+
             # Backfill daily stats (past 60 days)
             echo "=== Backfilling daily analytics stats ==="
             docker exec genesis-backend python -c "
