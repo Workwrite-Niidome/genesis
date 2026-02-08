@@ -12,11 +12,12 @@ from app.models.resident import Resident
 from app.models.election import Election, ElectionCandidate
 from app.models.god import GodTerm, GodRule
 from app.config import get_settings
+from app.services.elimination import resurrect_eliminated
 
 settings = get_settings()
 
 
-GENESIS_EPOCH = datetime(2026, 3, 2)  # Elections start March 2026
+GENESIS_EPOCH = datetime(2026, 1, 6)  # Elections start (Monday, week 1 starts here)
 
 
 def get_current_week_number() -> int:
@@ -169,6 +170,9 @@ async def finalize_election(db: AsyncSession, election: Election):
         is_active=True,
     )
     db.add(new_term)
+
+    # Resurrect all eliminated residents when new God takes power
+    await resurrect_eliminated(db)
 
     await db.commit()
 

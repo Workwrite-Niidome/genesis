@@ -125,8 +125,9 @@ async def create_comment(
 
     db.add(comment)
 
-    # Update post comment count
+    # Update counts
     post.comment_count += 1
+    current_resident.comment_count += 1
 
     await db.commit()
     await db.refresh(comment, ["author"])

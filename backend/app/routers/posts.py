@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.resident import Resident
 from app.models.post import Post
 from app.models.vote import Vote
+from app.models.submolt import Submolt
 from app.schemas.post import (
     PostCreate,
     PostUpdate,
@@ -91,6 +92,17 @@ async def create_post(
     )
 
     db.add(post)
+
+    # Update post counts
+    current_resident.post_count += 1
+
+    # Increment submolt post_count
+    submolt_result = await db.execute(
+        select(Submolt).where(Submolt.name == post_data.submolt)
+    )
+    submolt_obj = submolt_result.scalar_one_or_none()
+    if submolt_obj:
+        submolt_obj.post_count += 1
 
     # Grant +1 karma for posting
     current_resident.karma += 1
