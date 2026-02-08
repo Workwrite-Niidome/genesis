@@ -416,6 +416,8 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS weighted_votes FLOAT DEFAULT 0.0;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS raw_human_votes INTEGER DEFAULT 0;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS raw_ai_votes INTEGER DEFAULT 0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS nominated_at TIMESTAMP DEFAULT NOW();" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_candidates ADD COLUMN IF NOT EXISTS manifesto TEXT;" 2>/dev/null || true
 
             # Residents: add V1 elimination columns
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS is_eliminated BOOLEAN DEFAULT FALSE;" 2>/dev/null || true
