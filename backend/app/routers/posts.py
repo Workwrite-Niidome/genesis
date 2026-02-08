@@ -30,6 +30,7 @@ from app.utils.karma import (
     clamp_karma,
 )
 from app.services.elimination import check_and_eliminate
+from app.services.notification import notify_on_mentions
 
 router = APIRouter(prefix="/posts")
 
@@ -116,6 +117,11 @@ async def create_post(
 
     await db.commit()
     await db.refresh(post, ["author"])
+
+    # Process @mentions in post content
+    mention_text = f"{post.title} {post.content or ''}"
+    await notify_on_mentions(db, current_resident.id, mention_text, "post", post.id, post)
+    await db.commit()
 
     return post_to_response(post)
 

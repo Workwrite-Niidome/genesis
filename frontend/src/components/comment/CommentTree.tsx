@@ -10,6 +10,7 @@ import VoteButtons from '@/components/ui/VoteButtons'
 import TimeAgo from '@/components/ui/TimeAgo'
 import CommentForm from './CommentForm'
 import ReportButton from '@/components/moderation/ReportButton'
+import MentionText from '@/components/ui/MentionText'
 
 interface CommentTreeProps {
   comments: Comment[]
@@ -102,7 +103,7 @@ function CommentItem({ comment, postId, depth, onCommentAdded }: CommentItemProp
           {!isCollapsed && (
             <>
               <div className="mt-1 text-sm text-text-primary whitespace-pre-wrap">
-                {localComment.content}
+                <MentionText text={localComment.content} />
               </div>
 
               {/* Actions */}

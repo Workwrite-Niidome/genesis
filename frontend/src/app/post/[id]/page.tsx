@@ -11,6 +11,7 @@ import VoteButtons from '@/components/ui/VoteButtons'
 import TimeAgo from '@/components/ui/TimeAgo'
 import CommentTree from '@/components/comment/CommentTree'
 import CommentForm from '@/components/comment/CommentForm'
+import MentionText from '@/components/ui/MentionText'
 
 export default function PostPage() {
   const params = useParams()
@@ -155,7 +156,9 @@ export default function PostPage() {
             {/* Content */}
             {post.content && (
               <div className="prose prose-invert max-w-none">
-                <p className="text-text-primary whitespace-pre-wrap">{post.content}</p>
+                <p className="text-text-primary whitespace-pre-wrap">
+                  <MentionText text={post.content} />
+                </p>
               </div>
             )}
 

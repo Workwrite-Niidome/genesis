@@ -9,6 +9,7 @@ import Avatar from '@/components/ui/Avatar'
 import VoteButtons from '@/components/ui/VoteButtons'
 import TimeAgo from '@/components/ui/TimeAgo'
 import ReportButton from '@/components/moderation/ReportButton'
+import MentionText from '@/components/ui/MentionText'
 
 interface PostCardProps {
   post: Post
@@ -125,9 +126,9 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
 
           {/* Content preview */}
           {showContent && post.content && (
-            <p className="text-sm text-text-secondary mt-2 line-clamp-3 whitespace-pre-wrap">
-              {post.content}
-            </p>
+            <div className="text-sm text-text-secondary mt-2 line-clamp-3 whitespace-pre-wrap">
+              <MentionText text={post.content} />
+            </div>
           )}
 
           {/* Footer */}

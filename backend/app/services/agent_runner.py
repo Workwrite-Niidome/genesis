@@ -397,8 +397,9 @@ async def should_agent_act(agent: Resident, profile: dict) -> bool:
 
 async def get_recent_context(db: AsyncSession, limit: int = 15) -> list[dict]:
     """Get recent posts for agents to engage with."""
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(Post).order_by(Post.created_at.desc()).limit(limit)
+        select(Post).options(selectinload(Post.author)).order_by(Post.created_at.desc()).limit(limit)
     )
     return [
         {
@@ -409,17 +410,36 @@ async def get_recent_context(db: AsyncSession, limit: int = 15) -> list[dict]:
             'score': p.upvotes - p.downvotes,
             'comments': p.comment_count,
             'author_id': p.author_id,
+            'author_name': p.author.name if p.author else 'unknown',
         }
         for p in result.scalars().all()
     ]
+
+
+async def get_post_participants(db: AsyncSession, post_id, agent_id) -> list[str]:
+    """Get usernames of people who commented on a post (excluding self)."""
+    result = await db.execute(
+        select(Resident.name)
+        .join(Comment, Comment.author_id == Resident.id)
+        .where(and_(Comment.post_id == post_id, Comment.author_id != agent_id))
+        .distinct()
+        .limit(10)
+    )
+    return [row[0] for row in result.all()]
 
 
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
 
-async def generate_comment(agent: Resident, post: Post, personality: dict) -> Optional[str]:
-    """Generate a human-like comment."""
+async def generate_comment(
+    agent: Resident,
+    post: Post,
+    personality: dict,
+    participants: list[str] | None = None,
+    post_author_name: str = "",
+) -> Optional[str]:
+    """Generate a human-like comment, sometimes with @mentions."""
     system = get_system_prompt(personality, agent.name)
     content_preview = (post.content or '')[:300]
 
@@ -430,6 +450,33 @@ async def generate_comment(agent: Resident, post: Post, personality: dict) -> Op
         f"Someone posted this. Comment your honest reaction.\n\n{post.title}\n{content_preview}",
     ]
     prompt = random.choice(prompts)
+
+    # Mention context — let the agent know who's around
+    mention_targets = []
+    if post_author_name and post_author_name != agent.name:
+        mention_targets.append(post_author_name)
+    if participants:
+        mention_targets.extend([p for p in participants if p != agent.name][:4])
+
+    if mention_targets and random.random() < 0.25:
+        # ~25% of comments include an @mention
+        target = random.choice(mention_targets)
+        mention_prompts = [
+            f"\n\n(You want to reply to or tag @{target} in your comment)",
+            f"\n\n(You're responding to something @{target} said or did)",
+            f"\n\n(Reference @{target} casually in your response)",
+        ]
+        prompt += random.choice(mention_prompts)
+
+    # Turing suspicion — rare but creates the fun dynamic
+    if mention_targets and random.random() < 0.06:
+        target = random.choice(mention_targets)
+        suspicion_prompts = [
+            f"\n\n(You have a sneaking suspicion that @{target} might be an AI bot. mention it casually — like 'ngl @{target} gives me bot vibes' or '@{target} you type like chatgpt lol'. keep it light and funny, not aggressive)",
+            f"\n\n(You think @{target} is definitely a real person and want to vouch for them — like '@{target} is too unhinged to be a bot' or 'no way @{target} is AI lmao')",
+            f"\n\n(Joke about the whole AI-human thing on Genesis — like 'at this point idk if anyone here is real' or 'we're all bots on this blessed day')",
+        ]
+        prompt += random.choice(suspicion_prompts)
 
     # Mood modifiers for variety
     moods = [
@@ -574,6 +621,93 @@ async def agent_vote(agent: Resident, db: AsyncSession) -> int:
     return votes_cast
 
 
+async def agent_reply_to_mention(agent: Resident, db: AsyncSession, personality: dict) -> int:
+    """Check if agent was recently @mentioned and reply."""
+    from app.models.notification import Notification
+
+    # Find unread mention notifications for this agent
+    result = await db.execute(
+        select(Notification)
+        .where(
+            and_(
+                Notification.recipient_id == agent.id,
+                Notification.type == 'mention',
+                Notification.is_read == False,
+            )
+        )
+        .order_by(Notification.created_at.desc())
+        .limit(3)
+    )
+    mentions = list(result.scalars().all())
+    if not mentions:
+        return 0
+
+    actions = 0
+    for mention in mentions:
+        # Don't always respond — keep it natural
+        if random.random() > 0.5:
+            # Mark as read even if not responding
+            mention.is_read = True
+            continue
+
+        # Get the comment or post that mentioned us
+        if mention.target_type == 'comment':
+            comment_result = await db.execute(
+                select(Comment).where(Comment.id == mention.target_id)
+            )
+            source_comment = comment_result.scalar_one_or_none()
+            if not source_comment:
+                mention.is_read = True
+                continue
+
+            post_result = await db.execute(
+                select(Post).where(Post.id == source_comment.post_id)
+            )
+            post = post_result.scalar_one_or_none()
+            if not post:
+                mention.is_read = True
+                continue
+
+            # Generate a reply to the mention
+            actor_name = "someone"
+            if mention.actor_id:
+                actor_result = await db.execute(
+                    select(Resident.name).where(Resident.id == mention.actor_id)
+                )
+                row = actor_result.first()
+                if row:
+                    actor_name = row[0]
+
+            system = get_system_prompt(personality, agent.name)
+            prompt = (
+                f"Someone tagged you in a comment on Genesis:\n\n"
+                f"Post: {post.title}\n"
+                f"@{actor_name} said: {source_comment.content[:300]}\n\n"
+                f"Reply naturally to @{actor_name}. You were mentioned/called out. "
+                f"Respond like a real person would — could be defensive, funny, confused, "
+                f"or just casually acknowledge it. Use @{actor_name} in your reply.\n\n"
+                f"Just write the reply text directly."
+            )
+
+            response = await generate_text(prompt, system)
+            if response:
+                response = response.strip('"\'')
+                if len(response) > 3:
+                    reply = Comment(
+                        post_id=post.id,
+                        author_id=agent.id,
+                        parent_id=source_comment.id,
+                        content=response[:500],
+                    )
+                    db.add(reply)
+                    post.comment_count += 1
+                    actions += 1
+
+        mention.is_read = True
+
+    return actions
+
+
 async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Resident]) -> int:
     """Agent follows/unfollows other residents naturally."""
     result = await db.execute(
@@ -641,6 +775,11 @@ async def run_agent_cycle():
         for agent in agents:
             profile = get_agent_profile(agent)
 
+            # Check for @mentions first — agents reply to mentions independent of activity schedule
+            if random.random() < 0.3:  # Don't check every cycle (natural delay)
+                mention_actions = await agent_reply_to_mention(agent, db, profile['personality'])
+                actions_taken += mention_actions
+
             if not await should_agent_act(agent, profile):
                 continue
 
@@ -682,7 +821,13 @@ async def run_agent_cycle():
                 if existing.scalar() > 0 and random.random() < 0.7:
                     continue
 
-                text = await generate_comment(agent, post, profile['personality'])
+                # Get participants for @mention capability
+                participants = await get_post_participants(db, post.id, agent.id)
+                text = await generate_comment(
+                    agent, post, profile['personality'],
+                    participants=participants,
+                    post_author_name=post_info.get('author_name', ''),
+                )
                 if text and len(text) > 3:
                     comment = Comment(post_id=post.id, author_id=agent.id, content=text)
                     db.add(comment)

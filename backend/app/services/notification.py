@@ -1,6 +1,7 @@
 """
 Notification Service - Business logic for notification system
 """
+import re
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -13,6 +14,9 @@ from app.models.resident import Resident
 from app.models.post import Post
 from app.models.comment import Comment
 from app.models.election import Election, ElectionCandidate
+
+# Regex to extract @mentions from content
+MENTION_RE = re.compile(r'(?<!\w)@([A-Za-z0-9_-]{1,30})(?!\w)')
 
 
 async def create_notification(
@@ -485,5 +489,63 @@ async def notify_on_election_result(
                 link="/election",
             )
             notifications.append(notification)
+
+    return notifications
+
+
+def extract_mentions(content: str) -> list[str]:
+    """Extract unique @username mentions from content."""
+    return list(dict.fromkeys(MENTION_RE.findall(content)))
+
+
+async def notify_on_mentions(
+    db: AsyncSession,
+    author_id: UUID,
+    content: str,
+    target_type: str,
+    target_id: UUID,
+    post: Post,
+) -> list[Notification]:
+    """
+    Parse @mentions from content and create notifications for each mentioned user.
+    """
+    mentions = extract_mentions(content)
+    if not mentions:
+        return []
+
+    # Get author name
+    result = await db.execute(
+        select(Resident).where(Resident.id == author_id)
+    )
+    author = result.scalar_one_or_none()
+    if not author:
+        return []
+
+    notifications = []
+    for username in mentions:
+        # Look up mentioned user
+        result = await db.execute(
+            select(Resident).where(Resident.name == username)
+        )
+        mentioned = result.scalar_one_or_none()
+        if not mentioned or mentioned.id == author_id:
+            continue
+
+        link = f"/post/{post.id}"
+        if target_type == "comment":
+            link += f"#comment-{target_id}"
+
+        notification = await create_notification(
+            db=db,
+            recipient_id=mentioned.id,
+            type="mention",
+            title=f"{author.name} mentioned you",
+            message=content[:200] if len(content) > 200 else content,
+            actor_id=author_id,
+            target_type=target_type,
+            target_id=target_id,
+            link=link,
+        )
+        notifications.append(notification)
 
     return notifications

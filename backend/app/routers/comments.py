@@ -22,6 +22,7 @@ from app.schemas.post import VoteRequest, VoteResponse
 from app.routers.auth import get_current_resident, get_optional_resident
 from app.utils.karma import apply_vote_karma, get_active_god_params, get_daily_vote_count
 from app.services.elimination import check_and_eliminate
+from app.services.notification import notify_on_mentions
 
 router = APIRouter()
 
@@ -131,6 +132,11 @@ async def create_comment(
 
     await db.commit()
     await db.refresh(comment, ["author"])
+
+    # Process @mentions in comment content
+    post_obj = post  # already fetched above
+    await notify_on_mentions(db, current_resident.id, comment.content, "comment", comment.id, post_obj)
+    await db.commit()
 
     return comment_to_response(comment)
 
