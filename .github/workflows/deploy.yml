@@ -518,18 +518,14 @@ jobs:
             echo "=== Celery Beat Logs (last 20) ==="
             docker logs genesis-celery-beat --tail 20 2>&1 || true
 
-            echo "=== Test Election API ==="
-            docker exec genesis-backend python -c "import urllib.request,urllib.error;
-r=None
-try:
- r=urllib.request.urlopen('http://localhost:8000/api/v1/election/current');print('OK:',r.read().decode()[:200])
-except urllib.error.HTTPError as e:
- print('HTTP',e.code,e.read().decode()[:500])
-except Exception as e:
- print('ERR:',e)" 2>&1 || echo "Election API test failed"
+            echo "=== Test Election Schedule API ==="
+            docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/election/schedule').read().decode())" 2>&1 || echo "Election schedule API error"
 
-            echo "=== Backend Logs After Election Test ==="
-            docker logs genesis-backend --tail 30 2>&1 || true
+            echo "=== Test Election Current API ==="
+            docker exec genesis-backend python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/election/current')" 2>&1 || echo "Election current API error (expected during status transition)"
+
+            echo "=== Backend Logs (post-test) ==="
+            docker logs genesis-backend --tail 40 2>&1 || true
 
             echo "=== Test Posts API ==="
             docker exec genesis-backend python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/v1/posts'); print(f'Status: {r.status}, Length: {len(r.read())}')" 2>&1 || echo "Posts API error"
