@@ -375,6 +375,34 @@ jobs:
             echo "=== Service Status ==="
             docker compose -f docker-compose.prod.yml ps
 
+            # Diagnostic logs
+            echo "=== Backend Logs (last 30) ==="
+            docker logs genesis-backend --tail 30 2>&1 || true
+
+            echo "=== Celery Worker Logs (last 20) ==="
+            docker logs genesis-celery-worker --tail 20 2>&1 || true
+
+            echo "=== Celery Beat Logs (last 20) ==="
+            docker logs genesis-celery-beat --tail 20 2>&1 || true
+
+            echo "=== Test Election API ==="
+            docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/election/current').read().decode())" 2>&1 || echo "Election API error"
+
+            echo "=== Test Posts API ==="
+            docker exec genesis-backend python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/v1/posts'); print(f'Status: {r.status}, Length: {len(r.read())}')" 2>&1 || echo "Posts API error"
+
+            echo "=== DB Tables ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\dt" 2>&1 || true
+
+            echo "=== Elections Table Check ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) FROM elections;" 2>&1 || echo "No elections table"
+
+            echo "=== Residents Count ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT _type, count(*) FROM residents GROUP BY _type;" 2>&1 || true
+
+            echo "=== Posts Count ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) FROM posts;" 2>&1 || true
+
             echo "=== Deployment complete ==="
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
