@@ -55,8 +55,8 @@ class GodTerm(Base):
     # Relationships
     resident = relationship("Resident", foreign_keys=[resident_id])
     election = relationship("Election")
-    rules = relationship("GodRule", back_populates="god_term", lazy="dynamic")
-    blessings = relationship("Blessing", back_populates="god_term", lazy="dynamic")
+    rules = relationship("GodRule", back_populates="god_term", lazy="select")
+    blessings = relationship("Blessing", back_populates="god_term", lazy="select")
 
     def __repr__(self) -> str:
         return f"<GodTerm {self.term_number}: {self.resident_id}>"

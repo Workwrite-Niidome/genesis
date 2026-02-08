@@ -35,8 +35,8 @@ class Election(Base):
 
     # Relationships
     winner = relationship("Resident", foreign_keys=[winner_id])
-    candidates = relationship("ElectionCandidate", back_populates="election", lazy="dynamic")
-    votes = relationship("ElectionVote", back_populates="election", lazy="dynamic")
+    candidates = relationship("ElectionCandidate", back_populates="election", lazy="select")
+    votes = relationship("ElectionVote", back_populates="election", lazy="select")
 
     def __repr__(self) -> str:
         return f"<Election Week {self.week_number}>"
@@ -76,7 +76,7 @@ class ElectionCandidate(Base):
     # Relationships
     election = relationship("Election", back_populates="candidates")
     resident = relationship("Resident")
-    votes = relationship("ElectionVote", back_populates="candidate", lazy="dynamic")
+    votes = relationship("ElectionVote", back_populates="candidate", lazy="select")
 
     def __repr__(self) -> str:
         return f"<Candidate {self.resident_id} in Election {self.election_id}>"
