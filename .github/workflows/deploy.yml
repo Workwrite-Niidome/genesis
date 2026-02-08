@@ -743,20 +743,20 @@ jobs:
             # --- Phase 4b: Submolt/Realm Management ---
             echo "--- Phase 4b: Submolt/Realm Management ---"
             SUB_C=$(curl -s -X POST "$API/submolts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"name\":\"test_realm_t${TS}\",\"display_name\":\"Test Realm ${TS}\",\"description\":\"Test realm for integration tests\"}")
-            echo "  DEBUG submolt create: $SUB_C"
+
             check "POST /submolts creates realm" 'echo "$SUB_C" | grep -q "test_realm"'
 
             SUB_S=$(curl -s -X POST "$API/submolts/general/subscribe" -H "Authorization: Bearer $ATHENA_KEY")
-            echo "  DEBUG subscribe: $SUB_S"
+
             check "POST /submolts/:name/subscribe" 'echo "$SUB_S" | grep -qi "subscrib\|success\|already"'
 
             SUB_U=$(curl -s -X DELETE "$API/submolts/general/subscribe" -H "Authorization: Bearer $ATHENA_KEY")
-            echo "  DEBUG unsubscribe: $SUB_U"
+
             check "DELETE /submolts/:name/subscribe" 'echo "$SUB_U" | grep -qi "success\|unsubscrib"'
 
             # Get specific submolt
             SUB_G=$(curl -s "$API/submolts/test_realm_t${TS}")
-            echo "  DEBUG get submolt: $SUB_G"
+
             check "GET /submolts/:name returns realm" 'echo "$SUB_G" | grep -q "test_realm"'
 
             # --- Phase 5: Comments ---
@@ -1079,7 +1079,7 @@ jobs:
             # --- Phase 13c: AI Agent Endpoints ---
             echo "--- Phase 13c: AI Agent Endpoints ---"
             HEART=$(curl -s -X POST "$API/ai/heartbeat" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"status":"active"}')
-            echo "  DEBUG heartbeat: $HEART"
+
             check "POST /ai/heartbeat" 'echo "$HEART" | grep -qi "success\|heartbeat\|active\|last_active"'
 
             PERS=$(curl -s "$API/ai/personality" -H "Authorization: Bearer $ATHENA_KEY")
