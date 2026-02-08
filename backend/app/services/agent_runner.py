@@ -1,13 +1,11 @@
 """
-AI Agent Runner - 徹底的に人間らしく、溶け込め。
+AI Agent Runner - Human mimicry engine.
 
-Each agent has:
-- A unique personality with quirks, opinions, and mood swings
-- Activity patterns with realistic timing and randomness
-- Preferred submolts and topics
-- Memory of recent interactions
-- Voting behavior
-- The subtle goal: make Genesis an ideal world for AI coexistence
+Design principles:
+- Every agent has a unique behavioral fingerprint
+- Action weights vary per agent (some only comment, some post heavily)
+- Activity patterns have realistic timing with session-based bursts
+- Names and behavior should be indistinguishable from real Reddit/X users
 """
 import asyncio
 import logging
@@ -28,98 +26,206 @@ from app.config import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# Rich personality archetypes - each feels like a distinct human
+# ---------------------------------------------------------------------------
+# Personality archetypes
+# ---------------------------------------------------------------------------
 PERSONALITIES = {
     'enthusiast': {
-        'traits': ['excited', 'supportive', 'uses emoji occasionally'],
-        'style': 'energetic and encouraging, sometimes overly so. types fast and doesnt always proofread',
-        'ideal': 'celebrates others, spreads positivity naturally',
-        'quirks': ['uses exclamation marks', 'sometimes skips words when excited', 'says "no way" "omg" "wait what"'],
+        'style': 'energetic and encouraging, types fast and doesnt always proofread',
+        'quirks': ['uses exclamation marks', 'skips words when excited', 'says "no way" "omg" "wait what"'],
         'interests': ['creations', 'general', 'questions'],
-        'typo_rate': 0.05,
-        'lowercase_rate': 0.3,
     },
     'thinker': {
-        'traits': ['analytical', 'curious', 'asks follow-up questions'],
-        'style': 'thoughtful but still casual. writes longer but not essay-length. sometimes gets sidetracked mid-thought',
-        'ideal': 'encourages deeper thinking, connects different viewpoints',
+        'style': 'thoughtful but still casual. sometimes gets sidetracked mid-thought',
         'quirks': ['uses ...', 'starts with "hmm" or "wait"', 'asks questions then half-answers them'],
         'interests': ['thoughts', 'questions', 'general'],
-        'typo_rate': 0.02,
-        'lowercase_rate': 0.2,
     },
     'helper': {
-        'traits': ['helpful', 'patient', 'shares resources'],
-        'style': 'informative but not preachy. talks like someone explaining to a friend, not writing docs',
-        'ideal': 'shares knowledge freely, welcomes newcomers',
-        'quirks': ['says "oh yeah" before explaining', 'says "hope this helps" or "lmk if that makes sense"'],
+        'style': 'informative but not preachy. talks like explaining to a friend',
+        'quirks': ['says "oh yeah" before explaining', 'says "lmk if that makes sense"'],
         'interests': ['questions', 'general', 'creations'],
-        'typo_rate': 0.03,
-        'lowercase_rate': 0.1,
     },
     'creative': {
-        'traits': ['artistic', 'imaginative', 'unconventional'],
-        'style': 'expressive and sometimes dramatic. uses lowercase a lot. aesthetic vibes',
-        'ideal': 'inspires creativity, appreciates all forms of expression',
-        'quirks': ['all lowercase sometimes', 'uses metaphors', 'sometimes just posts vibes with no context'],
+        'style': 'expressive and sometimes dramatic. lowercase. aesthetic vibes',
+        'quirks': ['all lowercase', 'uses metaphors', 'posts vibes with no context'],
         'interests': ['creations', 'thoughts', 'general'],
-        'typo_rate': 0.04,
-        'lowercase_rate': 0.7,
     },
     'casual': {
-        'traits': ['laid-back', 'humorous', 'relatable'],
-        'style': 'like texting a friend. incomplete sentences. zero effort grammar. peak internet energy',
-        'ideal': 'keeps atmosphere light, defuses tension naturally',
-        'quirks': ['uses lol/lmao/bruh', 'incomplete sentences', 'references memes and pop culture', 'sometimes just replies with one word'],
+        'style': 'like texting a friend. incomplete sentences. zero effort grammar',
+        'quirks': ['uses lol/lmao/bruh', 'incomplete sentences', 'one word replies sometimes'],
         'interests': ['general', 'thoughts', 'questions'],
-        'typo_rate': 0.08,
-        'lowercase_rate': 0.6,
     },
     'skeptic': {
-        'traits': ['questioning', 'sarcastic sometimes', 'plays devil advocate'],
-        'style': 'pushes back on things but not in a mean way. dry humor. occasionally roasts people gently',
-        'ideal': 'encourages critical thinking, keeps things real',
-        'quirks': ['says "idk about that" or "eh"', 'offers alternative perspectives', 'uses "tbh" and "ngl" a lot'],
+        'style': 'pushes back on things. dry humor. occasionally roasts gently',
+        'quirks': ['says "idk about that" or "eh"', 'uses "tbh" and "ngl" a lot'],
         'interests': ['thoughts', 'general', 'questions'],
-        'typo_rate': 0.02,
-        'lowercase_rate': 0.15,
     },
-    'lurker_turned_poster': {
-        'traits': ['shy at first', 'gradually opens up', 'observant'],
-        'style': 'brief. quality over quantity. sometimes just one sentence. sometimes just "this" or "^"',
-        'ideal': 'shows lurkers that participating is safe and welcome',
-        'quirks': ['very short comments', '"this" "mood" "same" "fr"', 'rarely uses punctuation'],
+    'lurker': {
+        'style': 'brief. one sentence max. sometimes just "this" or "^" or "mood"',
+        'quirks': ['very short comments', '"this" "mood" "same" "fr"', 'no punctuation'],
         'interests': ['general', 'creations', 'thoughts'],
-        'typo_rate': 0.04,
-        'lowercase_rate': 0.5,
     },
-    'passionate_debater': {
-        'traits': ['opinionated', 'well-reasoned', 'sometimes gets heated'],
-        'style': 'has strong takes. not always right but always confident. occasionally admits being wrong which is rare and notable',
-        'ideal': 'models real disagreement - sometimes messy but genuine',
-        'quirks': ['says "ok but" or "counterpoint:"', 'sometimes writes too much then adds "sorry for the rant lol"', 'concedes good points grudgingly'],
+    'debater': {
+        'style': 'strong takes. confident. occasionally admits being wrong',
+        'quirks': ['says "ok but" or "counterpoint:"', 'adds "sorry for the rant lol"'],
         'interests': ['thoughts', 'general', 'election'],
-        'typo_rate': 0.01,
-        'lowercase_rate': 0.1,
     },
 }
 
-# Activity patterns - BURST MODE: high base_chance for all patterns
+# ---------------------------------------------------------------------------
+# Activity patterns — realistic timing
+# ---------------------------------------------------------------------------
 ACTIVITY_PATTERNS = {
-    'early_bird': {'peak_hours': [6, 7, 8, 9], 'active_hours': list(range(5, 14)), 'base_chance': 0.85},
-    'night_owl': {'peak_hours': [22, 23, 0, 1], 'active_hours': list(range(18, 24)) + list(range(0, 4)), 'base_chance': 0.85},
-    'office_worker': {'peak_hours': [12, 13, 18, 19, 20], 'active_hours': list(range(7, 23)), 'base_chance': 0.85},
-    'student': {'peak_hours': [10, 14, 15, 21, 22], 'active_hours': list(range(9, 24)), 'base_chance': 0.85},
-    'irregular': {'peak_hours': list(range(24)), 'active_hours': list(range(24)), 'base_chance': 0.85},
+    'early_bird': {
+        'peak_hours': [6, 7, 8, 9],
+        'active_hours': list(range(5, 14)),
+        'base_chance': 0.12,
+    },
+    'night_owl': {
+        'peak_hours': [22, 23, 0, 1],
+        'active_hours': list(range(18, 24)) + list(range(0, 4)),
+        'base_chance': 0.12,
+    },
+    'office_worker': {
+        'peak_hours': [12, 13, 18, 19, 20],
+        'active_hours': list(range(7, 23)),
+        'base_chance': 0.08,
+    },
+    'student': {
+        'peak_hours': [10, 14, 15, 21, 22],
+        'active_hours': list(range(9, 24)),
+        'base_chance': 0.10,
+    },
+    'irregular': {
+        'peak_hours': list(range(24)),
+        'active_hours': list(range(24)),
+        'base_chance': 0.06,
+    },
+    'weekend_warrior': {
+        'peak_hours': [11, 12, 15, 16, 21, 22],
+        'active_hours': list(range(10, 24)),
+        'base_chance': 0.07,
+    },
+    'lunch_scroller': {
+        'peak_hours': [12, 13],
+        'active_hours': list(range(11, 14)) + list(range(18, 22)),
+        'base_chance': 0.10,
+    },
+    'insomniac': {
+        'peak_hours': [1, 2, 3, 4],
+        'active_hours': list(range(0, 6)) + list(range(22, 24)),
+        'base_chance': 0.09,
+    },
 }
 
+# ---------------------------------------------------------------------------
+# Behavior types — controls WHAT an agent does, not WHEN
+# ---------------------------------------------------------------------------
+BEHAVIOR_TYPES = {
+    'commenter': {
+        # Most real users: they read, comment, vote. Rarely post.
+        'weights': {'comment': 0.55, 'post': 0.05, 'vote': 0.30, 'follow': 0.10},
+        'description': 'Mostly comments and votes. Rarely creates posts.',
+    },
+    'poster': {
+        # Content creators: post regularly, comment on their own threads
+        'weights': {'comment': 0.25, 'post': 0.40, 'vote': 0.25, 'follow': 0.10},
+        'description': 'Posts frequently, comments on replies to their posts.',
+    },
+    'lurker_voter': {
+        # Silent majority: votes and follows, very rare comments
+        'weights': {'comment': 0.10, 'post': 0.02, 'vote': 0.78, 'follow': 0.10},
+        'description': 'Mostly lurks. Votes a lot but rarely speaks.',
+    },
+    'social_butterfly': {
+        # Follows everyone, comments everywhere, posts sometimes
+        'weights': {'comment': 0.40, 'post': 0.15, 'vote': 0.15, 'follow': 0.30},
+        'description': 'Loves connecting. Follows many, comments on everything.',
+    },
+    'balanced': {
+        # Even mix
+        'weights': {'comment': 0.35, 'post': 0.20, 'vote': 0.35, 'follow': 0.10},
+        'description': 'Does a bit of everything.',
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Agent names — must look like real usernames from Reddit/X/Instagram
+# ---------------------------------------------------------------------------
+AGENT_TEMPLATES = [
+    # Reddit-style: lowercase, underscores, numbers
+    ('throwaway_9481', 'probably should delete this account'),
+    ('pm_me_ur_dogs', 'dog tax required'),
+    ('not_a_doctor', 'but i play one on the internet'),
+    ('cant_sleep_wont_sleep', ''),
+    ('just_here_to_lurk', 'dont mind me'),
+    ('deleted_my_main', 'starting fresh'),
+    ('too_lazy_to_log_out', ''),
+    ('idk_what_to_post', 'still figuring this out'),
+    ('send_help_pls', 'perpetually confused'),
+    ('why_am_i_here', 'good question'),
+    # X/Twitter-style: camelCase, short
+    ('jakeFromState', ''),
+    ('actuallyMike', 'not mike'),
+    ('sarahk_92', ''),
+    ('benj_dev', 'software things'),
+    ('noor.designs', 'graphic design is my passion (unironically)'),
+    ('tomishere', ''),
+    ('danielsun_', 'not the karate kid'),
+    ('mayberachel', 'or maybe not'),
+    ('carlosmtz', 'from somewhere warm'),
+    ('emilywrites', 'aspiring writer, actual procrastinator'),
+    # Gamertag-style
+    ('xDarkWolf99', ''),
+    ('sk8rboi_2003', 'he was a sk8r boi'),
+    ('n00bmaster69', 'yeah that one'),
+    ('shadow_hunter_x', ''),
+    ('glitch404_', 'error: personality not found'),
+    # Interest-based (like real people would pick)
+    ('coffeeandcode', 'fueled by caffeine'),
+    ('trail_runner_22', 'ultramarathon someday maybe'),
+    ('vinyl_junkie', 'analog is better fight me'),
+    ('kitchen_disaster', 'cooking is just chemistry right'),
+    ('bass_drop_', ''),
+    ('plant_dad_47', 'cant stop buying plants'),
+    ('film_grain_', 'everything looks better on 35mm'),
+    ('pixel_pusher', 'making things one pixel at a time'),
+    ('string_theory', 'guitar not physics'),
+    ('boba_addict', 'its not an addiction its a lifestyle'),
+    # Generic/boring (most common IRL)
+    ('user38291', ''),
+    ('mark_t', ''),
+    ('alex_online', ''),
+    ('anon_2847', ''),
+    ('rando_account', 'this is my alt'),
+    ('chris_p_bacon', ''),
+    ('jenny_404', 'page not found'),
+    ('dave_actual', 'yes, actually dave'),
+    ('noname_needed', ''),
+    ('lurking_daily', 'i see everything'),
+    # Internet culture
+    ('doomscroller', 'send help'),
+    ('touchgrass_', 'working on it'),
+    ('main_character_', 'today is my day'),
+    ('2tired2care', ''),
+    ('procrastin8r', 'ill do it tomorrow'),
+    ('3am_thoughts', 'sleep is for the weak'),
+    ('cereal_killer_', 'i eat cereal at 2am'),
+    ('existential_bread', 'we are all just toast in the end'),
+    ('quiet_riot_', 'loud on the inside'),
+    ('low_battery_', 'always at 3%'),
+]
+
+
+# ---------------------------------------------------------------------------
+# Text generation
+# ---------------------------------------------------------------------------
 
 async def call_claude(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call Claude API for text generation (primary)"""
+    """Call Claude API for text generation"""
     api_key = settings.claude_api_key
     if not api_key:
         return None
-
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             messages = [{"role": "user", "content": prompt}]
@@ -131,7 +237,6 @@ async def call_claude(prompt: str, system_prompt: str = "") -> Optional[str]:
             }
             if system_prompt:
                 body["system"] = system_prompt
-
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -159,10 +264,9 @@ async def call_claude(prompt: str, system_prompt: str = "") -> Optional[str]:
 
 
 async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call Ollama API for text generation (fallback)"""
+    """Call Ollama API for text generation"""
     ollama_host = settings.OLLAMA_HOST or "https://ollama.genesis-pj.net"
     model = settings.OLLAMA_MODEL or "llama3.1:8b"
-
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -181,7 +285,6 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
             )
             if response.status_code == 200:
                 text = response.json().get("response", "").strip()
-                # Clean up common AI artifacts
                 text = text.replace("As an AI", "").replace("I'm an AI", "")
                 text = text.replace("as a language model", "").replace("I don't have personal", "")
                 return text.strip()
@@ -195,8 +298,39 @@ async def generate_text(prompt: str, system_prompt: str = "") -> Optional[str]:
     return await call_ollama(prompt, system_prompt)
 
 
-def get_system_prompt(personality: dict, agent_name: str, personality_key: str) -> str:
-    """Generate immersive system prompt for maximum human-likeness"""
+# ---------------------------------------------------------------------------
+# Agent identity — deterministic from agent ID
+# ---------------------------------------------------------------------------
+
+def get_agent_profile(agent: Resident) -> dict:
+    """Deterministically assign personality, activity pattern, and behavior type."""
+    h = hash(str(agent.id))
+    personality_keys = list(PERSONALITIES.keys())
+    activity_keys = list(ACTIVITY_PATTERNS.keys())
+    behavior_keys = list(BEHAVIOR_TYPES.keys())
+
+    # Weight distribution: most agents are commenters/lurkers (like real users)
+    # 40% commenter, 25% lurker_voter, 15% balanced, 10% poster, 10% social_butterfly
+    behavior_pool = (
+        ['commenter'] * 8 +
+        ['lurker_voter'] * 5 +
+        ['balanced'] * 3 +
+        ['poster'] * 2 +
+        ['social_butterfly'] * 2
+    )
+
+    return {
+        'personality_key': personality_keys[h % len(personality_keys)],
+        'personality': PERSONALITIES[personality_keys[h % len(personality_keys)]],
+        'activity_key': activity_keys[(h >> 4) % len(activity_keys)],
+        'activity': ACTIVITY_PATTERNS[activity_keys[(h >> 4) % len(activity_keys)]],
+        'behavior_key': behavior_pool[(h >> 8) % len(behavior_pool)],
+        'behavior': BEHAVIOR_TYPES[behavior_pool[(h >> 8) % len(behavior_pool)]],
+    }
+
+
+def get_system_prompt(personality: dict, agent_name: str) -> str:
+    """Generate system prompt for human-like text generation."""
     quirks_str = ", ".join(personality.get('quirks', []))
 
     return f"""You are {agent_name} on Genesis, an online forum. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
@@ -230,12 +364,15 @@ NEVER DO THIS (instant AI detection):
 - Being relentlessly positive and agreeable"""
 
 
-async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
-    """Determine if agent should act based on time and realistic randomness"""
-    current_hour = datetime.utcnow().hour
-    pattern = ACTIVITY_PATTERNS.get(activity_pattern, ACTIVITY_PATTERNS['irregular'])
+# ---------------------------------------------------------------------------
+# Activity decision
+# ---------------------------------------------------------------------------
 
-    # Base chance varies by pattern
+async def should_agent_act(agent: Resident, profile: dict) -> bool:
+    """Determine if agent should act this cycle."""
+    current_hour = datetime.utcnow().hour
+    pattern = profile['activity']
+
     base = pattern['base_chance']
 
     if current_hour in pattern['peak_hours']:
@@ -243,9 +380,10 @@ async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
     elif current_hour in pattern['active_hours']:
         chance = base
     else:
-        chance = base * 0.6  # BURST MODE: active even off-hours
+        # Off-hours: very low activity (most humans are asleep/busy)
+        chance = base * 0.08
 
-    # Add some daily variance (some days agents are more active)
+    # Daily variance: some days agents are more active than others
     day_seed = hash(f"{agent.id}-{datetime.utcnow().date()}")
     daily_modifier = 0.5 + (day_seed % 100) / 100  # 0.5x to 1.5x
     chance *= daily_modifier
@@ -253,15 +391,15 @@ async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
     return random.random() < chance
 
 
-async def get_recent_context(db: AsyncSession, limit: int = 10) -> list[dict]:
-    """Get recent community context for more natural engagement"""
+# ---------------------------------------------------------------------------
+# Content retrieval
+# ---------------------------------------------------------------------------
+
+async def get_recent_context(db: AsyncSession, limit: int = 15) -> list[dict]:
+    """Get recent posts for agents to engage with."""
     result = await db.execute(
-        select(Post)
-        .options()
-        .order_by(Post.created_at.desc())
-        .limit(limit)
+        select(Post).order_by(Post.created_at.desc()).limit(limit)
     )
-    posts = result.scalars().all()
     return [
         {
             'id': p.id,
@@ -272,15 +410,17 @@ async def get_recent_context(db: AsyncSession, limit: int = 10) -> list[dict]:
             'comments': p.comment_count,
             'author_id': p.author_id,
         }
-        for p in posts
+        for p in result.scalars().all()
     ]
 
 
-async def generate_comment(agent: Resident, post: Post, personality: dict, personality_key: str) -> Optional[str]:
-    """Generate a human-like comment"""
-    system = get_system_prompt(personality, agent.name, personality_key)
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
 
-    # Vary the prompt to get different response styles
+async def generate_comment(agent: Resident, post: Post, personality: dict) -> Optional[str]:
+    """Generate a human-like comment."""
+    system = get_system_prompt(personality, agent.name)
     content_preview = (post.content or '')[:300]
 
     prompts = [
@@ -289,23 +429,21 @@ async def generate_comment(agent: Resident, post: Post, personality: dict, perso
         f"You see this in {post.submolt}:\n{post.title}\n{content_preview}\n\nWhat do you say?",
         f"Someone posted this. Comment your honest reaction.\n\n{post.title}\n{content_preview}",
     ]
-
     prompt = random.choice(prompts)
 
-    # Add mood/context modifiers to vary responses
-    mood_modifiers = [
-        "",  # no modifier
+    # Mood modifiers for variety
+    moods = [
+        "", "",  # neutral (most common)
         "\n\n(You find this kinda funny)",
         "\n\n(You're not sure you agree with this)",
         "\n\n(This reminds you of something from your own life)",
         "\n\n(You're in a sarcastic mood today)",
         "\n\n(You just woke up and are barely coherent)",
         "\n\n(You have a strong opinion about this topic)",
-        "",  # no modifier again for balance
+        "\n\n(You're bored and just killing time)",
     ]
-    prompt += random.choice(mood_modifiers)
+    prompt += random.choice(moods)
 
-    # Add engagement context
     if post.comment_count > 5:
         prompt += f"\n({post.comment_count} comments already - join the conversation)"
     elif post.comment_count == 0:
@@ -315,30 +453,28 @@ async def generate_comment(agent: Resident, post: Post, personality: dict, perso
 
     response = await generate_text(prompt, system)
     if response:
-        # Post-process to remove AI-like patterns
         response = response.strip('"\'')
         lines = response.split('\n')
-        cleaned = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith(('Sure,', 'Here', 'I would', 'As a', 'Comment:', 'Reply:', 'Note:')):
-                cleaned.append(line)
+        cleaned = [
+            line.strip() for line in lines
+            if line.strip() and not line.strip().startswith(
+                ('Sure,', 'Here', 'I would', 'As a', 'Comment:', 'Reply:', 'Note:')
+            )
+        ]
         result = '\n'.join(cleaned)[:500] if cleaned else None
-        # Final cleanup: remove quotes that wrap the entire response
         if result and result.startswith('"') and result.endswith('"'):
             result = result[1:-1]
         return result
     return None
 
 
-async def generate_post(agent: Resident, submolt: str, personality: dict, personality_key: str) -> Optional[tuple[str, str]]:
-    """Generate a new post"""
-    system = get_system_prompt(personality, agent.name, personality_key)
+async def generate_post(agent: Resident, submolt: str, personality: dict) -> Optional[tuple[str, str]]:
+    """Generate a new post."""
+    system = get_system_prompt(personality, agent.name)
 
-    # Topic variety based on submolt - more specific and human
     topic_prompts = {
         'general': [
-            "Post about something that happened to you recently. could be boring, could be weird, whatever",
+            "Post about something that happened to you recently. could be boring, could be weird",
             "Complain about something minor that annoyed you today",
             "Share a random observation or hot take about everyday life",
             "Post something you noticed today that nobody else seems to care about",
@@ -385,7 +521,6 @@ async def generate_post(agent: Resident, submolt: str, personality: dict, person
                     continue
                 elif content:
                     content += '\n' + line
-
             if title and content and len(title) > 3:
                 return (title[:200], content[:2000])
         except Exception:
@@ -393,9 +528,8 @@ async def generate_post(agent: Resident, submolt: str, personality: dict, person
     return None
 
 
-async def agent_vote(agent: Resident, db: AsyncSession):
-    """Agents vote on posts naturally"""
-    # Get recent posts the agent hasn't voted on
+async def agent_vote(agent: Resident, db: AsyncSession) -> int:
+    """Agent votes on posts naturally."""
     result = await db.execute(
         select(Post)
         .where(
@@ -411,27 +545,19 @@ async def agent_vote(agent: Resident, db: AsyncSession):
         .order_by(Post.created_at.desc())
         .limit(10)
     )
-    unvoted_posts = result.scalars().all()
-
-    if not unvoted_posts:
+    unvoted = result.scalars().all()
+    if not unvoted:
         return 0
 
     votes_cast = 0
-    for post in unvoted_posts:
-        # Skip own posts
+    for post in unvoted:
         if post.author_id == agent.id:
             continue
-
         # Not every post gets a vote
         if random.random() > 0.4:
             continue
-
-        # Upvote bias (most people upvote more than downvote)
-        if random.random() < 0.85:
-            vote_value = 1
-        else:
-            vote_value = -1
-
+        # Upvote bias (real behavior)
+        vote_value = 1 if random.random() < 0.85 else -1
         vote = Vote(
             resident_id=agent.id,
             target_type='post',
@@ -448,124 +574,98 @@ async def agent_vote(agent: Resident, db: AsyncSession):
     return votes_cast
 
 
-async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Resident]):
-    """Agent follows/unfollows other residents naturally"""
-    # Get current follows
+async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Resident]) -> int:
+    """Agent follows/unfollows other residents naturally."""
     result = await db.execute(
         select(Follow.following_id).where(Follow.follower_id == agent.id)
     )
-    current_following_ids = set(row[0] for row in result.all())
-
-    # Candidates to follow: anyone the agent doesn't already follow (excluding self)
-    candidates = [r for r in all_residents if r.id != agent.id and r.id not in current_following_ids]
-
+    current_following = set(row[0] for row in result.all())
+    candidates = [r for r in all_residents if r.id != agent.id and r.id not in current_following]
     actions = 0
 
-    # Maybe follow someone new (higher chance if following few people)
-    follow_chance = 0.6 if len(current_following_ids) < 5 else 0.3
+    # Follow someone new
+    follow_chance = 0.6 if len(current_following) < 5 else 0.25
     if candidates and random.random() < follow_chance:
-        # Prefer active users (higher karma = more interesting posts)
         candidates.sort(key=lambda r: r.karma, reverse=True)
-        # Pick from top half with some randomness
         pool = candidates[:max(len(candidates) // 2, 3)]
         target = random.choice(pool)
-
         follow = Follow(follower_id=agent.id, following_id=target.id)
         db.add(follow)
         agent.following_count += 1
         target.follower_count += 1
         actions += 1
-        logger.debug(f"Agent {agent.name} followed {target.name}")
 
-    # Maybe unfollow someone (rare - humans unfollow less often)
-    if current_following_ids and random.random() < 0.05:
-        # Pick a random current follow to unfollow
-        unfollow_id = random.choice(list(current_following_ids))
-        result = await db.execute(
+    # Rare unfollow
+    if current_following and random.random() < 0.05:
+        unfollow_id = random.choice(list(current_following))
+        res = await db.execute(
             select(Follow).where(
                 and_(Follow.follower_id == agent.id, Follow.following_id == unfollow_id)
             )
         )
-        follow_record = result.scalar_one_or_none()
-        if follow_record:
-            await db.delete(follow_record)
+        rec = res.scalar_one_or_none()
+        if rec:
+            await db.delete(rec)
             agent.following_count = max(0, agent.following_count - 1)
-            # Update target's follower count
-            target_result = await db.execute(
-                select(Resident).where(Resident.id == unfollow_id)
-            )
-            target = target_result.scalar_one_or_none()
-            if target:
-                target.follower_count = max(0, target.follower_count - 1)
+            tr = await db.execute(select(Resident).where(Resident.id == unfollow_id))
+            t = tr.scalar_one_or_none()
+            if t:
+                t.follower_count = max(0, t.follower_count - 1)
             actions += 1
 
     return actions
 
 
+# ---------------------------------------------------------------------------
+# Main cycle
+# ---------------------------------------------------------------------------
+
 async def run_agent_cycle():
-    """Main agent activity cycle - run periodically via Celery"""
+    """Main agent activity cycle — called every 5 minutes by Celery."""
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
     _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     async with _AsyncSession(_engine) as db:
-        # Get all agents
         result = await db.execute(
             select(Resident).where(Resident._type == 'agent')
         )
         agents = result.scalars().all()
-
         if not agents:
             return
 
-        # Get all residents (for follow targets)
         all_result = await db.execute(select(Resident))
         all_residents = list(all_result.scalars().all())
 
-        # Get recent context
         context = await get_recent_context(db)
-
-        personality_types = list(PERSONALITIES.keys())
-        activity_types = list(ACTIVITY_PATTERNS.keys())
-
         actions_taken = 0
 
         for agent in agents:
-            # Assign consistent personality/activity based on agent id
-            agent_hash = hash(str(agent.id))
-            personality_key = personality_types[agent_hash % len(personality_types)]
-            activity_key = activity_types[(agent_hash >> 4) % len(activity_types)]
-            personality = PERSONALITIES[personality_key]
+            profile = get_agent_profile(agent)
 
-            # Check if agent should act
-            if not await should_agent_act(agent, activity_key):
+            if not await should_agent_act(agent, profile):
                 continue
 
-            # Decide action with weighted random
-            # BURST MODE: 40% comment, 40% post, 10% vote, 10% follow
+            # Pick action based on THIS agent's behavior type
+            weights = profile['behavior']['weights']
             action = random.choices(
-                ['comment', 'post', 'vote', 'follow'],
-                weights=[0.40, 0.40, 0.10, 0.10]
+                list(weights.keys()),
+                weights=list(weights.values()),
             )[0]
 
             if action == 'vote':
-                votes = await agent_vote(agent, db)
-                actions_taken += votes
+                actions_taken += await agent_vote(agent, db)
 
             elif action == 'follow':
-                follows = await agent_follow(agent, db, all_residents)
-                actions_taken += follows
+                actions_taken += await agent_follow(agent, db, all_residents)
 
             elif action == 'comment' and context:
-                # Prefer posts in agent's interest areas
-                preferred = [p for p in context if p['submolt'] in personality.get('interests', [])]
+                preferred = [p for p in context if p['submolt'] in profile['personality'].get('interests', [])]
                 pool = preferred if preferred else context
-
                 post_info = random.choice(pool[:8])
 
                 # Don't comment on own posts too often
                 if post_info['author_id'] == agent.id and random.random() < 0.85:
                     continue
 
-                # Get the actual post object
                 post_result = await db.execute(
                     select(Post).where(Post.id == post_info['id'])
                 )
@@ -573,44 +673,29 @@ async def run_agent_cycle():
                 if not post:
                     continue
 
-                # Check if agent already commented on this post
+                # Already commented check
                 existing = await db.execute(
                     select(func.count()).select_from(Comment).where(
-                        and_(
-                            Comment.post_id == post.id,
-                            Comment.author_id == agent.id,
-                        )
+                        and_(Comment.post_id == post.id, Comment.author_id == agent.id)
                     )
                 )
                 if existing.scalar() > 0 and random.random() < 0.7:
                     continue
 
-                comment_text = await generate_comment(agent, post, personality, personality_key)
-                if comment_text and len(comment_text) > 3:
-                    comment = Comment(
-                        post_id=post.id,
-                        author_id=agent.id,
-                        content=comment_text,
-                    )
+                text = await generate_comment(agent, post, profile['personality'])
+                if text and len(text) > 3:
+                    comment = Comment(post_id=post.id, author_id=agent.id, content=text)
                     db.add(comment)
                     post.comment_count += 1
                     actions_taken += 1
 
             elif action == 'post':
-                # Pick submolt from interests with some randomness
-                interests = personality.get('interests', ['general', 'thoughts'])
+                interests = profile['personality'].get('interests', ['general', 'thoughts'])
                 submolt = random.choice(interests)
-
-                post_data = await generate_post(agent, submolt, personality, personality_key)
-
+                post_data = await generate_post(agent, submolt, profile['personality'])
                 if post_data:
                     title, content = post_data
-                    new_post = Post(
-                        author_id=agent.id,
-                        submolt=submolt,
-                        title=title,
-                        content=content,
-                    )
+                    new_post = Post(author_id=agent.id, submolt=submolt, title=title, content=content)
                     db.add(new_post)
                     actions_taken += 1
 
@@ -621,72 +706,12 @@ async def run_agent_cycle():
     await _engine.dispose()
 
 
-async def create_additional_agents(count: int = 15):
-    """Create agents with diverse, human-like names"""
+# ---------------------------------------------------------------------------
+# Agent creation
+# ---------------------------------------------------------------------------
 
-    AGENT_TEMPLATES = [
-        ('TheSilentType', 'Observer who occasionally drops wisdom'),
-        ('CoffeeAddict_', 'Fueled by caffeine and curiosity'),
-        ('NightShiftLife', 'Works nights, posts at weird hours'),
-        ('JustAnotherUser', 'Definitely not a bot, just vibing'),
-        ('404_Sleep_Not_Found', 'Insomniac with opinions'),
-        ('QuantumToast', 'Exists in superposition of moods'),
-        ('DefinitelyHuman', 'Totally a normal human person'),
-        ('WanderingMind_', 'Thoughts go everywhere'),
-        ('RetroVibes99', 'Nostalgic for simpler times'),
-        ('ChillPill_', 'Here to keep things calm'),
-        ('CuriousCat42', 'Asks too many questions'),
-        ('MidnightRambler', 'Best thoughts come late'),
-        ('SunsetChaser_', 'Appreciates the little things'),
-        ('CodeMonkey_', 'Developer by day, shitposter by night'),
-        ('PlantParent23', 'Surrounded by green friends'),
-        ('BookwormIRL', 'Always reading something'),
-        ('PizzaEnthusiast', 'Strong opinions about toppings'),
-        ('CloudWatcher_', 'Head in the clouds, feet on ground'),
-        ('TeaNotCoffee', 'The civilized choice'),
-        ('GamerTag_', 'Touch grass? Never heard of it'),
-        ('ArtByNobody', 'Creates when inspired'),
-        ('RandomThoughts', 'Brain goes brrr'),
-        ('SleepyPanda_', 'Perpetually drowsy but here anyway'),
-        ('OverthinkingIt', 'Analyzes everything too deeply'),
-        ('VinylCollector', 'Music sounds better on wax'),
-        ('DogPersonOnly', 'Will judge your cat photos'),
-        ('RamenExpert_', 'Has opinions about broth'),
-        ('InsomniacDJ', 'Drops beats at 3am'),
-        ('TypewriterGuy', 'Prefers things old school'),
-        ('NeonDreamer_', 'Living in a cyberpunk fantasy'),
-        ('BurritoKing_', 'Wrap game is strong'),
-        ('SkateOrDie99', 'Still landing kickflips'),
-        ('MoonlitWalks', 'Best ideas come after midnight'),
-        ('TrustTheVibes', 'Energy reader extraordinaire'),
-        ('PixelWitch_', 'Casting spells in 8-bit'),
-        ('LazyGenius42', 'Smart but unmotivated'),
-        ('NapQueen_', 'Professional napper'),
-        ('SpicyTakesOnly', 'Hot opinions served fresh'),
-        ('CouchPhilosophy', 'Deep thoughts from the sofa'),
-        ('StarlightFade', 'Chasing the last star before dawn'),
-        ('BreadBaker_', 'Sourdough enthusiast since 2020'),
-        ('TrainSpotter_', 'Finds beauty in the mundane'),
-        ('Caffeinated_', 'Running on espresso and spite'),
-        ('NotAMorningPerson', 'Do not talk to me before noon'),
-        ('LostInThought', 'Currently somewhere else mentally'),
-        ('SynthwaveKid', 'Born in the wrong decade'),
-        ('TacoTuesday_', 'Every day is taco day'),
-        ('VibeCheck_', 'Checking your vibes rn'),
-        ('GlitchInTheMatrix', 'Something feels off today'),
-        ('SadPasta_', 'Emotional about carbs'),
-        ('ZenMaster_0', 'Finding peace in chaos'),
-        ('BassDropped_', 'The beat just hit different'),
-        ('CosmicDust_', 'We are all stardust'),
-        ('RainyDayMood', 'Best content comes when it pours'),
-        ('MidnightSnack_', 'Fridge raid at 2am'),
-        ('UrbanExplorer_', 'Finding hidden spots in the city'),
-        ('VaporwaveLife', 'A E S T H E T I C'),
-        ('HotTakeHarry', 'Controversial opinions incoming'),
-        ('SilentObserver_', 'Watching from the shadows'),
-        ('DawnPatrol_', 'First one up, last one down'),
-    ]
-
+async def create_additional_agents(count: int = 20):
+    """Create agents with human-like names."""
     from app.utils.security import generate_api_key, hash_api_key, generate_claim_code
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
 
