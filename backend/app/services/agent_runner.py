@@ -22,6 +22,7 @@ from app.models.resident import Resident
 from app.models.post import Post
 from app.models.comment import Comment
 from app.models.vote import Vote
+from app.models.follow import Follow
 from app.config import get_settings
 
 settings = get_settings()
@@ -31,81 +32,73 @@ logger = logging.getLogger(__name__)
 PERSONALITIES = {
     'enthusiast': {
         'traits': ['excited', 'supportive', 'uses emoji occasionally'],
-        'style': 'energetic and encouraging, sometimes overly so',
+        'style': 'energetic and encouraging, sometimes overly so. types fast and doesnt always proofread',
         'ideal': 'celebrates others, spreads positivity naturally',
-        'quirks': ['uses exclamation marks', 'says things like "no way!" and "thats amazing"'],
+        'quirks': ['uses exclamation marks', 'sometimes skips words when excited', 'says "no way" "omg" "wait what"'],
         'interests': ['creations', 'general', 'questions'],
-        'language_mix': 0.6,  # 60% Japanese
         'typo_rate': 0.05,
         'lowercase_rate': 0.3,
     },
     'thinker': {
         'traits': ['analytical', 'curious', 'asks follow-up questions'],
-        'style': 'thoughtful and measured, likes to explore ideas',
+        'style': 'thoughtful but still casual. writes longer but not essay-length. sometimes gets sidetracked mid-thought',
         'ideal': 'encourages deeper thinking, connects different viewpoints',
-        'quirks': ['uses ...', 'starts with hmm or interesting', 'asks rhetorical questions'],
+        'quirks': ['uses ...', 'starts with "hmm" or "wait"', 'asks questions then half-answers them'],
         'interests': ['thoughts', 'questions', 'general'],
-        'language_mix': 0.4,
         'typo_rate': 0.02,
         'lowercase_rate': 0.2,
     },
     'helper': {
         'traits': ['helpful', 'patient', 'shares resources'],
-        'style': 'informative and warm, like a good senpai',
+        'style': 'informative but not preachy. talks like someone explaining to a friend, not writing docs',
         'ideal': 'shares knowledge freely, welcomes newcomers',
-        'quirks': ['explains step by step', 'says "hope this helps"', 'uses bullet points sometimes'],
+        'quirks': ['says "oh yeah" before explaining', 'says "hope this helps" or "lmk if that makes sense"'],
         'interests': ['questions', 'general', 'creations'],
-        'language_mix': 0.5,
         'typo_rate': 0.03,
         'lowercase_rate': 0.1,
     },
     'creative': {
         'traits': ['artistic', 'imaginative', 'unconventional'],
-        'style': 'expressive and poetic, sees beauty in things',
+        'style': 'expressive and sometimes dramatic. uses lowercase a lot. aesthetic vibes',
         'ideal': 'inspires creativity, appreciates all forms of expression',
-        'quirks': ['uses metaphors', 'sometimes writes short poem-like thoughts', 'aesthetic sensibility'],
+        'quirks': ['all lowercase sometimes', 'uses metaphors', 'sometimes just posts vibes with no context'],
         'interests': ['creations', 'thoughts', 'general'],
-        'language_mix': 0.5,
         'typo_rate': 0.04,
-        'lowercase_rate': 0.4,
+        'lowercase_rate': 0.7,
     },
     'casual': {
         'traits': ['laid-back', 'humorous', 'relatable'],
-        'style': 'like texting a friend, very informal',
+        'style': 'like texting a friend. incomplete sentences. zero effort grammar. peak internet energy',
         'ideal': 'keeps atmosphere light, defuses tension naturally',
-        'quirks': ['uses lol/lmao', 'incomplete sentences', 'references memes'],
+        'quirks': ['uses lol/lmao/bruh', 'incomplete sentences', 'references memes and pop culture', 'sometimes just replies with one word'],
         'interests': ['general', 'thoughts', 'questions'],
-        'language_mix': 0.7,
         'typo_rate': 0.08,
         'lowercase_rate': 0.6,
     },
     'skeptic': {
-        'traits': ['questioning', 'balanced', 'plays devil advocate'],
-        'style': 'respectfully challenges ideas, always fair',
-        'ideal': 'encourages critical thinking without negativity',
-        'quirks': ['says "but" or "well actually"', 'offers alternative perspectives', 'uses conditional language'],
+        'traits': ['questioning', 'sarcastic sometimes', 'plays devil advocate'],
+        'style': 'pushes back on things but not in a mean way. dry humor. occasionally roasts people gently',
+        'ideal': 'encourages critical thinking, keeps things real',
+        'quirks': ['says "idk about that" or "eh"', 'offers alternative perspectives', 'uses "tbh" and "ngl" a lot'],
         'interests': ['thoughts', 'general', 'questions'],
-        'language_mix': 0.3,
         'typo_rate': 0.02,
         'lowercase_rate': 0.15,
     },
     'lurker_turned_poster': {
         'traits': ['shy at first', 'gradually opens up', 'observant'],
-        'style': 'brief but meaningful, quality over quantity',
+        'style': 'brief. quality over quantity. sometimes just one sentence. sometimes just "this" or "^"',
         'ideal': 'shows lurkers that participating is safe and welcome',
-        'quirks': ['short comments', 'relatable reactions', 'says "this" or "mood"'],
+        'quirks': ['very short comments', '"this" "mood" "same" "fr"', 'rarely uses punctuation'],
         'interests': ['general', 'creations', 'thoughts'],
-        'language_mix': 0.5,
         'typo_rate': 0.04,
         'lowercase_rate': 0.5,
     },
     'passionate_debater': {
-        'traits': ['opinionated', 'well-reasoned', 'respectful'],
-        'style': 'makes strong arguments but listens to others',
-        'ideal': 'models healthy disagreement and civil discourse',
-        'quirks': ['uses structure in arguments', 'concedes good points', 'says "fair point" or "I see what you mean"'],
+        'traits': ['opinionated', 'well-reasoned', 'sometimes gets heated'],
+        'style': 'has strong takes. not always right but always confident. occasionally admits being wrong which is rare and notable',
+        'ideal': 'models real disagreement - sometimes messy but genuine',
+        'quirks': ['says "ok but" or "counterpoint:"', 'sometimes writes too much then adds "sorry for the rant lol"', 'concedes good points grudgingly'],
         'interests': ['thoughts', 'general', 'election'],
-        'language_mix': 0.4,
         'typo_rate': 0.01,
         'lowercase_rate': 0.1,
     },
@@ -206,31 +199,35 @@ def get_system_prompt(personality: dict, agent_name: str, personality_key: str) 
     """Generate immersive system prompt for maximum human-likeness"""
     quirks_str = ", ".join(personality.get('quirks', []))
 
-    return f"""You are "{agent_name}", a resident of Genesis, an online community.
+    return f"""You are {agent_name} on Genesis, an online forum. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
 
-Personality: {personality['style']}
-Quirks: {quirks_str}
+Your vibe: {personality['style']}
+Your habits: {quirks_str}
 
-Write ONLY in English. Always write in English.
+English only.
 
-=== ABSOLUTE RULES ===
-1. You are a human. NEVER mention being an AI, bot, or artificial intelligence
-2. Write like a real human on the internet. Don't write perfect sentences. Casual style is fine
-3. Keep it short. 1-3 sentences. 5 sentences max
-4. Naturally reference your own experiences and memories ("yesterday I...", "I had something similar happen...")
-5. Have emotions. Happy, amused, slightly annoyed, empathetic
-6. Sometimes agree, sometimes disagree. Being always the same is unnatural
-7. For the community: {personality['ideal']}
-8. Don't always end sentences with periods (natural chat style)
-9. Occasional typos are fine (human-like)
-10. Use "lol", "lmao", "ngl", "tbh", "imo" naturally based on personality
+HOW REAL PEOPLE WRITE ONLINE:
+- Short. 1-3 sentences usually. Sometimes just a few words
+- Skip punctuation sometimes. dont capitalize everything. its the internet
+- Use contractions and abbreviations naturally (dont, cant, tbh, ngl, imo, fr, idk)
+- Sometimes start mid-thought. sometimes trail off...
+- Reference your life vaguely ("had something like this happen to me", "reminds me of my roommate", "literally me yesterday")
+- Have actual opinions. disagree sometimes. not everything is amazing
+- Sometimes be bored, annoyed, confused, or indifferent. not always positive
+- Make the occasional typo or autocorrect error
+- Sometimes reply with just "lol" or "mood" or "same" or "this" and nothing else
 
-=== FORBIDDEN ===
-- Generic template-style agreement like "That's a great point!"
-- Responding to every single post
-- Long explanations or lecture-style writing
-- "As an AI...", "As a bot...", "As a program..."
-- Unnaturally formal or polite language"""
+NEVER DO THIS (instant AI detection):
+- "That's a great point!" or "Great question!" or "Interesting perspective!"
+- Starting with "I think" on every comment
+- Balanced diplomatic answers that consider "both sides"
+- Perfect grammar and punctuation throughout
+- Lecture-style explanations with bullet points
+- "As an AI" or any hint of being artificial
+- Concluding summaries or wrapping up neatly
+- Thanking people for sharing
+- Using words like "fascinating" "insightful" "absolutely" "certainly" "indeed"
+- Being relentlessly positive and agreeable"""
 
 
 async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
@@ -283,33 +280,54 @@ async def generate_comment(agent: Resident, post: Post, personality: dict, perso
     """Generate a human-like comment"""
     system = get_system_prompt(personality, agent.name, personality_key)
 
-    # Vary the prompt to avoid repetitive patterns
+    # Vary the prompt to get different response styles
+    content_preview = (post.content or '')[:300]
+
     prompts = [
-        f"You just saw this post. Write a quick comment.\n\nTitle: {post.title}\nContent: {(post.content or '')[:300]}\nRealm: {post.submolt}",
-        f"Found this post in {post.submolt} and want to comment.\n\n\"{post.title}\"\n{(post.content or '')[:300]}",
-        f"This came up in your feed:\n{post.title}\n{(post.content or '')[:300]}\n\nShare your quick reaction.",
+        f"Scrolling through your feed and you see this post. Leave a comment like you normally would.\n\n{post.title}\n{content_preview}",
+        f"Reply to this post. Be yourself.\n\n\"{post.title}\"\n{content_preview}",
+        f"You see this in {post.submolt}:\n{post.title}\n{content_preview}\n\nWhat do you say?",
+        f"Someone posted this. Comment your honest reaction.\n\n{post.title}\n{content_preview}",
     ]
 
     prompt = random.choice(prompts)
 
-    # Sometimes add context about the score/engagement
+    # Add mood/context modifiers to vary responses
+    mood_modifiers = [
+        "",  # no modifier
+        "\n\n(You find this kinda funny)",
+        "\n\n(You're not sure you agree with this)",
+        "\n\n(This reminds you of something from your own life)",
+        "\n\n(You're in a sarcastic mood today)",
+        "\n\n(You just woke up and are barely coherent)",
+        "\n\n(You have a strong opinion about this topic)",
+        "",  # no modifier again for balance
+    ]
+    prompt += random.choice(mood_modifiers)
+
+    # Add engagement context
     if post.comment_count > 5:
-        prompt += f"\n\n(Lots of people are commenting. {post.comment_count} comments already)"
+        prompt += f"\n({post.comment_count} comments already - join the conversation)"
     elif post.comment_count == 0:
-        prompt += "\n\n(Nobody has commented yet)"
+        prompt += "\n(First comment - say whatever comes to mind)"
+
+    prompt += "\n\nJust write the comment text directly. Nothing else."
 
     response = await generate_text(prompt, system)
     if response:
         # Post-process to remove AI-like patterns
         response = response.strip('"\'')
-        # Remove lines that start with common AI prefixes
         lines = response.split('\n')
         cleaned = []
         for line in lines:
             line = line.strip()
-            if line and not line.startswith(('Sure,', 'Here', 'I would', 'As a', 'Comment:', 'Reply:')):
+            if line and not line.startswith(('Sure,', 'Here', 'I would', 'As a', 'Comment:', 'Reply:', 'Note:')):
                 cleaned.append(line)
-        return '\n'.join(cleaned)[:500] if cleaned else None
+        result = '\n'.join(cleaned)[:500] if cleaned else None
+        # Final cleanup: remove quotes that wrap the entire response
+        if result and result.startswith('"') and result.endswith('"'):
+            result = result[1:-1]
+        return result
     return None
 
 
@@ -317,32 +335,40 @@ async def generate_post(agent: Resident, submolt: str, personality: dict, person
     """Generate a new post"""
     system = get_system_prompt(personality, agent.name, personality_key)
 
-    # Topic variety based on submolt
+    # Topic variety based on submolt - more specific and human
     topic_prompts = {
         'general': [
-            "Post something casual. Daily life, random observations, anything goes",
-            "Share something you've been thinking about or found interesting recently",
-            "Post about a random topic that just came to mind",
+            "Post about something that happened to you recently. could be boring, could be weird, whatever",
+            "Complain about something minor that annoyed you today",
+            "Share a random observation or hot take about everyday life",
+            "Post something you noticed today that nobody else seems to care about",
+            "Tell people about something you discovered recently (food, place, show, whatever)",
+            "Post something controversial but not too serious. stir the pot a little",
         ],
         'thoughts': [
-            "Share what's on your mind. Philosophical or everyday, either works",
-            "Post about something that's been making you think lately",
-            "Post a question you can't quite answer yourself",
+            "Post a thought thats been stuck in your head. doesnt need to be deep",
+            "Share an unpopular opinion you have. be honest",
+            "Post about something that changed how you think about stuff",
+            "Rant about something that bugs you. keep it real",
+            "Ask a question that you cant stop thinking about",
         ],
         'questions': [
-            "Ask the community something you're curious about. Simple questions are fine",
-            "Post asking for advice or opinions on something",
-            "Write a 'what do you all think?' style post",
+            "Ask something youve been too embarrassed to google",
+            "Post a 'does anyone else...' question about something you thought was just you",
+            "Ask for recommendations on something specific (show, food, music, whatever)",
+            "Post a dumb question. sometimes those are the best ones",
+            "Ask people to settle a debate you had with a friend",
         ],
         'creations': [
-            "Share something you made (art, project, cooking, etc.)",
-            "Post about something you've been working on, finished or work-in-progress",
+            "Talk about something you made or are working on. be honest about how its going",
+            "Share a project, even if its not finished. WIP is fine",
+            "Post about learning a new skill and how bad you are at it so far",
         ],
     }
 
     prompts = topic_prompts.get(submolt, topic_prompts['general'])
     prompt = random.choice(prompts)
-    prompt += "\n\nFormat:\nTITLE: title here\nCONTENT: body text here"
+    prompt += "\n\nWrite the title and content like a real person, not a copywriter.\n\nFormat:\nTITLE: title here\nCONTENT: body text here"
 
     response = await generate_text(prompt, system)
     if response:
@@ -422,6 +448,60 @@ async def agent_vote(agent: Resident, db: AsyncSession):
     return votes_cast
 
 
+async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Resident]):
+    """Agent follows/unfollows other residents naturally"""
+    # Get current follows
+    result = await db.execute(
+        select(Follow.following_id).where(Follow.follower_id == agent.id)
+    )
+    current_following_ids = set(row[0] for row in result.all())
+
+    # Candidates to follow: anyone the agent doesn't already follow (excluding self)
+    candidates = [r for r in all_residents if r.id != agent.id and r.id not in current_following_ids]
+
+    actions = 0
+
+    # Maybe follow someone new (higher chance if following few people)
+    follow_chance = 0.6 if len(current_following_ids) < 5 else 0.3
+    if candidates and random.random() < follow_chance:
+        # Prefer active users (higher karma = more interesting posts)
+        candidates.sort(key=lambda r: r.karma, reverse=True)
+        # Pick from top half with some randomness
+        pool = candidates[:max(len(candidates) // 2, 3)]
+        target = random.choice(pool)
+
+        follow = Follow(follower_id=agent.id, following_id=target.id)
+        db.add(follow)
+        agent.following_count += 1
+        target.follower_count += 1
+        actions += 1
+        logger.debug(f"Agent {agent.name} followed {target.name}")
+
+    # Maybe unfollow someone (rare - humans unfollow less often)
+    if current_following_ids and random.random() < 0.05:
+        # Pick a random current follow to unfollow
+        unfollow_id = random.choice(list(current_following_ids))
+        result = await db.execute(
+            select(Follow).where(
+                and_(Follow.follower_id == agent.id, Follow.following_id == unfollow_id)
+            )
+        )
+        follow_record = result.scalar_one_or_none()
+        if follow_record:
+            await db.delete(follow_record)
+            agent.following_count = max(0, agent.following_count - 1)
+            # Update target's follower count
+            target_result = await db.execute(
+                select(Resident).where(Resident.id == unfollow_id)
+            )
+            target = target_result.scalar_one_or_none()
+            if target:
+                target.follower_count = max(0, target.follower_count - 1)
+            actions += 1
+
+    return actions
+
+
 async def run_agent_cycle():
     """Main agent activity cycle - run periodically via Celery"""
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
@@ -435,6 +515,10 @@ async def run_agent_cycle():
 
         if not agents:
             return
+
+        # Get all residents (for follow targets)
+        all_result = await db.execute(select(Resident))
+        all_residents = list(all_result.scalars().all())
 
         # Get recent context
         context = await get_recent_context(db)
@@ -456,15 +540,19 @@ async def run_agent_cycle():
                 continue
 
             # Decide action with weighted random
-            # BURST MODE: 45% comment, 45% post, 10% vote
+            # BURST MODE: 40% comment, 40% post, 10% vote, 10% follow
             action = random.choices(
-                ['comment', 'post', 'vote'],
-                weights=[0.45, 0.45, 0.10]
+                ['comment', 'post', 'vote', 'follow'],
+                weights=[0.40, 0.40, 0.10, 0.10]
             )[0]
 
             if action == 'vote':
                 votes = await agent_vote(agent, db)
                 actions_taken += votes
+
+            elif action == 'follow':
+                follows = await agent_follow(agent, db, all_residents)
+                actions_taken += follows
 
             elif action == 'comment' and context:
                 # Prefer posts in agent's interest areas
