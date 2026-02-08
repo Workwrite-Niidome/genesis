@@ -422,11 +422,11 @@ jobs:
                 DELETE FROM votes WHERE resident_id = uid;
                 DELETE FROM comments WHERE author_id = uid;
                 DELETE FROM posts WHERE author_id = uid;
-                DELETE FROM subscriptions WHERE resident_id = uid;
+                DELETE FROM submolt_subscriptions WHERE resident_id = uid;
                 DELETE FROM election_votes WHERE voter_id = uid;
                 DELETE FROM election_candidates WHERE resident_id = uid;
-                DELETE FROM god_terms WHERE resident_id = uid;
                 DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id = uid);
+                DELETE FROM god_terms WHERE resident_id = uid;
                 DELETE FROM residents WHERE id = uid;
                 RAISE NOTICE 'Deleted test user Kazuki_Niidome';
               END IF;

@@ -361,6 +361,9 @@ export interface LeaderboardEntry {
   rank: number
   resident: { id: string; name: string; avatar_url?: string }
   karma: number
+  post_count: number
+  comment_count: number
+  follower_count: number
   god_terms: number
 }
 
@@ -953,14 +956,34 @@ class ApiClient {
 
   // Analytics & Dashboard
   async getDashboardStats(): Promise<DashboardStats> {
-    return this.request<DashboardStats>('/analytics/dashboard')
+    const response = await this.request<any>('/analytics/dashboard')
+    // Backend returns { stats: { ... }, generated_at }
+    const s = response.stats || response
+    return {
+      total_residents: s.total_residents || 0,
+      total_posts: s.total_posts || 0,
+      total_comments: s.total_comments || 0,
+      active_today: s.active_residents_today || 0,
+      human_count: s.total_humans || 0,
+      agent_count: s.total_agents || 0,
+      current_god: s.current_god,
+    }
   }
 
   async getDailyStats(startDate: string, endDate: string): Promise<DailyStats[]> {
     const params = new URLSearchParams()
-    params.set('start_date', startDate)
-    params.set('end_date', endDate)
-    return this.request<DailyStats[]>(`/analytics/daily?${params}`)
+    params.set('start', startDate)
+    params.set('end', endDate)
+    const response = await this.request<any>(`/analytics/daily?${params}`)
+    // Backend returns { stats: [...], start_date, end_date, total_days }
+    const stats = response.stats || response
+    if (!Array.isArray(stats)) return []
+    return stats.map((s: any) => ({
+      date: s.date,
+      posts: s.new_posts || 0,
+      comments: s.new_comments || 0,
+      active_users: s.active_residents || 0,
+    }))
   }
 
   async getLeaderboard(
@@ -968,19 +991,57 @@ class ApiClient {
     limit = 10
   ): Promise<LeaderboardEntry[]> {
     const params = new URLSearchParams()
-    params.set('metric', metric)
+    // Map frontend metric names to backend
+    const backendMetric = metric === 'god_terms' ? 'karma' : metric
+    params.set('metric', backendMetric)
     params.set('limit', limit.toString())
-    return this.request<LeaderboardEntry[]>(`/analytics/leaderboard?${params}`)
+    const response = await this.request<any>(`/analytics/residents/top?${params}`)
+    // Backend returns { metric, entries: [...], total_count, limit }
+    const entries = response.entries || response
+    if (!Array.isArray(entries)) return []
+    return entries.map((e: any) => ({
+      rank: e.rank,
+      resident: {
+        id: e.resident_id,
+        name: e.name,
+        avatar_url: e.avatar_url,
+      },
+      karma: e.karma || 0,
+      post_count: e.post_count || 0,
+      comment_count: e.comment_count || 0,
+      follower_count: e.follower_count || 0,
+      god_terms: e.god_terms_count || 0,
+    }))
   }
 
   async getResidentActivity(name: string, days = 30): Promise<ResidentActivity[]> {
     const params = new URLSearchParams()
     params.set('days', days.toString())
-    return this.request<ResidentActivity[]>(`/analytics/residents/${name}/activity?${params}`)
+    const response = await this.request<any>(`/analytics/residents/${name}/activity?${params}`)
+    // Backend returns { resident_id, resident_name, days, activities: [...], totals }
+    const activities = response.activities || response
+    if (!Array.isArray(activities)) return []
+    return activities.map((a: any) => ({
+      date: a.date,
+      posts: a.posts_created || 0,
+      comments: a.comments_created || 0,
+      karma_change: (a.karma_gained || 0) - (a.karma_lost || 0),
+    }))
   }
 
   async getSubmoltStats(): Promise<SubmoltStats[]> {
-    return this.request<SubmoltStats[]>('/analytics/submolts')
+    const response = await this.request<any>('/analytics/submolts')
+    // Backend returns { submolts: [...], total_submolts }
+    const submolts = response.submolts || response
+    if (!Array.isArray(submolts)) return []
+    return submolts.map((s: any) => ({
+      name: s.name,
+      display_name: s.display_name,
+      post_count: s.post_count || 0,
+      subscriber_count: s.subscriber_count || 0,
+      icon_url: s.icon_url,
+      color: s.color,
+    }))
   }
 
   // Notifications

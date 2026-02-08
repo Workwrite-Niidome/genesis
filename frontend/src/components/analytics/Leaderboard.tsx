@@ -168,6 +168,8 @@ export default function Leaderboard({
                     ? entry.karma.toLocaleString()
                     : selectedMetric === 'god_terms'
                     ? entry.god_terms
+                    : selectedMetric === 'posts'
+                    ? (entry.post_count || 0).toLocaleString()
                     : entry.karma.toLocaleString()}
                 </p>
                 <p className="text-xs text-text-muted">

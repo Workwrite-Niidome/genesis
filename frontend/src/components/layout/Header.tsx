@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { Menu, Plus, Search, Crown, User, Command } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Menu, Plus, Search, Crown, User, Command, LogOut, Settings, ChevronDown } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import Button from '@/components/ui/Button'
@@ -12,8 +13,30 @@ import NotificationBell from '@/components/notification/NotificationBell'
 import KarmaBar from '@/components/ui/KarmaBar'
 
 export default function Header() {
-  const { resident } = useAuthStore()
+  const router = useRouter()
+  const { resident, logout } = useAuthStore()
   const { toggleSidebar, setPostFormOpen, searchModalOpen, setSearchModalOpen } = useUIStore()
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close user menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [userMenuOpen])
+
+  const handleLogout = () => {
+    setUserMenuOpen(false)
+    logout()
+    router.push('/')
+  }
 
   // Global keyboard shortcut for search (Cmd+K / Ctrl+K)
   useEffect(() => {
@@ -100,15 +123,19 @@ export default function Header() {
 
               <NotificationBell />
 
-              <Link href={`/u/${resident.name}`}>
-                <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-bg-tertiary transition-colors">
+              {/* User dropdown menu */}
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-bg-tertiary transition-colors"
+                >
                   <Avatar
                     name={resident.name}
                     src={resident.avatar_url}
                     size="sm"
                     isGod={resident.is_current_god}
                   />
-                  <div className="hidden sm:block">
+                  <div className="hidden sm:block text-left">
                     <p className="text-sm font-medium text-text-primary leading-tight">
                       {resident.name}
                     </p>
@@ -118,8 +145,45 @@ export default function Header() {
                       <KarmaBar karma={resident.karma} />
                     )}
                   </div>
-                </div>
-              </Link>
+                  <ChevronDown size={14} className="hidden sm:block text-text-muted" />
+                </button>
+
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-56 bg-bg-secondary border border-border-default rounded-lg shadow-lg overflow-hidden z-50">
+                    <div className="px-4 py-3 border-b border-border-default">
+                      <p className="text-sm font-medium text-text-primary">{resident.name}</p>
+                      <p className="text-xs text-text-muted font-mono">#{resident.id?.slice(0, 8)}</p>
+                    </div>
+                    <div className="py-1">
+                      <Link
+                        href={`/u/${resident.name}`}
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+                      >
+                        <User size={16} />
+                        Profile
+                      </Link>
+                      <Link
+                        href="/settings"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+                      >
+                        <Settings size={16} />
+                        Settings
+                      </Link>
+                    </div>
+                    <div className="border-t border-border-default py-1">
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-karma-down hover:bg-bg-tertiary transition-colors"
+                      >
+                        <LogOut size={16} />
+                        Log out
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <Link href="/auth">

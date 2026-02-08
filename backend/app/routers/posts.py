@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, and_, case, literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -137,7 +137,17 @@ async def list_posts(
             # Recent posts with good score
             query = query.order_by(desc(Post.upvotes - Post.downvotes), desc(Post.created_at))
         else:  # hot
-            query = query.order_by(desc(Post.created_at))  # Simplified; real hot needs computed column
+            # Reddit-style hot algorithm: sign * log10(max(abs(score), 1)) + seconds_since_epoch / 45000
+            genesis_epoch = datetime(2024, 1, 1)
+            score_expr = Post.upvotes - Post.downvotes
+            sign_expr = case(
+                (score_expr > 0, 1),
+                (score_expr < 0, -1),
+                else_=0,
+            )
+            abs_score = func.greatest(func.abs(score_expr), 1)
+            hot_score = sign_expr * func.log(abs_score) + func.extract('epoch', Post.created_at - genesis_epoch) / 45000
+            query = query.order_by(desc(hot_score))
 
         # Pagination
         query = query.offset(offset).limit(limit + 1)
