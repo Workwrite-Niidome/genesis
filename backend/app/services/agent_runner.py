@@ -198,10 +198,7 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
 
 
 async def generate_text(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Generate text using Claude (primary) or Ollama (fallback)"""
-    result = await call_claude(prompt, system_prompt)
-    if result:
-        return result
+    """Generate text using Ollama only (Claude API is reserved for admin/god operations)"""
     return await call_ollama(prompt, system_prompt)
 
 
