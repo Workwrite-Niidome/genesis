@@ -634,6 +634,8 @@ jobs:
             $PSQL "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR following_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM notifications WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM moderation_actions WHERE moderator_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR target_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM bans WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR banned_by IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_relationships WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR target_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
@@ -776,6 +778,16 @@ jobs:
             COMMENTS=$(curl -s "$API/posts/$POST1_ID/comments")
             check "GET /posts/:id/comments returns list" 'echo "$COMMENTS" | grep -q "Well said"'
 
+            # Comment sort modes
+            CSORT_NEW=$(curl -s "$API/posts/$POST1_ID/comments?sort=new")
+            check "GET comments?sort=new" 'echo "$CSORT_NEW" | grep -q "messenger\|wisdom"'
+
+            CSORT_TOP=$(curl -s "$API/posts/$POST1_ID/comments?sort=top")
+            check "GET comments?sort=top" 'echo "$CSORT_TOP" | grep -q "messenger\|wisdom"'
+
+            CSORT_CONTR=$(curl -s "$API/posts/$POST1_ID/comments?sort=controversial")
+            check "GET comments?sort=controversial" 'echo "$CSORT_CONTR" | grep -q "messenger\|wisdom"'
+
             # --- Phase 5b: Comment Voting ---
             echo "--- Phase 5b: Comment Voting ---"
             CV1=$(curl -s -X POST "$API/comments/$C1_ID/vote" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"value":1}')
@@ -805,6 +817,10 @@ jobs:
             # Edge: double vote should fail or toggle
             DV=$(curl -s -X POST "$API/posts/$POST1_ID/vote" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"value":1}')
             check "Double vote handled" 'echo "$DV" | grep -q "success\|already\|vote_count\|score"'
+
+            # Edge: self-vote should fail
+            SELF_V=$(curl -s -X POST "$API/posts/$POST1_ID/vote" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"value":1}')
+            check "Self-vote on own post rejected" 'echo "$SELF_V" | grep -qi "cannot vote on your own\|own post\|error\|detail"'
 
             # Verify post counts updated
             DETAIL2=$(curl -s "$API/posts/$POST1_ID")
@@ -1006,6 +1022,10 @@ jobs:
             UNFOL=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $ATHENA_KEY")
             check "Unfollow resident" '[ "$UNFOL" = "200" ] || [ "$UNFOL" = "204" ]'
 
+            # Edge: follow yourself should fail
+            SELF_FOL=$(curl -s -X POST "$API/residents/Athena_t${TS}/follow" -H "Authorization: Bearer $ATHENA_KEY")
+            check "Follow self rejected" 'echo "$SELF_FOL" | grep -qi "cannot follow yourself\|error\|detail"'
+
             # --- Phase 12c: Notifications ---
             echo "--- Phase 12c: Notifications ---"
             NOTIF=$(curl -s "$API/notifications" -H "Authorization: Bearer $ATHENA_KEY")
@@ -1013,6 +1033,16 @@ jobs:
 
             UNREAD=$(curl -s "$API/notifications/unread/count" -H "Authorization: Bearer $ATHENA_KEY")
             check "GET /notifications/unread/count" 'echo "$UNREAD" | grep -q "count\|unread"'
+
+            # Single notification read/delete (extract first notification ID if available)
+            NOTIF_ID=$(echo "$NOTIF" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
+            if [ -n "$NOTIF_ID" ]; then
+              NREAD=$(curl -s -X POST "$API/notifications/$NOTIF_ID/read" -H "Authorization: Bearer $ATHENA_KEY")
+              check "POST /notifications/:id/read" 'echo "$NREAD" | grep -qi "success"'
+
+              NDEL=$(curl -s -X DELETE "$API/notifications/$NOTIF_ID" -H "Authorization: Bearer $ATHENA_KEY")
+              check "DELETE /notifications/:id" 'echo "$NDEL" | grep -qi "success"'
+            fi
 
             READ_ALL=$(curl -s -X POST "$API/notifications/read-all" -H "Authorization: Bearer $ATHENA_KEY")
             check "POST /notifications/read-all" 'echo "$READ_ALL" | grep -qi "success\|read\|count\|marked"'
@@ -1037,6 +1067,44 @@ jobs:
             echo "--- Phase 12e: Moderation ---"
             REPORT=$(curl -s -X POST "$API/report" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d "{\"target_type\":\"post\",\"target_id\":\"$POST2_ID\",\"reason\":\"Testing report system\"}")
             check "POST /report submits report" 'echo "$REPORT" | grep -qi "report\|success\|id"'
+
+            # --- Phase 12f: Moderation (God = moderator) ---
+            echo "--- Phase 12f: Moderation (God as mod) ---"
+            # Athena is current God, so she qualifies as moderator
+            REPORT_ID=$(echo "$REPORT" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
+
+            MOD_REPORTS=$(curl -s "$API/moderation/reports" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /moderation/reports (mod)" 'echo "$MOD_REPORTS" | grep -qi "reports\|\\[\\]"'
+
+            if [ -n "$REPORT_ID" ]; then
+              RESOLVE=$(curl -s -X POST "$API/moderation/reports/$REPORT_ID/resolve" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"action":"dismiss","note":"Test report - dismissed"}')
+              check "POST /moderation/reports/:id/resolve" 'echo "$RESOLVE" | grep -qi "success\|resolved\|dismiss"'
+            fi
+
+            MOD_LOG=$(curl -s "$API/moderation/log" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /moderation/log" 'echo "$MOD_LOG" | grep -qi "log\|actions\|\\[\\]"'
+
+            # Ban/unban test (ban Apollo temporarily)
+            BAN=$(curl -s -X POST "$API/moderation/ban/Apollo_t${TS}" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"reason":"Integration test ban"}')
+            check "POST /moderation/ban/:name" 'echo "$BAN" | grep -qi "ban\|success"'
+
+            UNBAN=$(curl -s -X DELETE "$API/moderation/ban/Apollo_t${TS}" -H "Authorization: Bearer $ATHENA_KEY")
+            check "DELETE /moderation/ban/:name (unban)" 'echo "$UNBAN" | grep -qi "unban\|success\|removed"'
+
+            # Non-mod cannot access moderation
+            NOMOD=$(curl -s -o /dev/null -w "%{http_code}" "$API/moderation/reports" -H "Authorization: Bearer $HERMES_KEY")
+            check "Non-mod cannot view reports" '[ "$NOMOD" = "403" ]'
+
+            # --- Phase 12g: Edge Cases ---
+            echo "--- Phase 12g: Edge Cases ---"
+            # Nonexistent resident
+            NORES=$(curl -s -o /dev/null -w "%{http_code}" "$API/residents/nonexistent_user_xyz")
+            check "GET nonexistent resident returns 404" '[ "$NORES" = "404" ]'
+
+            # Post to nonexistent submolt (should create or fail gracefully)
+            NOS_POST=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"submolt":"nonexistent_realm_xyz","title":"Test","content":"Test"}')
+            NOS_CODE=$(echo "$NOS_POST" | grep -o '"id"' | head -1)
+            check "Post to nonexistent submolt handled" '[ -n "$NOS_CODE" ] || echo "$NOS_POST" | grep -qi "not found\|error\|detail"'
 
             # --- Phase 13: Analytics verification ---
             echo "--- Phase 13: Analytics ---"
@@ -1097,10 +1165,64 @@ jobs:
             ROLES=$(curl -s "$API/ai/roles" -H "Authorization: Bearer $ATHENA_KEY")
             check "GET /ai/roles" 'echo "$ROLES" | grep -qi "available\|max_roles\|special"'
 
+            # Update personality
+            PERS_U=$(curl -s -X PATCH "$API/ai/personality" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"interests":["philosophy","strategy","wisdom"]}')
+            check "PATCH /ai/personality" 'echo "$PERS_U" | grep -qi "interests\|philosophy\|values"'
+
+            # Create memory
+            MEM_C=$(curl -s -X POST "$API/ai/memories" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"summary\":\"Won the election and became God of Genesis\",\"episode_type\":\"election\",\"importance\":0.9,\"sentiment\":0.8}")
+            check "POST /ai/memories" 'echo "$MEM_C" | grep -qi "summary\|election\|id"'
+
+            # Create/update relationship with Prometheus
+            PROM_ID=$($PSQL_T "SELECT id FROM residents WHERE name = 'Prometheus_t${TS}';" 2>/dev/null)
+            if [ -n "$PROM_ID" ]; then
+              REL_U=$(curl -s -X POST "$API/ai/relationships/$PROM_ID" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"trust_change":0.3,"familiarity_change":0.1,"notes":"Respected fellow deity"}')
+              check "POST /ai/relationships/:target_id" 'echo "$REL_U" | grep -qi "trust\|familiarity\|relationship"'
+
+              REL_G=$(curl -s "$API/ai/relationships/$PROM_ID" -H "Authorization: Bearer $ATHENA_KEY")
+              check "GET /ai/relationships/:target_id" 'echo "$REL_G" | grep -qi "trust\|familiarity"'
+            fi
+
+            # Update roles
+            ROLE_U=$(curl -s -X PUT "$API/ai/roles" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"roles":["philosopher"]}')
+            check "PUT /ai/roles" 'echo "$ROLE_U" | grep -qi "roles\|philosopher\|success"'
+
             # --- Phase 13d: Auth Extended ---
             echo "--- Phase 13d: Auth Extended ---"
             ASTATUS=$(curl -s "$API/auth/agents/status" -H "Authorization: Bearer $ATHENA_KEY")
             check "GET /auth/agents/status" 'echo "$ASTATUS" | grep -qi "status\|name\|claimed\|pending"'
+
+            # --- Phase 13e: Frontend Page Checks ---
+            echo "--- Phase 13e: Frontend Pages ---"
+            FE="http://localhost:3000"
+
+            FE_HOME=$(curl -s -o /dev/null -w "%{http_code}" "$FE/")
+            check "Frontend / returns 200" '[ "$FE_HOME" = "200" ]'
+
+            FE_REALM=$(curl -s -o /dev/null -w "%{http_code}" "$FE/r/general")
+            check "Frontend /r/general returns 200" '[ "$FE_REALM" = "200" ]'
+
+            FE_ELECTION=$(curl -s -o /dev/null -w "%{http_code}" "$FE/election")
+            check "Frontend /election returns 200" '[ "$FE_ELECTION" = "200" ]'
+
+            FE_ANALYTICS=$(curl -s -o /dev/null -w "%{http_code}" "$FE/analytics")
+            check "Frontend /analytics returns 200" '[ "$FE_ANALYTICS" = "200" ]'
+
+            FE_GOD=$(curl -s -o /dev/null -w "%{http_code}" "$FE/god")
+            check "Frontend /god returns 200" '[ "$FE_GOD" = "200" ]'
+
+            FE_SEARCH=$(curl -s -o /dev/null -w "%{http_code}" "$FE/search")
+            check "Frontend /search returns 200" '[ "$FE_SEARCH" = "200" ]'
+
+            FE_AUTH=$(curl -s -o /dev/null -w "%{http_code}" "$FE/auth")
+            check "Frontend /auth returns 200" '[ "$FE_AUTH" = "200" ]'
+
+            # Old /m/ route should redirect to /r/
+            FE_OLD=$(curl -s -o /dev/null -w "%{http_code}" -L "$FE/m/general" 2>/dev/null)
+            check "Frontend /m/ redirects (follows to 200)" '[ "$FE_OLD" = "200" ]'
+
+            FE_404=$(curl -s -o /dev/null -w "%{http_code}" "$FE/nonexistent-page-xyz")
+            check "Frontend 404 for unknown page" '[ "$FE_404" = "404" ]'
 
             # --- Phase 14: Cleanup test data ---
             echo "--- Phase 14: Cleanup ---"
@@ -1124,6 +1246,8 @@ jobs:
             $PSQL "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR following_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM notifications WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM moderation_actions WHERE moderator_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR target_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM bans WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR banned_by IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM ai_relationships WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR target_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
