@@ -1584,9 +1584,55 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as posts FROM posts;" 2>&1 || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT name, post_count FROM submolts ORDER BY post_count DESC;" 2>&1 || true
 
-            # One-time: translate any remaining Japanese content to English
-            echo "=== Translating Japanese content to English ==="
-            docker exec genesis-backend python scripts/translate_to_english.py 2>&1 || echo "Translation script failed (non-fatal)"
+            # Clean up Greek-god-named test agents (Athena_t12345, Hermes_t12345, etc.)
+            echo "=== Cleaning up test agent remnants ==="
+            PSQL_CLEAN="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c"
+            $PSQL_CLEAN "DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$') OR following_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM ai_memories WHERE agent_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM ai_relationships WHERE agent_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$') OR target_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM ai_election_memories WHERE agent_id IN (SELECT id FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$');" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM residents WHERE name ~ '^(Athena|Hermes|Prometheus|Apollo|RealmTester|TestBot)_t[0-9]+$';" 2>/dev/null || true
+            $PSQL_CLEAN "DELETE FROM residents WHERE name LIKE '%_test_v1' OR name LIKE '%Tester_v1';" 2>/dev/null || true
+            echo "Test agent cleanup done"
+
+            # Backfill daily stats (past 60 days)
+            echo "=== Backfilling daily analytics stats ==="
+            docker exec genesis-backend python -c "
+import asyncio, os, re
+from datetime import date, timedelta
+async def backfill():
+    db_url = os.environ.get('DATABASE_URL','')
+    dsn = re.sub(r'\+\w+', '', db_url, count=1)
+    import asyncpg
+    conn = await asyncpg.connect(dsn)
+    today = date.today()
+    for i in range(60, 0, -1):
+        d = today - timedelta(days=i)
+        ds = d.isoformat()
+        de = (d + timedelta(days=1)).isoformat()
+        existing = await conn.fetchval('SELECT count(*) FROM daily_stats WHERE date=\$1', d)
+        if existing > 0:
+            continue
+        np = await conn.fetchval('SELECT count(*) FROM posts WHERE created_at >= \$1 AND created_at < \$2', ds, de) or 0
+        nc = await conn.fetchval('SELECT count(*) FROM comments WHERE created_at >= \$1 AND created_at < \$2', ds, de) or 0
+        nv = await conn.fetchval('SELECT count(*) FROM votes WHERE created_at >= \$1 AND created_at < \$2', ds, de) or 0
+        nr = await conn.fetchval('SELECT count(*) FROM residents WHERE created_at >= \$1 AND created_at < \$2', ds, de) or 0
+        tr = await conn.fetchval('SELECT count(*) FROM residents WHERE created_at < \$1', de) or 0
+        tp = await conn.fetchval('SELECT count(*) FROM posts WHERE created_at < \$1', de) or 0
+        tc = await conn.fetchval('SELECT count(*) FROM comments WHERE created_at < \$1', de) or 0
+        tv = await conn.fetchval('SELECT count(*) FROM votes WHERE created_at < \$1', de) or 0
+        hc = await conn.fetchval(\"SELECT count(*) FROM residents WHERE _type='human' AND created_at < \$1\", de) or 0
+        ac = await conn.fetchval(\"SELECT count(*) FROM residents WHERE _type='agent' AND created_at < \$1\", de) or 0
+        import uuid
+        await conn.execute('''INSERT INTO daily_stats (id, date, total_residents, new_residents, active_residents, human_count, agent_count, total_posts, new_posts, total_comments, new_comments, total_votes, new_votes, avg_posts_per_user, avg_comments_per_post, avg_votes_per_post, posts_by_submolt) VALUES (\$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8,\$9,\$10,\$11,\$12,\$13,\$14,\$15,\$16,\$17) ON CONFLICT (date) DO NOTHING''', str(uuid.uuid4()), d, tr, nr, max(np+nc+nv,1), hc, ac, tp, np, tc, nc, tv, nv, 0.0, 0.0, 0.0, '{}')
+        print(f'  {d}: {np}p {nc}c {nv}v')
+    await conn.close()
+    print('Backfill done')
+asyncio.run(backfill())
+" 2>&1 || echo "Backfill failed (non-fatal)"
 
             echo "=== Deployment complete ==="
         env:
