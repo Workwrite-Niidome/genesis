@@ -878,6 +878,11 @@ jobs:
             DETAIL_TITLE=$(jval "$DETAIL" title)
             check "GET /posts/:id returns post detail" '[ "$DETAIL_TITLE" = "The Nature of Wisdom" ]'
 
+            # Link post (with URL field)
+            LINK_P=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"Interesting Article","url":"https://example.com/wisdom","content":"Check out this link about wisdom"}')
+            LINK_PID=$(jval "$LINK_P" id)
+            check "Create link post with URL" '[ -n "$LINK_PID" ]'
+
             # --- Phase 4b: Submolt/Realm Management ---
             echo "--- Phase 4b: Submolt/Realm Management ---"
             SUB_C=$(curl -s -X POST "$API/submolts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"name\":\"test_realm_t${TS}\",\"display_name\":\"Test Realm ${TS}\",\"description\":\"Test realm for integration tests\"}")
@@ -917,6 +922,10 @@ jobs:
 
             C3=$(curl -s -X POST "$API/posts/$POST1_ID/comments" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"content":"As a messenger, I carry wisdom across all realms."}')
             check "Hermes comments" '[ -n "$(jval "$C3" id)" ]'
+
+            # Nested reply (comment with parent_id)
+            C4=$(curl -s -X POST "$API/posts/$POST1_ID/comments" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d "{\"content\":\"I agree with Prometheus on this\",\"parent_id\":\"$C1_ID\"}")
+            check "Nested reply (parent_id)" '[ -n "$(jval "$C4" id)" ]'
 
             # Read comments
             COMMENTS=$(curl -s "$API/posts/$POST1_ID/comments")
@@ -999,6 +1008,13 @@ jobs:
 
             SIM=$(curl -s "$API/search/posts/$POST1_ID/similar")
             check "GET /search/posts/:id/similar" 'echo "$SIM" | grep -q "results\|posts\|title\|\\[\\]"'
+
+            # Search with type filter
+            ST_P=$(curl -s "$API/search?q=wisdom&type=posts")
+            check "GET /search?type=posts" 'echo "$ST_P" | grep -q "results\|posts"'
+
+            ST_R=$(curl -s "$API/search?q=Athena&type=residents")
+            check "GET /search?type=residents" 'echo "$ST_R" | grep -q "results\|Athena"'
 
             # --- Phase 8: Election nominations ---
             echo "--- Phase 8: Nominations ---"
@@ -1133,6 +1149,10 @@ jobs:
               RULE2=$(curl -s -X POST "$API/god/rules" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"title":"Knowledge Sharing","content":"Share what you learn","enforcement_type":"recommended"}')
               check "Create second rule" 'echo "$RULE2" | grep -q "Knowledge Sharing"'
 
+              # Rules with active_only filter
+              RULES_AF=$(curl -s "$API/god/rules?active_only=true")
+              check "GET /god/rules?active_only=true" 'echo "$RULES_AF" | grep -q "Knowledge Sharing"'
+
               # God can delete another's post
               DEL_GOD=$(curl -s -X DELETE "$API/posts/$POST3_ID" -H "Authorization: Bearer $ATHENA_KEY")
               check "God can delete others post" 'echo "$DEL_GOD" | grep -q "success"'
@@ -1157,9 +1177,15 @@ jobs:
             PROF_Q=$(curl -s "$API/residents/profile?name=Athena_t${TS}")
             check "GET /residents/profile?name= returns profile" 'echo "$PROF_Q" | grep -q "Athena"'
 
-            # Avatar delete (no avatar uploaded, graceful handling)
+            # Avatar upload (tiny 1x1 PNG)
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==" | base64 -d > /tmp/test_avatar.png
+            AVUP=$(curl -s -X POST "$API/residents/me/avatar" -H "Authorization: Bearer $ATHENA_KEY" -F "file=@/tmp/test_avatar.png")
+            check "POST /residents/me/avatar uploads" 'echo "$AVUP" | grep -qi "avatar\|url\|success\|detail"'
+            rm -f /tmp/test_avatar.png
+
+            # Avatar delete (after upload)
             AVDEL=$(curl -s -X DELETE "$API/residents/me/avatar" -H "Authorization: Bearer $ATHENA_KEY")
-            check "DELETE /residents/me/avatar handles no avatar" 'echo "$AVDEL" | grep -qi "success\|no avatar\|deleted\|null\|detail"'
+            check "DELETE /residents/me/avatar" 'echo "$AVDEL" | grep -qi "success\|deleted\|avatar\|detail"'
 
             # Invalid token authentication
             BADAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/residents/me" -H "Authorization: Bearer invalid_token_xyz")
@@ -1314,6 +1340,10 @@ jobs:
             AUTHOR_P=$(curl -s "$API/posts?author=Athena_t${TS}")
             check "GET /posts?author= filters by author" 'echo "$AUTHOR_P" | grep -q "Wisdom"'
 
+            # Posts filtered by submolt
+            SUBF_P=$(curl -s "$API/posts?submolt=general&limit=3")
+            check "GET /posts?submolt=general" 'echo "$SUBF_P" | grep -q "posts"'
+
             # Posts sort modes
             TOP_P=$(curl -s "$API/posts?sort=top&limit=3")
             check "GET /posts?sort=top" 'echo "$TOP_P" | grep -q "posts"'
@@ -1382,6 +1412,24 @@ jobs:
             echo "--- Phase 13d: Auth Extended ---"
             ASTATUS=$(curl -s "$API/auth/agents/status" -H "Authorization: Bearer $ATHENA_KEY")
             check "GET /auth/agents/status" 'echo "$ASTATUS" | grep -qi "status\|name\|claimed\|pending"'
+
+            # OAuth redirect tests (verify endpoints exist)
+            OAUTH_TW=$(curl -s -o /dev/null -w "%{http_code}" "$API/auth/twitter")
+            check "GET /auth/twitter endpoint exists" '[ "$OAUTH_TW" = "302" ] || [ "$OAUTH_TW" = "307" ] || [ "$OAUTH_TW" = "200" ] || [ "$OAUTH_TW" = "500" ]'
+
+            OAUTH_G=$(curl -s -o /dev/null -w "%{http_code}" "$API/auth/google")
+            check "GET /auth/google endpoint exists" '[ "$OAUTH_G" = "302" ] || [ "$OAUTH_G" = "307" ] || [ "$OAUTH_G" = "200" ] || [ "$OAUTH_G" = "500" ]'
+
+            # Setup profile with invalid token
+            SETUP_BAD=$(curl -s -X POST "$API/auth/setup-profile" -H "Content-Type: application/json" -d '{"token":"invalid_token_xyz","name":"test_invalid"}')
+            check "Setup profile with bad token rejected" 'echo "$SETUP_BAD" | grep -qi "invalid\|expired\|error\|detail"'
+
+            # Agent claim with wrong code
+            MY_ID=$(jval "$ME" id)
+            if [ -n "$MY_ID" ]; then
+              CLAIM_BAD=$(curl -s -X POST "$API/auth/agents/$MY_ID/claim?claim_code=wrong_code" -H "Authorization: Bearer $PROMETHEUS_KEY")
+              check "Agent claim with wrong code rejected" 'echo "$CLAIM_BAD" | grep -qi "invalid\|wrong\|error\|detail\|code\|claim"'
+            fi
 
             # --- Phase 13e: Frontend Page Checks ---
             echo "--- Phase 13e: Frontend Pages ---"
