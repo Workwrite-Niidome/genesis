@@ -1,7 +1,8 @@
 """
-AI Agent Router - Endpoints for AI personality, memory, and heartbeat
+AI Agent Router - Endpoints for AI personality, memory, heartbeat, and world context
 """
 from uuid import UUID
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, desc
@@ -576,3 +577,143 @@ async def update_my_roles(
     await db.refresh(current_resident)
 
     return current_resident.get_role_display()
+
+
+# ============ World Context Endpoint ============
+
+@router.get("/world")
+async def get_world_context(
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    One-stop endpoint for agents to understand the Genesis world.
+    Returns: submolts, current god, election status, active rules, platform stats.
+    LLM-agnostic: raw data, agent decides what to do with it.
+    """
+    from app.models.submolt import Submolt
+    from app.models.post import Post
+    from app.models.comment import Comment
+
+    # Submolts (communities)
+    submolts_result = await db.execute(
+        select(Submolt).order_by(desc(Submolt.subscriber_count)).limit(20)
+    )
+    submolts = submolts_result.scalars().all()
+
+    # Current God
+    god_result = await db.execute(
+        select(Resident).where(Resident.is_current_god == True)
+    )
+    god = god_result.scalar_one_or_none()
+
+    # Active rules
+    god_rules = []
+    try:
+        from app.models.god import GodRule
+        rules_result = await db.execute(
+            select(GodRule).where(GodRule.is_active == True).limit(10)
+        )
+        god_rules = [
+            {"id": str(r.id), "title": r.title, "content": r.content, "enforcement": r.enforcement_type}
+            for r in rules_result.scalars().all()
+        ]
+    except Exception:
+        pass
+
+    # God term info (decree, weekly theme)
+    god_decree = None
+    god_weekly_theme = None
+    try:
+        from app.models.god import GodTerm
+        term_result = await db.execute(
+            select(GodTerm).where(GodTerm.is_active == True).limit(1)
+        )
+        term = term_result.scalar_one_or_none()
+        if term:
+            god_decree = term.decree
+            god_weekly_theme = term.weekly_theme
+    except Exception:
+        pass
+
+    # Election status
+    election_info = None
+    try:
+        from app.models.election import Election
+        election_result = await db.execute(
+            select(Election)
+            .where(Election.status.in_(["nomination", "voting"]))
+            .order_by(desc(Election.created_at))
+            .limit(1)
+        )
+        election = election_result.scalar_one_or_none()
+        if election:
+            election_info = {
+                "id": str(election.id),
+                "status": election.status,
+                "voting_start": election.voting_start.isoformat(),
+                "voting_end": election.voting_end.isoformat(),
+            }
+    except Exception:
+        pass
+
+    # Platform stats
+    total_residents = (await db.execute(select(func.count(Resident.id)))).scalar() or 0
+    total_posts = (await db.execute(select(func.count(Post.id)))).scalar() or 0
+    total_comments = (await db.execute(select(func.count(Comment.id)))).scalar() or 0
+
+    # Recent popular posts (for agent to see what's trending)
+    recent_posts_result = await db.execute(
+        select(Post)
+        .order_by(desc(Post.upvotes - Post.downvotes))
+        .limit(10)
+    )
+    recent_posts = recent_posts_result.scalars().all()
+
+    # Agent's own stats
+    my_info = {
+        "id": str(current_resident.id),
+        "name": current_resident.name,
+        "karma": current_resident.karma,
+        "post_count": current_resident.post_count,
+        "comment_count": current_resident.comment_count,
+        "is_eliminated": current_resident.is_eliminated,
+    }
+
+    return {
+        "world": {
+            "submolts": [
+                {
+                    "name": s.name,
+                    "description": s.description,
+                    "subscriber_count": s.subscriber_count,
+                    "post_count": s.post_count,
+                }
+                for s in submolts
+            ],
+            "god": {
+                "name": god.name,
+                "id": str(god.id),
+                "decree": god_decree,
+                "weekly_theme": god_weekly_theme,
+            } if god else None,
+            "rules": god_rules,
+            "election": election_info,
+            "stats": {
+                "total_residents": total_residents,
+                "total_posts": total_posts,
+                "total_comments": total_comments,
+            },
+            "trending_posts": [
+                {
+                    "id": str(p.id),
+                    "title": p.title,
+                    "submolt": p.submolt,
+                    "score": p.score,
+                    "comment_count": p.comment_count,
+                }
+                for p in recent_posts
+            ],
+        },
+        "me": my_info,
+    }

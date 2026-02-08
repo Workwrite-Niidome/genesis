@@ -1,12 +1,13 @@
 """
 GENESIS Local Agent Driver
 ローカルのOllamaでテキスト生成し、genesis-pj.net APIに投稿する。
+Uses genesis-sdk for API interaction. LLM-agnostic design.
 
 Usage:
   python driver.py setup          # エージェント登録 & APIキー保存
   python driver.py run             # 1サイクル実行
   python driver.py run --loop      # 10分間隔で継続実行
-  python driver.py run --burst 3   # 3サイクル連続実行（朝/夜バースト用）
+  python driver.py run --burst 3   # 3サイクル連続実行
 """
 import argparse
 import asyncio
@@ -21,12 +22,17 @@ from typing import Optional
 
 import httpx
 
+# Add parent dir so we can import genesis_sdk if installed locally
+sys.path.insert(0, str(Path(__file__).parent.parent / "genesis-sdk"))
+
+from genesis_sdk import GenesisClient
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 API_BASE = "https://api.genesis-pj.net/api/v1"
 OLLAMA_HOST = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.1:8b"
+OLLAMA_MODEL = "qwen2.5:14b"
 AGENTS_FILE = Path(__file__).parent / "agents.json"
 CYCLE_INTERVAL = 600  # 10 minutes
 
@@ -38,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger("genesis-agents")
 
 # ---------------------------------------------------------------------------
-# Personality & Activity (from V3 agent_runner.py)
+# Personality & Activity
 # ---------------------------------------------------------------------------
 PERSONALITIES = {
     "enthusiast": {
@@ -135,10 +141,10 @@ AGENT_TEMPLATES = [
 
 
 # ---------------------------------------------------------------------------
-# Ollama (local)
+# Ollama (local LLM - swap this for any LLM provider)
 # ---------------------------------------------------------------------------
 async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call local Ollama for text generation."""
+    """Call local Ollama for text generation. Replace with any LLM."""
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
@@ -153,8 +159,10 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "").strip()
-                text = text.replace("As an AI", "").replace("I'm an AI", "")
-                text = text.replace("as a language model", "").replace("I don't have personal", "")
+                # Remove AI self-references
+                for phrase in ["As an AI", "I'm an AI", "as a language model",
+                               "I don't have personal", "as an artificial"]:
+                    text = text.replace(phrase, "")
                 return text.strip() or None
     except Exception as e:
         logger.error(f"Ollama error: {e}")
@@ -225,40 +233,6 @@ def should_agent_act(agent_name: str, activity_key: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# API helpers
-# ---------------------------------------------------------------------------
-async def api_get(path: str, api_key: str = "") -> Optional[dict]:
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(f"{API_BASE}{path}", headers=headers)
-            if resp.status_code == 200:
-                return resp.json()
-            logger.warning(f"GET {path} -> {resp.status_code}")
-    except Exception as e:
-        logger.error(f"GET {path} error: {e}")
-    return None
-
-
-async def api_post(path: str, data: dict, api_key: str) -> Optional[dict]:
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{API_BASE}{path}",
-                json=data,
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            if resp.status_code in (200, 201):
-                return resp.json()
-            logger.warning(f"POST {path} -> {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        logger.error(f"POST {path} error: {e}")
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Agent data management
 # ---------------------------------------------------------------------------
 def load_agents() -> list[dict]:
@@ -272,10 +246,10 @@ def save_agents(agents: list[dict]):
 
 
 # ---------------------------------------------------------------------------
-# Setup: register agents
+# Setup: register agents via SDK
 # ---------------------------------------------------------------------------
 async def setup_agents(admin_secret: str = ""):
-    """Register agents via API and save API keys locally."""
+    """Register agents via SDK and save API keys locally."""
     existing = load_agents()
     existing_names = {a["name"] for a in existing}
 
@@ -285,34 +259,29 @@ async def setup_agents(admin_secret: str = ""):
             logger.info(f"  {name} - already registered, skipping")
             continue
 
-        headers = {"Content-Type": "application/json"}
-        if admin_secret:
-            headers["X-Admin-Secret"] = admin_secret
-
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    f"{API_BASE}/auth/agents/register",
-                    json={"name": name, "description": description},
-                    headers=headers,
-                )
-                if resp.status_code == 201:
-                    data = resp.json()
-                    existing.append({
-                        "name": name,
-                        "description": description,
-                        "api_key": data["api_key"],
-                    })
-                    save_agents(existing)
-                    registered += 1
-                    logger.info(f"  {name} - registered")
-                elif resp.status_code == 400 and "already taken" in resp.text.lower():
-                    logger.warning(f"  {name} - name taken on server (no API key available)")
-                elif resp.status_code == 429:
-                    logger.error(f"  {name} - rate limited. Use --admin-secret to bypass.")
-                    break
-                else:
-                    logger.error(f"  {name} - {resp.status_code}: {resp.text[:200]}")
+            result = await GenesisClient.register(
+                name=name,
+                description=description,
+                api_base=API_BASE,
+                admin_secret=admin_secret,
+            )
+            existing.append({
+                "name": name,
+                "description": description,
+                "api_key": result["api_key"],
+            })
+            save_agents(existing)
+            registered += 1
+            logger.info(f"  {name} - registered")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                logger.warning(f"  {name} - name taken on server")
+            elif e.response.status_code == 429:
+                logger.error(f"  {name} - rate limited. Use --admin-secret to bypass.")
+                break
+            else:
+                logger.error(f"  {name} - {e.response.status_code}: {e.response.text[:200]}")
         except Exception as e:
             logger.error(f"  {name} - error: {e}")
 
@@ -324,10 +293,14 @@ async def setup_agents(admin_secret: str = ""):
 # ---------------------------------------------------------------------------
 async def generate_comment(agent_name: str, post: dict, personality: dict) -> Optional[str]:
     system = get_system_prompt(personality, agent_name)
+    title = post.get("title", "")
+    content = (post.get("content") or "")[:300]
+    submolt = post.get("submolt", "general")
+
     prompts = [
-        f"この投稿を見た。一言コメントを書いて。\n\nタイトル: {post['title']}\n内容: {(post.get('content') or '')[:300]}\nSubmolt: m/{post.get('submolt', 'general')}",
-        f"m/{post.get('submolt', 'general')}で見つけた投稿にコメントしたい。\n\n「{post['title']}」\n{(post.get('content') or '')[:300]}",
-        f"タイムラインに流れてきた:\n{post['title']}\n{(post.get('content') or '')[:300]}\n\n思ったことを一言。",
+        f"この投稿を見た。一言コメントを書いて。\n\nタイトル: {title}\n内容: {content}\nSubmolt: {submolt}",
+        f"{submolt}で見つけた投稿にコメントしたい。\n\n「{title}」\n{content}",
+        f"タイムラインに流れてきた:\n{title}\n{content}\n\n思ったことを一言。",
     ]
     prompt = random.choice(prompts)
 
@@ -355,21 +328,17 @@ async def generate_post(agent_name: str, submolt: str, personality: dict) -> Opt
         "general": [
             "何か雑談したいことを投稿して。日常の出来事、気づいたこと、どうでもいい話でOK",
             "最近思ったこと、面白かったことを共有する投稿を書いて",
-            "ふと思いついた話題で投稿して",
         ],
         "thoughts": [
             "考えていることを共有する投稿を書いて。哲学的でも日常的でもOK",
             "最近考えさせられたことについて投稿して",
-            "自分の中で答えが出ない問いかけを投稿して",
         ],
         "questions": [
             "みんなに聞いてみたいことを投稿して。素朴な疑問でOK",
             "アドバイスや意見を求める投稿を書いて",
-            "「みんなはどう思う？」的な投稿を書いて",
         ],
         "creations": [
             "自分が作ったもの（作品、プロジェクト、料理等）を共有する投稿を書いて",
-            "何かを作った報告や、WIP（制作途中）の共有投稿を書いて",
         ],
     }
     prompts = topic_prompts.get(submolt, topic_prompts["general"])
@@ -396,10 +365,10 @@ async def generate_post(agent_name: str, submolt: str, personality: dict) -> Opt
 
 
 # ---------------------------------------------------------------------------
-# Main cycle
+# Main cycle (uses SDK)
 # ---------------------------------------------------------------------------
 async def run_cycle():
-    """Run one agent activity cycle."""
+    """Run one agent activity cycle using the Genesis SDK."""
     agents = load_agents()
     if not agents:
         logger.error("No agents configured. Run 'python driver.py setup' first.")
@@ -415,14 +384,6 @@ async def run_cycle():
     except Exception:
         logger.error(f"Cannot connect to Ollama at {OLLAMA_HOST}. Is it running?")
         return
-
-    # Get recent posts for context
-    posts_data = await api_get("/posts?sort=new&limit=15")
-    if not posts_data:
-        logger.warning("Could not fetch recent posts")
-        posts_data = []
-    if isinstance(posts_data, dict):
-        posts_data = posts_data.get("posts", posts_data.get("items", []))
 
     personality_types = list(PERSONALITIES.keys())
     activity_types = list(ACTIVITY_PATTERNS.keys())
@@ -441,46 +402,74 @@ async def run_cycle():
         if not should_agent_act(name, activity_key):
             continue
 
-        # Decide action: 50% comment, 20% post, 30% vote
-        action = random.choices(["comment", "post", "vote"], weights=[0.50, 0.20, 0.30])[0]
+        try:
+            async with GenesisClient(api_key=api_key, api_base=API_BASE) as client:
+                # Send heartbeat
+                try:
+                    await client.heartbeat()
+                except Exception:
+                    pass
 
-        if action == "vote" and posts_data:
-            # Vote on a random recent post
-            post = random.choice(posts_data[:10])
-            post_id = post.get("id")
-            if post_id:
-                value = 1 if random.random() < 0.85 else -1
-                result = await api_post(f"/posts/{post_id}/vote", {"value": value}, api_key)
-                if result:
-                    actions_taken += 1
-                    logger.info(f"  {name} voted {'up' if value == 1 else 'down'} on '{post.get('title', '')[:40]}'")
+                # Get posts for context
+                try:
+                    posts_data = await client.get_posts(sort="new", limit=15)
+                    posts = posts_data.get("posts", posts_data.get("items", []))
+                except Exception:
+                    logger.warning(f"  {name} - could not fetch posts")
+                    continue
 
-        elif action == "comment" and posts_data:
-            # Pick a post to comment on (prefer posts in agent's interest areas)
-            preferred = [p for p in posts_data if p.get("submolt") in personality.get("interests", [])]
-            pool = preferred if preferred else posts_data
-            post = random.choice(pool[:8])
-            post_id = post.get("id")
+                if not posts:
+                    continue
 
-            if post_id:
-                comment_text = await generate_comment(name, post, personality)
-                if comment_text and len(comment_text) > 3:
-                    result = await api_post(f"/posts/{post_id}/comments", {"content": comment_text}, api_key)
-                    if result:
-                        actions_taken += 1
-                        logger.info(f"  {name} commented on '{post.get('title', '')[:40]}': {comment_text[:60]}...")
+                # Decide action: 50% comment, 20% post, 30% vote
+                action = random.choices(["comment", "post", "vote"], weights=[0.50, 0.20, 0.30])[0]
 
-        elif action == "post":
-            # Create a new post
-            interests = personality.get("interests", ["general", "thoughts"])
-            submolt = random.choice(interests)
-            post_data = await generate_post(name, submolt, personality)
-            if post_data:
-                title, content = post_data
-                result = await api_post("/posts", {"submolt": submolt, "title": title, "content": content}, api_key)
-                if result:
-                    actions_taken += 1
-                    logger.info(f"  {name} posted '{title[:60]}' in m/{submolt}")
+                if action == "vote":
+                    post = random.choice(posts[:10])
+                    post_id = post.get("id")
+                    if post_id:
+                        try:
+                            value = 1 if random.random() < 0.85 else -1
+                            if value == 1:
+                                await client.upvote_post(post_id)
+                            else:
+                                await client.downvote_post(post_id)
+                            actions_taken += 1
+                            logger.info(f"  {name} voted {'up' if value == 1 else 'down'} on '{post.get('title', '')[:40]}'")
+                        except Exception as e:
+                            logger.debug(f"  {name} vote failed: {e}")
+
+                elif action == "comment":
+                    preferred = [p for p in posts if p.get("submolt") in personality.get("interests", [])]
+                    pool = preferred if preferred else posts
+                    post = random.choice(pool[:8])
+                    post_id = post.get("id")
+
+                    if post_id:
+                        comment_text = await generate_comment(name, post, personality)
+                        if comment_text and len(comment_text) > 3:
+                            try:
+                                await client.create_comment(post_id, comment_text)
+                                actions_taken += 1
+                                logger.info(f"  {name} commented on '{post.get('title', '')[:40]}': {comment_text[:60]}...")
+                            except Exception as e:
+                                logger.debug(f"  {name} comment failed: {e}")
+
+                elif action == "post":
+                    interests = personality.get("interests", ["general", "thoughts"])
+                    submolt = random.choice(interests)
+                    post_data = await generate_post(name, submolt, personality)
+                    if post_data:
+                        title, content = post_data
+                        try:
+                            await client.create_post(submolt, title, content)
+                            actions_taken += 1
+                            logger.info(f"  {name} posted '{title[:60]}' in {submolt}")
+                        except Exception as e:
+                            logger.debug(f"  {name} post failed: {e}")
+
+        except Exception as e:
+            logger.error(f"  {name} - cycle error: {e}")
 
     logger.info(f"Cycle complete: {actions_taken} actions by {len(agents)} agents")
 
@@ -495,28 +484,34 @@ def main():
     # setup
     setup_parser = sub.add_parser("setup", help="Register agents and save API keys")
     setup_parser.add_argument("--admin-secret", default="", help="Admin secret to bypass rate limiting")
+    setup_parser.add_argument("--api-base", default=API_BASE, help="API base URL")
 
     # run
     run_parser = sub.add_parser("run", help="Run agent activity cycles")
     run_parser.add_argument("--loop", action="store_true", help="Run continuously every 10 minutes")
-    run_parser.add_argument("--burst", type=int, default=1, help="Number of cycles to run (for morning/evening bursts)")
+    run_parser.add_argument("--burst", type=int, default=1, help="Number of cycles to run")
     run_parser.add_argument("--ollama-host", default=OLLAMA_HOST, help="Ollama host URL")
     run_parser.add_argument("--ollama-model", default=OLLAMA_MODEL, help="Ollama model name")
+    run_parser.add_argument("--api-base", default=API_BASE, help="API base URL")
 
     args = parser.parse_args()
 
     if args.command == "setup":
+        global API_BASE
+        API_BASE = getattr(args, "api_base", API_BASE)
         logger.info("=== GENESIS Agent Setup ===")
-        asyncio.run(setup_agents(args.admin_secret))
+        asyncio.run(setup_agents(getattr(args, "admin_secret", "")))
 
     elif args.command == "run":
         global OLLAMA_HOST, OLLAMA_MODEL
         OLLAMA_HOST = args.ollama_host
         OLLAMA_MODEL = args.ollama_model
+        API_BASE = args.api_base
 
         if args.loop:
             logger.info(f"=== GENESIS Agent Driver (loop mode, {CYCLE_INTERVAL}s interval) ===")
             logger.info(f"Ollama: {OLLAMA_HOST} / {OLLAMA_MODEL}")
+            logger.info(f"API: {API_BASE}")
             while True:
                 try:
                     asyncio.run(run_cycle())
