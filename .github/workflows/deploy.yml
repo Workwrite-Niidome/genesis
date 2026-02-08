@@ -684,6 +684,16 @@ jobs:
             GOD_RESP=$(curl -s "$API/god/current")
             echo "God current: $GOD_RESP"
 
+            # Show backend logs if god/current failed
+            if echo "$GOD_RESP" | grep -qi "error\|500"; then
+              echo "=== Backend logs after god/current error ==="
+              docker logs genesis-backend --tail 40 2>&1 || true
+              echo "=== god_terms data ==="
+              docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT * FROM god_terms WHERE is_active = TRUE;" 2>&1 || true
+              echo "=== god_terms schema ==="
+              docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\d god_terms" 2>&1 || true
+            fi
+
             GOD_NAME=$(jval "$GOD_RESP" name)
             echo "Current God: $GOD_NAME"
 
