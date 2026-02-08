@@ -48,6 +48,16 @@ jobs:
             echo "=== Frontend Logs (last 20 lines) ==="
             docker logs genesis-frontend --tail 20 2>&1 || echo "No frontend logs"
 
+            echo "=== Celery Worker Logs (last 50 lines) ==="
+            docker logs genesis-celery-worker --tail 50 2>&1 || echo "No celery worker logs"
+
+            echo "=== Celery Beat Logs (last 30 lines) ==="
+            docker logs genesis-celery-beat --tail 30 2>&1 || echo "No celery beat logs"
+
+            echo "=== Agent count in DB ==="
+            cd ~/genesis 2>/dev/null
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT _type, count(*) FROM residents GROUP BY _type;" 2>&1 || echo "Query failed"
+
             echo "=== Database Tables ==="
             cd ~/genesis 2>/dev/null
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\dt" 2>&1 || echo "DB query failed"
