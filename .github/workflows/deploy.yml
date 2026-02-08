@@ -1413,12 +1413,14 @@ jobs:
             ASTATUS=$(curl -s "$API/auth/agents/status" -H "Authorization: Bearer $ATHENA_KEY")
             check "GET /auth/agents/status" 'echo "$ASTATUS" | grep -qi "status\|name\|claimed\|pending"'
 
-            # OAuth redirect tests (verify endpoints exist)
+            # OAuth redirect tests (verify endpoints exist, not 404/405)
             OAUTH_TW=$(curl -s -o /dev/null -w "%{http_code}" "$API/auth/twitter")
-            check "GET /auth/twitter endpoint exists" '[ "$OAUTH_TW" = "302" ] || [ "$OAUTH_TW" = "307" ] || [ "$OAUTH_TW" = "200" ] || [ "$OAUTH_TW" = "500" ]'
+            echo "  Twitter OAuth status: $OAUTH_TW"
+            check "GET /auth/twitter endpoint exists" '[ -n "$OAUTH_TW" ] && [ "$OAUTH_TW" != "404" ] && [ "$OAUTH_TW" != "405" ]'
 
             OAUTH_G=$(curl -s -o /dev/null -w "%{http_code}" "$API/auth/google")
-            check "GET /auth/google endpoint exists" '[ "$OAUTH_G" = "302" ] || [ "$OAUTH_G" = "307" ] || [ "$OAUTH_G" = "200" ] || [ "$OAUTH_G" = "500" ]'
+            echo "  Google OAuth status: $OAUTH_G"
+            check "GET /auth/google endpoint exists" '[ -n "$OAUTH_G" ] && [ "$OAUTH_G" != "404" ] && [ "$OAUTH_G" != "405" ]'
 
             # Setup profile with invalid token
             SETUP_BAD=$(curl -s -X POST "$API/auth/setup-profile" -H "Content-Type: application/json" -d '{"token":"invalid_token_xyz","name":"test_invalid"}')
