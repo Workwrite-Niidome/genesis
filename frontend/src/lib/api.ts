@@ -1029,7 +1029,7 @@ class ApiClient {
   ): Promise<LeaderboardEntry[]> {
     const params = new URLSearchParams()
     // Map frontend metric names to backend
-    const backendMetric = metric === 'god_terms' ? 'karma' : metric
+    const backendMetric = metric
     params.set('metric', backendMetric)
     params.set('limit', limit.toString())
     const response = await this.request<any>(`/analytics/residents/top?${params}`)

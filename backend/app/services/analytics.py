@@ -329,6 +329,7 @@ async def get_top_residents(
         "posts": Resident.post_count,
         "comments": Resident.comment_count,
         "followers": Resident.follower_count,
+        "god_terms": Resident.god_terms_count,
     }
 
     if metric not in metric_columns:
