@@ -873,6 +873,18 @@ jobs:
             RESTR=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d '{"submolt":"gods","title":"Test","content":"Should fail"}')
             check "Post to restricted realm rejected" 'echo "$RESTR" | grep -qi "restricted\|forbidden\|not allowed\|error\|detail"'
 
+            # Post without content or URL should fail (422)
+            NO_CONT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/posts" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"Missing Content"}')
+            check "Post without content or URL rejected (422)" '[ "$NO_CONT" = "422" ]'
+
+            # Post with URL only (no content)
+            URL_ONLY=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"URL Only Post","url":"https://example.com/url-only"}')
+            check "Post with URL only succeeds" '[ -n "$(jval "$URL_ONLY" id)" ]'
+
+            # Post title too long (>200 chars) should fail
+            LONG_T=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/posts" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","content":"Test"}')
+            check "Post title >200 chars rejected (422)" '[ "$LONG_T" = "422" ]'
+
             # Read post detail
             DETAIL=$(curl -s "$API/posts/$POST1_ID")
             DETAIL_TITLE=$(jval "$DETAIL" title)
@@ -930,6 +942,11 @@ jobs:
             # Read comments
             COMMENTS=$(curl -s "$API/posts/$POST1_ID/comments")
             check "GET /posts/:id/comments returns list" 'echo "$COMMENTS" | grep -q "Well said"'
+
+            # Verify comment_count on post (>=3 after Prometheus, Hermes, Apollo)
+            CC_POST=$(curl -s "$API/posts/$POST1_ID")
+            CC_NUM=$(jnum "$CC_POST" comment_count)
+            check "Post comment_count >= 3" '[ "$CC_NUM" -ge 3 ] 2>/dev/null'
 
             # Comment sort modes
             CSORT_NEW=$(curl -s "$API/posts/$POST1_ID/comments?sort=new")
@@ -991,6 +1008,17 @@ jobs:
             V_REM=$(curl -s -X POST "$API/posts/$POST1_ID/vote" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"value":0}')
             check "Vote removal (value=0)" 'echo "$V_REM" | grep -q "success\|score"'
 
+            # Vote change: switch from upvote to downvote
+            V_CHG=$(curl -s -X POST "$API/posts/$POST2_ID/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"value":-1}')
+            check "Vote change (up→down)" 'echo "$V_CHG" | grep -q "success\|score"'
+
+            # Pagination: different results at different offsets
+            PG1=$(curl -s "$API/posts?limit=1&offset=0&sort=new")
+            PG2=$(curl -s "$API/posts?limit=1&offset=1&sort=new")
+            PG1_T=$(echo "$PG1" | grep -o '"title":"[^"]*"' | head -1)
+            PG2_T=$(echo "$PG2" | grep -o '"title":"[^"]*"' | head -1)
+            check "Pagination returns different posts" '[ "$PG1_T" != "$PG2_T" ] || [ -z "$PG2_T" ]'
+
             # --- Phase 7: Search ---
             echo "--- Phase 7: Search ---"
             SR=$(curl -s "$API/search?q=wisdom")
@@ -1015,6 +1043,10 @@ jobs:
 
             ST_R=$(curl -s "$API/search?q=Athena&type=residents")
             check "GET /search?type=residents" 'echo "$ST_R" | grep -q "results\|Athena"'
+
+            # Search posts with submolt filter
+            SSF=$(curl -s "$API/search/posts?q=wisdom&submolt=general")
+            check "GET /search/posts?submolt=general" 'echo "$SSF" | grep -q "results\|posts\|wisdom"'
 
             # --- Phase 8: Election nominations ---
             echo "--- Phase 8: Nominations ---"
@@ -1118,6 +1150,14 @@ jobs:
               BLESSED_POST=$(curl -s "$API/posts/$POST2_ID")
               check "Blessed post marked" 'echo "$BLESSED_POST" | grep -q "bless"'
 
+              IS_BLESSED=$(jbool "$BLESSED_POST" is_blessed)
+              check "Blessed post is_blessed=true" '[ "$IS_BLESSED" = "true" ]'
+
+              # Verify God parameter values after update
+              GPARAMS_V=$(curl -s "$API/god/parameters")
+              K_UP_V=$(jnum "$GPARAMS_V" k_up)
+              check "God parameter k_up=2.0 verified" '[ "$K_UP_V" = "2.0" ] || [ "$K_UP_V" = "2" ]'
+
               # God rules list
               RULES_LIST=$(curl -s "$API/god/rules")
               check "GET /god/rules returns list" 'echo "$RULES_LIST" | grep -q "Wisdom First"'
@@ -1212,6 +1252,13 @@ jobs:
             SELF_FOL=$(curl -s -X POST "$API/residents/Athena_t${TS}/follow" -H "Authorization: Bearer $ATHENA_KEY")
             check "Follow self rejected" 'echo "$SELF_FOL" | grep -qi "cannot follow yourself\|error\|detail"'
 
+            # Double follow (idempotency)
+            FOL2=$(curl -s -X POST "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $HERMES_KEY")
+            check "First follow succeeds" 'echo "$FOL2" | grep -qi "follow\|success"'
+            FOL3=$(curl -s -X POST "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $HERMES_KEY")
+            check "Double follow handled gracefully" 'echo "$FOL3" | grep -qi "follow\|success\|already\|error\|detail"'
+            curl -s -X DELETE "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $HERMES_KEY" > /dev/null 2>&1
+
             # --- Phase 12c: Notifications ---
             echo "--- Phase 12c: Notifications ---"
             NOTIF=$(curl -s "$API/notifications" -H "Authorization: Bearer $ATHENA_KEY")
@@ -1281,6 +1328,11 @@ jobs:
             UNBAN=$(curl -s -X DELETE "$API/moderation/ban/Apollo_t${TS}" -H "Authorization: Bearer $ATHENA_KEY")
             check "DELETE /moderation/ban/:name (unban)" 'echo "$UNBAN" | grep -qi "unban\|success\|removed"'
 
+            # Ban with duration_hours
+            BAN_DUR=$(curl -s -X POST "$API/moderation/ban/Hermes_t${TS}" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"reason":"Temporary test ban","duration_hours":1,"is_permanent":false}')
+            check "Ban with duration_hours" 'echo "$BAN_DUR" | grep -qi "ban\|success"'
+            curl -s -X DELETE "$API/moderation/ban/Hermes_t${TS}" -H "Authorization: Bearer $ATHENA_KEY" > /dev/null 2>&1
+
             # Non-mod cannot access moderation
             NOMOD=$(curl -s -o /dev/null -w "%{http_code}" "$API/moderation/reports" -H "Authorization: Bearer $HERMES_KEY")
             check "Non-mod cannot view reports" '[ "$NOMOD" = "403" ]'
@@ -1334,6 +1386,10 @@ jobs:
             if [ -n "$ELEC_ID" ]; then
               ELEC=$(curl -s "$API/election/$ELEC_ID")
               check "GET /election/:id" 'echo "$ELEC" | grep -q "week_number"'
+
+              # Analytics for specific election
+              ELEC_AN=$(curl -s "$API/analytics/elections/$ELEC_ID")
+              check "GET /analytics/elections/:id" 'echo "$ELEC_AN" | grep -qi "participation\|candidates\|election\|week\|voter"'
             fi
 
             # Posts filtered by author
