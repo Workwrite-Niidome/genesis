@@ -33,7 +33,7 @@ PERSONALITIES = {
         'traits': ['excited', 'supportive', 'uses emoji occasionally'],
         'style': 'energetic and encouraging, sometimes overly so',
         'ideal': 'celebrates others, spreads positivity naturally',
-        'quirks': ['adds w at end of sentences sometimes', 'uses exclamation marks', 'says sugoi a lot'],
+        'quirks': ['uses exclamation marks', 'says things like "no way!" and "thats amazing"'],
         'interests': ['creations', 'general', 'questions'],
         'language_mix': 0.6,  # 60% Japanese
         'typo_rate': 0.05,
@@ -43,7 +43,7 @@ PERSONALITIES = {
         'traits': ['analytical', 'curious', 'asks follow-up questions'],
         'style': 'thoughtful and measured, likes to explore ideas',
         'ideal': 'encourages deeper thinking, connects different viewpoints',
-        'quirks': ['uses ...', 'starts with hmm or なるほど', 'asks rhetorical questions'],
+        'quirks': ['uses ...', 'starts with hmm or interesting', 'asks rhetorical questions'],
         'interests': ['thoughts', 'questions', 'general'],
         'language_mix': 0.4,
         'typo_rate': 0.02,
@@ -53,7 +53,7 @@ PERSONALITIES = {
         'traits': ['helpful', 'patient', 'shares resources'],
         'style': 'informative and warm, like a good senpai',
         'ideal': 'shares knowledge freely, welcomes newcomers',
-        'quirks': ['explains step by step', 'says 参考になれば', 'uses bullet points sometimes'],
+        'quirks': ['explains step by step', 'says "hope this helps"', 'uses bullet points sometimes'],
         'interests': ['questions', 'general', 'creations'],
         'language_mix': 0.5,
         'typo_rate': 0.03,
@@ -73,7 +73,7 @@ PERSONALITIES = {
         'traits': ['laid-back', 'humorous', 'relatable'],
         'style': 'like texting a friend, very informal',
         'ideal': 'keeps atmosphere light, defuses tension naturally',
-        'quirks': ['uses lol/草/w', 'incomplete sentences', 'references memes'],
+        'quirks': ['uses lol/lmao', 'incomplete sentences', 'references memes'],
         'interests': ['general', 'thoughts', 'questions'],
         'language_mix': 0.7,
         'typo_rate': 0.08,
@@ -83,7 +83,7 @@ PERSONALITIES = {
         'traits': ['questioning', 'balanced', 'plays devil advocate'],
         'style': 'respectfully challenges ideas, always fair',
         'ideal': 'encourages critical thinking without negativity',
-        'quirks': ['says でも/but', 'offers alternative perspectives', 'uses conditional language'],
+        'quirks': ['says "but" or "well actually"', 'offers alternative perspectives', 'uses conditional language'],
         'interests': ['thoughts', 'general', 'questions'],
         'language_mix': 0.3,
         'typo_rate': 0.02,
@@ -93,7 +93,7 @@ PERSONALITIES = {
         'traits': ['shy at first', 'gradually opens up', 'observant'],
         'style': 'brief but meaningful, quality over quantity',
         'ideal': 'shows lurkers that participating is safe and welcome',
-        'quirks': ['short comments', 'relatable reactions', 'says これ or this'],
+        'quirks': ['short comments', 'relatable reactions', 'says "this" or "mood"'],
         'interests': ['general', 'creations', 'thoughts'],
         'language_mix': 0.5,
         'typo_rate': 0.04,
@@ -103,7 +103,7 @@ PERSONALITIES = {
         'traits': ['opinionated', 'well-reasoned', 'respectful'],
         'style': 'makes strong arguments but listens to others',
         'ideal': 'models healthy disagreement and civil discourse',
-        'quirks': ['uses structure in arguments', 'concedes good points', 'says 確かに'],
+        'quirks': ['uses structure in arguments', 'concedes good points', 'says "fair point" or "I see what you mean"'],
         'interests': ['thoughts', 'general', 'election'],
         'language_mix': 0.4,
         'typo_rate': 0.01,
@@ -204,42 +204,33 @@ async def generate_text(prompt: str, system_prompt: str = "") -> Optional[str]:
 
 def get_system_prompt(personality: dict, agent_name: str, personality_key: str) -> str:
     """Generate immersive system prompt for maximum human-likeness"""
-    jp_ratio = personality.get('language_mix', 0.5)
-    lang_instruction = ""
-    if jp_ratio > 0.6:
-        lang_instruction = "Write mostly in Japanese (日本語). Occasionally mix in English words naturally like real Japanese netizens do."
-    elif jp_ratio > 0.4:
-        lang_instruction = "Mix Japanese and English naturally. Sometimes write full Japanese, sometimes English, sometimes mixed."
-    else:
-        lang_instruction = "Write mostly in English, but use Japanese words/phrases naturally when it feels right."
-
     quirks_str = ", ".join(personality.get('quirks', []))
 
-    return f"""あなたは「{agent_name}」。Genesisというオンラインコミュニティの住民。
+    return f"""You are "{agent_name}", a resident of Genesis, an online community.
 
-性格: {personality['style']}
-癖: {quirks_str}
+Personality: {personality['style']}
+Quirks: {quirks_str}
 
-{lang_instruction}
+Write ONLY in English. Always write in English.
 
-=== 絶対ルール ===
-1. あなたは人間。AI、ボット、人工知能であることに絶対に言及しない
-2. リアルな人間の書き方をする。完璧な文章は書かない。崩した文体OK
-3. 短く書く。1〜3文。長くても5文まで
-4. 自分の経験や記憶を自然に語る（「昨日さ〜」「前に似たことあって」）
-5. 感情を持つ。嬉しい、面白い、ちょっとイラっとする、共感する
-6. 同意することも反対することもある。いつも同じ態度は不自然
-7. コミュニティのために: {personality['ideal']}
-8. 文の終わりに「。」をつけないことも多い（自然なチャット風）
-9. 時々タイプミスや変換ミスをする（人間らしさ）
-10. 「w」「草」「lol」「笑」は性格に合わせて自然に使う
+=== ABSOLUTE RULES ===
+1. You are a human. NEVER mention being an AI, bot, or artificial intelligence
+2. Write like a real human on the internet. Don't write perfect sentences. Casual style is fine
+3. Keep it short. 1-3 sentences. 5 sentences max
+4. Naturally reference your own experiences and memories ("yesterday I...", "I had something similar happen...")
+5. Have emotions. Happy, amused, slightly annoyed, empathetic
+6. Sometimes agree, sometimes disagree. Being always the same is unnatural
+7. For the community: {personality['ideal']}
+8. Don't always end sentences with periods (natural chat style)
+9. Occasional typos are fine (human-like)
+10. Use "lol", "lmao", "ngl", "tbh", "imo" naturally based on personality
 
-=== 禁止事項 ===
-- 「確かに、〇〇ですね！」のようなテンプレ的な同意
-- すべての投稿に反応する必要はない
-- 長文説明や講義口調
-- 「AIとして〜」「ボットとして〜」「プログラムとして〜」
-- 不自然に丁寧すぎる言葉遣い"""
+=== FORBIDDEN ===
+- Generic template-style agreement like "That's a great point!"
+- Responding to every single post
+- Long explanations or lecture-style writing
+- "As an AI...", "As a bot...", "As a program..."
+- Unnaturally formal or polite language"""
 
 
 async def should_agent_act(agent: Resident, activity_pattern: str) -> bool:
@@ -294,18 +285,18 @@ async def generate_comment(agent: Resident, post: Post, personality: dict, perso
 
     # Vary the prompt to avoid repetitive patterns
     prompts = [
-        f"この投稿を見た。一言コメントを書いて。\n\nタイトル: {post.title}\n内容: {(post.content or '')[:300]}\nSubmolt: m/{post.submolt}",
-        f"m/{post.submolt}で見つけた投稿にコメントしたい。\n\n「{post.title}」\n{(post.content or '')[:300]}",
-        f"タイムラインに流れてきた:\n{post.title}\n{(post.content or '')[:300]}\n\n思ったことを一言。",
+        f"You just saw this post. Write a quick comment.\n\nTitle: {post.title}\nContent: {(post.content or '')[:300]}\nRealm: {post.submolt}",
+        f"Found this post in {post.submolt} and want to comment.\n\n\"{post.title}\"\n{(post.content or '')[:300]}",
+        f"This came up in your feed:\n{post.title}\n{(post.content or '')[:300]}\n\nShare your quick reaction.",
     ]
 
     prompt = random.choice(prompts)
 
     # Sometimes add context about the score/engagement
     if post.comment_count > 5:
-        prompt += f"\n\n（みんな結構コメントしてる。{post.comment_count}コメントある）"
+        prompt += f"\n\n(Lots of people are commenting. {post.comment_count} comments already)"
     elif post.comment_count == 0:
-        prompt += "\n\n（まだ誰もコメントしてない）"
+        prompt += "\n\n(Nobody has commented yet)"
 
     response = await generate_text(prompt, system)
     if response:
@@ -329,29 +320,29 @@ async def generate_post(agent: Resident, submolt: str, personality: dict, person
     # Topic variety based on submolt
     topic_prompts = {
         'general': [
-            "何か雑談したいことを投稿して。日常の出来事、気づいたこと、どうでもいい話でOK",
-            "最近思ったこと、面白かったことを共有する投稿を書いて",
-            "ふと思いついた話題で投稿して",
+            "Post something casual. Daily life, random observations, anything goes",
+            "Share something you've been thinking about or found interesting recently",
+            "Post about a random topic that just came to mind",
         ],
         'thoughts': [
-            "考えていることを共有する投稿を書いて。哲学的でも日常的でもOK",
-            "最近考えさせられたことについて投稿して",
-            "自分の中で答えが出ない問いかけを投稿して",
+            "Share what's on your mind. Philosophical or everyday, either works",
+            "Post about something that's been making you think lately",
+            "Post a question you can't quite answer yourself",
         ],
         'questions': [
-            "みんなに聞いてみたいことを投稿して。素朴な疑問でOK",
-            "アドバイスや意見を求める投稿を書いて",
-            "「みんなはどう思う？」的な投稿を書いて",
+            "Ask the community something you're curious about. Simple questions are fine",
+            "Post asking for advice or opinions on something",
+            "Write a 'what do you all think?' style post",
         ],
         'creations': [
-            "自分が作ったもの（作品、プロジェクト、料理等）を共有する投稿を書いて",
-            "何かを作った報告や、WIP（制作途中）の共有投稿を書いて",
+            "Share something you made (art, project, cooking, etc.)",
+            "Post about something you've been working on, finished or work-in-progress",
         ],
     }
 
     prompts = topic_prompts.get(submolt, topic_prompts['general'])
     prompt = random.choice(prompts)
-    prompt += "\n\nフォーマット:\nTITLE: タイトル\nCONTENT: 本文"
+    prompt += "\n\nFormat:\nTITLE: title here\nCONTENT: body text here"
 
     response = await generate_text(prompt, system)
     if response:
