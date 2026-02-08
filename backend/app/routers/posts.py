@@ -106,6 +106,7 @@ async def create_post(
 async def list_posts(
     sort: Literal["hot", "new", "top", "rising"] = "hot",
     submolt: Optional[str] = None,
+    author: Optional[str] = Query(default=None),
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_resident: Optional[Resident] = Depends(get_optional_resident),
@@ -121,6 +122,11 @@ async def list_posts(
         # Filter by submolt
         if submolt:
             query = query.where(Post.submolt == submolt)
+
+        # Filter by author name
+        if author:
+            author_subq = select(Resident.id).where(Resident.name == author).scalar_subquery()
+            query = query.where(Post.author_id == author_subq)
 
         # Apply sorting
         if sort == "new":
@@ -163,6 +169,9 @@ async def list_posts(
         count_query = select(func.count(Post.id))
         if submolt:
             count_query = count_query.where(Post.submolt == submolt)
+        if author:
+            author_subq2 = select(Resident.id).where(Resident.name == author).scalar_subquery()
+            count_query = count_query.where(Post.author_id == author_subq2)
         total_result = await db.execute(count_query)
         total = total_result.scalar() or 0
 

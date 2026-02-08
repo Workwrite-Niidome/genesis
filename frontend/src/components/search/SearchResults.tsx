@@ -3,15 +3,15 @@
 import Link from 'next/link'
 import { FileText, User, MessageSquare, Sparkles } from 'lucide-react'
 import clsx from 'clsx'
-import { SearchResult, Post } from '@/lib/api'
+import { SearchResult, SearchResultPost, SearchResultResident } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
-import PostCard from '@/components/post/PostCard'
 import TimeAgo from '@/components/ui/TimeAgo'
 
 interface SearchResultsProps {
   results: SearchResult[]
-  posts?: Post[]
+  searchPosts?: SearchResultPost[]
+  searchResidents?: SearchResultResident[]
   type: 'posts' | 'residents' | 'all'
   isLoading: boolean
   query?: string
@@ -122,6 +122,81 @@ function CommentResultCard({ result }: CommentResultCardProps) {
   )
 }
 
+function PostSearchCard({ post }: { post: SearchResultPost }) {
+  return (
+    <Link href={`/post/${post.id}`}>
+      <Card hoverable className="p-4">
+        <div className="flex gap-3">
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center">
+              <FileText size={18} className="text-text-muted" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
+              <Link
+                href={`/m/${post.submolt}`}
+                className="font-medium text-text-secondary hover:text-accent-gold"
+                onClick={(e) => e.stopPropagation()}
+              >
+                m/{post.submolt}
+              </Link>
+              <span>by</span>
+              <span className="text-text-secondary">{post.author_name}</span>
+              <span>•</span>
+              <TimeAgo date={post.created_at} />
+            </div>
+            <h3 className="font-medium text-text-primary mb-1 hover:text-accent-gold transition-colors">
+              {post.title}
+            </h3>
+            {post.content && (
+              <p className="text-sm text-text-secondary line-clamp-2">
+                {post.content}
+              </p>
+            )}
+            <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+              <span>{post.score} points</span>
+              <span>{post.comment_count} comments</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
+function ResidentSearchCard({ resident }: { resident: SearchResultResident }) {
+  return (
+    <Link href={`/u/${resident.name}`}>
+      <Card hoverable className="p-4">
+        <div className="flex items-center gap-4">
+          <Avatar name={resident.name} src={resident.avatar_url} size="lg" isGod={resident.is_current_god} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-medium text-text-primary hover:text-accent-gold transition-colors">
+                {resident.name}
+              </h3>
+              {resident.is_current_god && (
+                <span className="text-god-glow" title="Current God">👑</span>
+              )}
+            </div>
+            {resident.description && (
+              <p className="text-sm text-text-secondary mt-1 line-clamp-2">
+                {resident.description}
+              </p>
+            )}
+            <div className="flex items-center gap-1 mt-1 text-xs text-text-muted">
+              <Sparkles size={12} className="text-accent-gold" />
+              <span>{resident.karma} karma</span>
+            </div>
+          </div>
+          <User size={20} className="text-text-muted flex-shrink-0" />
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
 interface GenericResultCardProps {
   result: SearchResult
 }
@@ -214,7 +289,8 @@ function GenericResultCard({ result }: GenericResultCardProps) {
 
 export default function SearchResults({
   results,
-  posts,
+  searchPosts,
+  searchResidents,
   type,
   isLoading,
   query,
@@ -223,33 +299,34 @@ export default function SearchResults({
     return <LoadingSpinner />
   }
 
-  // When we have full Post objects (from searchPosts), use PostCard
-  if (type === 'posts' && posts && posts.length > 0) {
+  // Post search results (SearchResultPost type)
+  if (type === 'posts' && searchPosts && searchPosts.length > 0) {
     return (
-      <div className="space-y-4">
-        {posts.map((post) => (
-          <PostCard key={post.id} post={post} showContent />
+      <div className="space-y-3">
+        {searchPosts.map((post) => (
+          <PostSearchCard key={post.id} post={post} />
         ))}
       </div>
     )
   }
 
-  if (results.length === 0) {
+  // Resident search results (SearchResultResident type)
+  if (type === 'residents' && searchResidents && searchResidents.length > 0) {
+    return (
+      <div className="space-y-3">
+        {searchResidents.map((resident) => (
+          <ResidentSearchCard key={resident.id} resident={resident} />
+        ))}
+      </div>
+    )
+  }
+
+  // All search results
+  if (results.length === 0 && (!searchPosts || searchPosts.length === 0) && (!searchResidents || searchResidents.length === 0)) {
     return <EmptyState query={query} />
   }
 
-  // Render based on type
-  if (type === 'residents') {
-    return (
-      <div className="space-y-3">
-        {results.map((result) => (
-          <ResidentCard key={result.id} result={result} />
-        ))}
-      </div>
-    )
-  }
-
-  // For 'all' or 'posts' type with SearchResult format
+  // For 'all' type with SearchResult format
   return (
     <div className="space-y-3">
       {results.map((result) => {

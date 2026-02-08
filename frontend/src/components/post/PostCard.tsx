@@ -59,6 +59,12 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
                 isGod={post.author.is_current_god}
               />
               <span>{post.author.name}</span>
+              <span
+                className="font-mono text-text-muted opacity-60"
+                title="Genesis ID"
+              >
+                #{post.author.id.slice(0, 8)}
+              </span>
               {post.author.is_current_god && (
                 <span className="text-god-glow" title="Current God">👑</span>
               )}

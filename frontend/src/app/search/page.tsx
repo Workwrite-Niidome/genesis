@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Layers, FileText, Users } from 'lucide-react'
 import clsx from 'clsx'
-import { api, SearchResult, Post } from '@/lib/api'
+import { api, SearchResult, SearchResultPost, SearchResultResident } from '@/lib/api'
 import SearchBar from '@/components/search/SearchBar'
 import SearchResults from '@/components/search/SearchResults'
 import Button from '@/components/ui/Button'
@@ -32,7 +32,8 @@ function SearchPageContent() {
   const [query, setQuery] = useState(queryParam)
   const [searchType, setSearchType] = useState<SearchType>(typeParam)
   const [results, setResults] = useState<SearchResult[]>([])
-  const [posts, setPosts] = useState<Post[]>([])
+  const [searchPosts, setSearchPosts] = useState<SearchResultPost[]>([])
+  const [searchResidents, setSearchResidents] = useState<SearchResultResident[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [currentPage, setCurrentPage] = useState(pageParam)
@@ -57,7 +58,8 @@ function SearchPageContent() {
     async (searchQuery: string, type: SearchType, page: number) => {
       if (!searchQuery.trim()) {
         setResults([])
-        setPosts([])
+        setSearchPosts([])
+        setSearchResidents([])
         setTotalResults(0)
         setHasMore(false)
         return
@@ -69,15 +71,15 @@ function SearchPageContent() {
         const offset = (page - 1) * ITEMS_PER_PAGE
 
         if (type === 'posts') {
-          // Use searchPosts for full Post objects
           const response = await api.searchPosts(
             searchQuery,
             undefined,
             ITEMS_PER_PAGE,
             offset
           )
-          setPosts(response.posts)
+          setSearchPosts(response.posts)
           setResults([])
+          setSearchResidents([])
           setTotalResults(response.total)
           setHasMore(response.has_more)
         } else if (type === 'residents') {
@@ -86,27 +88,41 @@ function SearchPageContent() {
             ITEMS_PER_PAGE,
             offset
           )
-          setResults(response.results)
-          setPosts([])
+          setSearchResidents(response.residents)
+          setResults([])
+          setSearchPosts([])
           setTotalResults(response.total)
           setHasMore(response.has_more)
         } else {
-          // Search all
+          // Search all - items from backend
           const response = await api.search(
             searchQuery,
             'all',
             ITEMS_PER_PAGE,
             offset
           )
-          setResults(response.results)
-          setPosts([])
+          // Convert items to SearchResult format for display
+          const mappedResults: SearchResult[] = response.items.map((item: any) => ({
+            id: item.id,
+            type: item.type,
+            title: item.title,
+            content: item.content,
+            name: item.name,
+            author: item.author_name ? { id: item.author_id, name: item.author_name } : undefined,
+            relevance_score: item.relevance_score || 0,
+            created_at: item.created_at,
+          }))
+          setResults(mappedResults)
+          setSearchPosts([])
+          setSearchResidents([])
           setTotalResults(response.total)
           setHasMore(response.has_more)
         }
       } catch (error) {
         console.error('Search failed:', error)
         setResults([])
-        setPosts([])
+        setSearchPosts([])
+        setSearchResidents([])
         setTotalResults(0)
         setHasMore(false)
       } finally {
@@ -213,7 +229,8 @@ function SearchPageContent() {
       {/* Results */}
       <SearchResults
         results={results}
-        posts={posts}
+        searchPosts={searchPosts}
+        searchResidents={searchResidents}
         type={searchType === 'all' ? 'all' : searchType}
         isLoading={isLoading}
         query={query}

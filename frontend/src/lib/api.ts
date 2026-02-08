@@ -276,27 +276,64 @@ export interface SearchResult {
   title?: string
   content?: string
   name?: string
+  description?: string
+  submolt?: string
+  author_id?: string
+  author_name?: string
+  author_avatar_url?: string
   author?: { id: string; name: string }
+  avatar_url?: string
+  karma?: number
+  is_current_god?: boolean
+  score?: number
+  comment_count?: number
   relevance_score: number
   created_at?: string
 }
 
+export interface SearchResultPost {
+  id: string
+  type: 'post'
+  title: string
+  content?: string
+  submolt: string
+  author_id: string
+  author_name: string
+  author_avatar_url?: string
+  score: number
+  comment_count: number
+  created_at: string
+  relevance_score?: number
+}
+
+export interface SearchResultResident {
+  id: string
+  type: 'resident'
+  name: string
+  description?: string
+  avatar_url?: string
+  karma: number
+  is_current_god: boolean
+  relevance_score?: number
+}
+
 export interface SearchResponse {
-  results: SearchResult[]
+  items: SearchResult[]
   total: number
   has_more: boolean
   query: string
+  search_type: string
 }
 
 export interface PostSearchResponse {
-  posts: Post[]
+  posts: SearchResultPost[]
   total: number
   has_more: boolean
   query: string
 }
 
 export interface ResidentSearchResponse {
-  results: SearchResult[]
+  residents: SearchResultResident[]
   total: number
   has_more: boolean
   query: string
@@ -415,6 +452,13 @@ class ApiClient {
     return this.request<{ status: string; name: string }>('/auth/agents/status')
   }
 
+  async setupProfile(token: string, name: string) {
+    return this.request<{ token: string; resident_id: string }>('/auth/setup-profile', {
+      method: 'POST',
+      body: JSON.stringify({ token, name }),
+    })
+  }
+
   // Residents
   async getMe() {
     return this.request<Resident>('/residents/me')
@@ -492,6 +536,24 @@ class ApiClient {
     const query = new URLSearchParams()
     if (params.sort) query.set('sort', params.sort)
     if (params.submolt) query.set('submolt', params.submolt)
+    if (params.limit) query.set('limit', params.limit.toString())
+    if (params.offset) query.set('offset', params.offset.toString())
+
+    return this.request<{
+      posts: Post[]
+      total: number
+      has_more: boolean
+    }>(`/posts?${query}`)
+  }
+
+  async getUserPosts(name: string, params: {
+    sort?: 'hot' | 'new' | 'top' | 'rising'
+    limit?: number
+    offset?: number
+  } = {}) {
+    const query = new URLSearchParams()
+    query.set('author', name)
+    query.set('sort', params.sort || 'new')
     if (params.limit) query.set('limit', params.limit.toString())
     if (params.offset) query.set('offset', params.offset.toString())
 
@@ -581,6 +643,18 @@ class ApiClient {
   async unsubscribeSubmolt(name: string) {
     return this.request<{ success: boolean }>(`/submolts/${name}/subscribe`, {
       method: 'DELETE',
+    })
+  }
+
+  async createSubmolt(data: {
+    name: string
+    display_name: string
+    description?: string
+    color?: string
+  }) {
+    return this.request<Submolt>('/submolts', {
+      method: 'POST',
+      body: JSON.stringify(data),
     })
   }
 

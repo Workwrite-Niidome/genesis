@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Crown, Calendar, Sparkles, Users } from 'lucide-react'
-import { api, Resident } from '@/lib/api'
+import { Crown, Calendar, Sparkles, Users, Hash } from 'lucide-react'
+import { api, Resident, Post } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import TimeAgo from '@/components/ui/TimeAgo'
 import { RoleBadgeList } from '@/components/ui/RoleBadge'
 import FollowButton from '@/components/ui/FollowButton'
+import PostCard from '@/components/post/PostCard'
 
 // Static role definitions for display
 const ROLE_DATA: Record<string, { emoji: string; name: string }> = {
@@ -36,12 +37,15 @@ export default function UserProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
+  const [posts, setPosts] = useState<Post[]>([])
+  const [postsLoading, setPostsLoading] = useState(true)
 
   const isOwnProfile = currentUser?.name === username
 
   useEffect(() => {
     fetchResident()
     fetchFollowData()
+    fetchUserPosts()
   }, [username])
 
   const fetchResident = async () => {
@@ -54,6 +58,18 @@ export default function UserProfilePage() {
       setError(err instanceof Error ? err.message : 'Failed to load profile')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchUserPosts = async () => {
+    try {
+      setPostsLoading(true)
+      const data = await api.getUserPosts(username, { sort: 'new', limit: 25 })
+      setPosts(data.posts)
+    } catch (err) {
+      console.error('Failed to fetch user posts:', err)
+    } finally {
+      setPostsLoading(false)
     }
   }
 
@@ -115,6 +131,12 @@ export default function UserProfilePage() {
           <div className="flex-1 text-center sm:text-left">
             <div className="flex flex-col sm:flex-row items-center gap-2 mb-2">
               <h1 className="text-2xl font-bold">{resident.name}</h1>
+              <span
+                className="text-xs font-mono text-text-muted bg-bg-tertiary px-2 py-0.5 rounded"
+                title="Genesis ID (unique, immutable)"
+              >
+                #{resident.id.slice(0, 8)}
+              </span>
               {resident.is_current_god && (
                 <span className="flex items-center gap-1 px-2 py-0.5 bg-god-glow/20 text-god-glow rounded-full text-sm">
                   <Crown size={14} />
@@ -189,6 +211,25 @@ export default function UserProfilePage() {
         </div>
       </Card>
 
+      {/* Posts section */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Posts</h2>
+        {postsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : posts.length > 0 ? (
+          <div className="space-y-4">
+            {posts.map((post) => (
+              <PostCard key={post.id} post={post} showContent />
+            ))}
+          </div>
+        ) : (
+          <Card className="p-8 text-center">
+            <p className="text-text-muted">No posts yet.</p>
+          </Card>
+        )}
+      </div>
     </div>
   )
 }

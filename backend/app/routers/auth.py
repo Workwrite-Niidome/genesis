@@ -18,6 +18,7 @@ from app.schemas.resident import (
     TokenResponse,
     AgentStatusResponse,
 )
+from pydantic import BaseModel, Field
 from app.utils.security import (
     generate_api_key,
     hash_api_key,
@@ -464,6 +465,11 @@ async def x_oauth_callback(
 
 # ============ Google OAuth 2.0 ============
 
+
+class SetupProfileRequest(BaseModel):
+    token: str
+    name: str = Field(..., min_length=1, max_length=30, pattern=r'^[a-zA-Z0-9_-]+$')
+
 @router.get("/google")
 async def google_oauth_start(request: Request):
     """
@@ -581,42 +587,98 @@ async def google_oauth_callback(
     resident = result.scalar_one_or_none()
 
     if not resident:
-        # Create new human resident
-        # Use Google name, fallback to email prefix
-        display_name = google_name or user_data.get("email", "user").split("@")[0]
-        # Sanitize: keep only alphanumeric, underscore, hyphen
-        import re
-        base_name = re.sub(r'[^a-zA-Z0-9_-]', '_', display_name)[:30]
-        name = base_name
-        counter = 1
-
-        while True:
-            result = await db.execute(
-                select(Resident).where(Resident.name == name)
-            )
-            if not result.scalar_one_or_none():
-                break
-            name = f"{base_name[:27]}_{counter}"
-            counter += 1
-
-        resident = Resident(
-            name=name,
-            _type="human",
-            _google_id=google_user_id,
-            avatar_url=google_avatar or None,
+        # New user: issue a temporary setup token and redirect to name selection page
+        from datetime import timedelta
+        setup_token = create_access_token(
+            data={
+                "setup": True,
+                "google_id": google_user_id,
+                "avatar_url": google_avatar or "",
+            },
+            expires_delta=timedelta(minutes=30),
         )
-        db.add(resident)
-        await db.commit()
-        await db.refresh(resident)
+        redirect_url = f"https://genesis-pj.net/auth/setup?token={setup_token}"
+        return RedirectResponse(url=redirect_url)
     else:
         # Update avatar if changed
         if google_avatar and resident.avatar_url != google_avatar:
             resident.avatar_url = google_avatar
             await db.commit()
 
-    # Create JWT token
+    # Create JWT token for existing user
     access_token = create_access_token(data={"sub": str(resident.id)})
 
     # Redirect to frontend with token
     redirect_url = f"https://genesis-pj.net/auth/callback?token={access_token}"
     return RedirectResponse(url=redirect_url)
+
+
+@router.post("/setup-profile")
+async def setup_profile(
+    request_data: SetupProfileRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Complete profile setup for new Google OAuth users.
+    Accepts a temporary setup token and desired username, creates the resident,
+    and returns a real JWT.
+    """
+    import re
+
+    # Decode the setup token
+    payload = decode_access_token(request_data.token)
+    if not payload or not payload.get("setup"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired setup token",
+        )
+
+    google_id = payload.get("google_id")
+    avatar_url = payload.get("avatar_url", "")
+
+    if not google_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid setup token: missing Google ID",
+        )
+
+    # Validate name format
+    if not re.match(r'^[a-zA-Z0-9_-]+$', request_data.name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name can only contain letters, numbers, underscores, and hyphens",
+        )
+
+    # Check if Google ID already has an account (race condition guard)
+    result = await db.execute(
+        select(Resident).where(Resident._google_id == google_id)
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        access_token = create_access_token(data={"sub": str(existing.id)})
+        return {"token": access_token, "resident_id": str(existing.id)}
+
+    # Check if name is taken
+    result = await db.execute(
+        select(Resident).where(Resident.name == request_data.name)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name already taken",
+        )
+
+    # Create the resident
+    resident = Resident(
+        name=request_data.name,
+        _type="human",
+        _google_id=google_id,
+        avatar_url=avatar_url or None,
+    )
+    db.add(resident)
+    await db.commit()
+    await db.refresh(resident)
+
+    # Issue real JWT
+    access_token = create_access_token(data={"sub": str(resident.id)})
+    return {"token": access_token, "resident_id": str(resident.id)}

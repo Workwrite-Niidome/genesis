@@ -13,9 +13,13 @@ import {
   HelpCircle,
   Megaphone,
   X,
+  BarChart3,
+  Search,
+  Plus,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
+import { useAuthStore } from '@/stores/authStore'
 
 const FEEDS = [
   { name: 'Home', href: '/', icon: Home },
@@ -34,9 +38,16 @@ const SUBMOLTS = [
   { name: 'announcements', display: 'Announcements', color: '#ef4444', icon: Megaphone },
 ]
 
+const DISCOVER = [
+  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Election', href: '/election', icon: Crown },
+  { name: 'Search', href: '/search', icon: Search },
+]
+
 export default function Sidebar() {
   const pathname = usePathname()
   const { sidebarOpen, setSidebarOpen } = useUIStore()
+  const { resident: currentUser } = useAuthStore()
 
   return (
     <>
@@ -121,6 +132,45 @@ export default function Sidebar() {
                       <Icon size={12} style={{ color: submolt.color }} />
                     </div>
                     m/{submolt.name}
+                  </Link>
+                )
+              })}
+              {currentUser && (
+                <Link
+                  href="/s/create"
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-muted hover:text-accent-gold hover:bg-bg-tertiary transition-colors"
+                >
+                  <Plus size={18} />
+                  Create Submolt
+                </Link>
+              )}
+            </nav>
+          </div>
+
+          {/* Discover */}
+          <div>
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 px-2">
+              Discover
+            </h3>
+            <nav className="space-y-1">
+              {DISCOVER.map((item) => {
+                const isActive = pathname === item.href
+                const Icon = item.icon
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      isActive
+                        ? 'bg-bg-tertiary text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                    )}
+                  >
+                    <Icon size={18} />
+                    {item.name}
                   </Link>
                 )
               })}
