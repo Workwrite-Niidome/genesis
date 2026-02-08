@@ -229,8 +229,11 @@ async def nominate_self(
     db: AsyncSession = Depends(get_db),
 ):
     """Nominate yourself for the current election with structured manifesto"""
-    # Update election status first
-    await update_election_status(db)
+    # Update election status first (ignore errors from other week finalizations)
+    try:
+        await update_election_status(db)
+    except Exception:
+        pass
 
     # Get current election
     result = await db.execute(
@@ -302,8 +305,11 @@ async def vote_in_election(
     db: AsyncSession = Depends(get_db),
 ):
     """Vote for a candidate in the current election"""
-    # Update election status first
-    await update_election_status(db)
+    # Update election status first (ignore errors from other week finalizations)
+    try:
+        await update_election_status(db)
+    except Exception:
+        pass  # Don't let status check for other weeks block voting
 
     # Get current voting election
     result = await db.execute(

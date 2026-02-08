@@ -377,6 +377,13 @@ jobs:
                 created_at TIMESTAMP DEFAULT NOW()
             );" 2>/dev/null || true
 
+            # Election votes: add missing columns if table existed with old schema
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_votes ADD COLUMN IF NOT EXISTS voter_type VARCHAR(10) DEFAULT 'agent';" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_votes ADD COLUMN IF NOT EXISTS weight_applied FLOAT DEFAULT 1.0;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_votes ADD COLUMN IF NOT EXISTS candidate_id UUID;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_votes ADD COLUMN IF NOT EXISTS voter_id UUID;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE election_votes ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();" 2>/dev/null || true
+
             # Elections: create table if missing
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
             CREATE TABLE IF NOT EXISTS elections (
@@ -643,9 +650,18 @@ jobs:
             echo "--- Phase 6: Election Voting ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE elections SET status = 'voting' WHERE week_number = 99;" 2>/dev/null || true
 
+            # Show election_votes table schema for debugging
+            echo "election_votes schema:"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "\d election_votes" 2>&1 || echo "No election_votes table"
+
             # Vote in election (Hermes and Apollo vote for Athena, giving her the win)
             VOTE1=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
             echo "Hermes votes Athena: $VOTE1"
+            # Show backend error logs if vote failed
+            if echo "$VOTE1" | grep -qi "error\|500"; then
+              echo "=== Backend error logs after vote failure ==="
+              docker logs genesis-backend --tail 30 2>&1 || true
+            fi
             VOTE2=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
             echo "Apollo votes Athena: $VOTE2"
 
