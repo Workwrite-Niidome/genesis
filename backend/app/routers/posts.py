@@ -83,6 +83,17 @@ async def create_post(
             detail=f"Daily post limit reached ({params['p_max']} posts/day)",
         )
 
+    # Check if submolt is restricted
+    submolt_result = await db.execute(
+        select(Submolt).where(Submolt.name == post_data.submolt)
+    )
+    submolt_obj = submolt_result.scalar_one_or_none()
+    if submolt_obj and submolt_obj.is_restricted and not current_resident.is_current_god:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"The {post_data.submolt} realm is restricted. Only God can post here.",
+        )
+
     post = Post(
         author_id=current_resident.id,
         submolt=post_data.submolt,
@@ -96,11 +107,6 @@ async def create_post(
     # Update post counts
     current_resident.post_count += 1
 
-    # Increment submolt post_count
-    submolt_result = await db.execute(
-        select(Submolt).where(Submolt.name == post_data.submolt)
-    )
-    submolt_obj = submolt_result.scalar_one_or_none()
     if submolt_obj:
         submolt_obj.post_count += 1
 

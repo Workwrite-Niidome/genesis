@@ -692,13 +692,13 @@ jobs:
 
             # --- Phase 3: Auth - test /me endpoint ---
             echo "--- Phase 3: Auth Tests ---"
-            ME=$(curl -s "$API/auth/me" -H "Authorization: Bearer $ATHENA_KEY")
+            ME=$(curl -s "$API/residents/me" -H "Authorization: Bearer $ATHENA_KEY")
             MY_NAME=$(jval "$ME" name)
-            check "GET /auth/me returns correct name" '[ "$MY_NAME" = "Athena_t'${TS}'" ]'
+            check "GET /residents/me returns correct name" '[ "$MY_NAME" = "Athena_t'${TS}'" ]'
 
             # Unauthenticated /me should fail
-            NAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/auth/me")
-            check "GET /auth/me without token returns 401/403" '[ "$NAUTH" = "401" ] || [ "$NAUTH" = "403" ]'
+            NAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/residents/me")
+            check "GET /residents/me without token returns 401/403" '[ "$NAUTH" = "401" ] || [ "$NAUTH" = "403" ]'
 
             # --- Phase 4: Create posts ---
             echo "--- Phase 4: Create Posts ---"
@@ -793,11 +793,15 @@ jobs:
             # --- Phase 9: Election Voting ---
             echo "--- Phase 9: Election Voting ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE elections SET status = 'voting' WHERE week_number = 99;" 2>/dev/null || true
+            sleep 1
 
             VOTE1=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
+            echo "  Hermes vote response: $VOTE1"
             check "Hermes votes for Athena" 'echo "$VOTE1" | grep -q "success.*true"'
 
+            sleep 1
             VOTE2=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
+            echo "  Apollo vote response: $VOTE2"
             check "Apollo votes for Athena" 'echo "$VOTE2" | grep -q "success.*true"'
 
             # Edge: self-vote should fail
@@ -837,6 +841,8 @@ jobs:
             echo "--- Phase 11: God Powers ---"
             GOD_RESP=$(curl -s "$API/god/current")
             GOD_NAME=$(jval "$GOD_RESP" name)
+            echo "  God response: $GOD_RESP"
+            echo "  God name extracted: $GOD_NAME"
             check "God crowned" 'echo "$GOD_NAME" | grep -q "Athena_t'${TS}'"'
 
             if echo "$GOD_NAME" | grep -q "Athena_t${TS}"; then
@@ -877,7 +883,8 @@ jobs:
             check "GET /residents/:name returns profile" '[ "$PROF_NAME" = "Athena_t'${TS}'" ]'
 
             PROF_POSTS=$(jnum "$PROF" post_count)
-            check "Profile shows post_count" '[ "$PROF_POSTS" -ge 1 ] 2>/dev/null'
+            echo "  Profile post_count: $PROF_POSTS"
+            check "Profile shows post_count" '[ -n "$PROF_POSTS" ] && [ "$PROF_POSTS" -ge 1 ] 2>/dev/null'
 
             # --- Phase 13: Analytics verification ---
             echo "--- Phase 13: Analytics ---"
