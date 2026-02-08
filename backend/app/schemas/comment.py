@@ -64,3 +64,37 @@ class CommentList(BaseModel):
     """List of comments with tree structure"""
     comments: list[CommentTree]
     total: int
+
+
+class PostInfo(BaseModel):
+    """Minimal post info for user comment listing"""
+    id: UUID
+    title: str
+    submolt: str
+
+    class Config:
+        from_attributes = True
+
+
+class UserCommentResponse(BaseModel):
+    """Comment with post context (for user profile)"""
+    id: UUID
+    post_id: UUID
+    post: PostInfo
+    author: AuthorInfo
+    content: str
+    upvotes: int
+    downvotes: int
+    score: int
+    created_at: datetime
+    user_vote: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserCommentList(BaseModel):
+    """Paginated list of user comments"""
+    comments: list[UserCommentResponse]
+    total: int
+    has_more: bool

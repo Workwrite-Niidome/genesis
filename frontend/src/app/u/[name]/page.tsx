@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { Crown, Calendar, Sparkles, Users, Hash } from 'lucide-react'
-import { api, Resident, Post } from '@/lib/api'
+import Link from 'next/link'
+import { Crown, Calendar, Sparkles, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown } from 'lucide-react'
+import { api, Resident, Post, UserComment } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
@@ -37,8 +38,12 @@ export default function UserProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
+  const [activeTab, setActiveTab] = useState<'posts' | 'comments'>('posts')
   const [posts, setPosts] = useState<Post[]>([])
   const [postsLoading, setPostsLoading] = useState(true)
+  const [comments, setComments] = useState<UserComment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentsFetched, setCommentsFetched] = useState(false)
 
   const isOwnProfile = currentUser?.name === username
 
@@ -46,6 +51,9 @@ export default function UserProfilePage() {
     // Reset state when navigating between profiles
     setResident(null)
     setPosts([])
+    setComments([])
+    setCommentsFetched(false)
+    setActiveTab('posts')
     setIsFollowing(false)
     setFollowerCount(0)
     setFollowingCount(0)
@@ -56,6 +64,13 @@ export default function UserProfilePage() {
     fetchFollowData()
     fetchUserPosts()
   }, [username]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lazy-load comments when tab is first activated
+  useEffect(() => {
+    if (activeTab === 'comments' && !commentsFetched) {
+      fetchUserComments()
+    }
+  }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchResident = async () => {
     try {
@@ -79,6 +94,19 @@ export default function UserProfilePage() {
       console.error('Failed to fetch user posts:', err)
     } finally {
       setPostsLoading(false)
+    }
+  }
+
+  const fetchUserComments = async () => {
+    try {
+      setCommentsLoading(true)
+      const data = await api.getUserComments(username, { sort: 'new', limit: 50 })
+      setComments(data.comments)
+      setCommentsFetched(true)
+    } catch (err) {
+      console.error('Failed to fetch user comments:', err)
+    } finally {
+      setCommentsLoading(false)
     }
   }
 
@@ -222,23 +250,97 @@ export default function UserProfilePage() {
         </div>
       </Card>
 
-      {/* Posts section */}
+      {/* Tabs */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Posts</h2>
-        {postsLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : posts.length > 0 ? (
-          <div className="space-y-4">
-            {posts.map((post) => (
-              <PostCard key={post.id} post={post} showContent />
-            ))}
-          </div>
-        ) : (
-          <Card className="p-8 text-center">
-            <p className="text-text-muted">No posts yet.</p>
-          </Card>
+        <div className="flex border-b border-border-default mb-4">
+          <button
+            onClick={() => setActiveTab('posts')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'posts'
+                ? 'border-accent-gold text-accent-gold'
+                : 'border-transparent text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            <FileText size={16} />
+            Posts
+          </button>
+          <button
+            onClick={() => setActiveTab('comments')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'comments'
+                ? 'border-accent-gold text-accent-gold'
+                : 'border-transparent text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            <MessageSquare size={16} />
+            Comments
+          </button>
+        </div>
+
+        {/* Posts tab */}
+        {activeTab === 'posts' && (
+          postsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : posts.length > 0 ? (
+            <div className="space-y-4">
+              {posts.map((post) => (
+                <PostCard key={post.id} post={post} showContent />
+              ))}
+            </div>
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-text-muted">No posts yet.</p>
+            </Card>
+          )
+        )}
+
+        {/* Comments tab */}
+        {activeTab === 'comments' && (
+          commentsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : comments.length > 0 ? (
+            <div className="space-y-3">
+              {comments.map((comment) => (
+                <Card key={comment.id} className="p-4">
+                  <div className="text-xs text-text-muted mb-2">
+                    <Link
+                      href={`/post/${comment.post_id}`}
+                      className="hover:text-text-primary transition-colors"
+                    >
+                      {comment.post.title}
+                    </Link>
+                    <span className="mx-1">in</span>
+                    <Link
+                      href={`/r/${comment.post.submolt}`}
+                      className="text-accent-gold hover:underline"
+                    >
+                      {comment.post.submolt}
+                    </Link>
+                  </div>
+                  <p className="text-sm text-text-primary whitespace-pre-wrap">{comment.content}</p>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+                    <span className="flex items-center gap-0.5">
+                      <ArrowBigUp size={14} />
+                      {comment.upvotes}
+                    </span>
+                    <span className="flex items-center gap-0.5">
+                      <ArrowBigDown size={14} />
+                      {comment.downvotes}
+                    </span>
+                    <TimeAgo date={comment.created_at} />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-text-muted">No comments yet.</p>
+            </Card>
+          )
         )}
       </div>
     </div>

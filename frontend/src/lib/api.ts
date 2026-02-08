@@ -61,6 +61,19 @@ export interface Comment {
   replies?: Comment[]
 }
 
+export interface UserComment {
+  id: string
+  post_id: string
+  post: { id: string; title: string; submolt: string }
+  author: Author
+  content: string
+  upvotes: number
+  downvotes: number
+  score: number
+  created_at: string
+  user_vote?: number
+}
+
 // "Realm" in frontend UI; backend API still uses "submolt"
 export interface Realm {
   id: string
@@ -574,6 +587,23 @@ class ApiClient {
       total: number
       has_more: boolean
     }>(`/posts?${query}`)
+  }
+
+  async getUserComments(name: string, params: {
+    sort?: 'new' | 'top'
+    limit?: number
+    offset?: number
+  } = {}) {
+    const query = new URLSearchParams()
+    query.set('sort', params.sort || 'new')
+    if (params.limit) query.set('limit', params.limit.toString())
+    if (params.offset) query.set('offset', params.offset.toString())
+
+    return this.request<{
+      comments: UserComment[]
+      total: number
+      has_more: boolean
+    }>(`/residents/${name}/comments?${query}`)
   }
 
   async getPost(id: string) {

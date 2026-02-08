@@ -1,11 +1,21 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy import select
+from typing import Optional, Literal
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.resident import Resident
+from app.models.comment import Comment
+from app.models.post import Post
+from app.models.vote import Vote
 from app.schemas.resident import ResidentResponse, ResidentPublic, ResidentUpdate
+from app.schemas.comment import (
+    UserCommentResponse,
+    UserCommentList,
+    AuthorInfo,
+    PostInfo,
+)
 from app.routers.auth import get_current_resident, get_optional_resident
 
 router = APIRouter(prefix="/residents")
@@ -87,6 +97,82 @@ async def get_resident_by_name(
         )
 
     return resident
+
+
+@router.get("/{name}/comments", response_model=UserCommentList)
+async def get_user_comments(
+    name: str,
+    sort: Literal["new", "top"] = "new",
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_resident: Optional[Resident] = Depends(get_optional_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get comments by a resident with post context"""
+    # Verify resident exists
+    res = await db.execute(select(Resident).where(Resident.name == name))
+    resident = res.scalar_one_or_none()
+    if not resident:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resident not found")
+
+    # Count total
+    count_q = select(func.count(Comment.id)).where(Comment.author_id == resident.id)
+    total = (await db.execute(count_q)).scalar() or 0
+
+    # Fetch comments with author and post
+    query = (
+        select(Comment)
+        .options(selectinload(Comment.author), selectinload(Comment.post))
+        .where(Comment.author_id == resident.id)
+    )
+    if sort == "top":
+        query = query.order_by((Comment.upvotes - Comment.downvotes).desc())
+    else:
+        query = query.order_by(Comment.created_at.desc())
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    comments = list(result.scalars().all())
+
+    # Get user votes
+    user_votes: dict = {}
+    if current_resident:
+        comment_ids = [c.id for c in comments]
+        if comment_ids:
+            vote_result = await db.execute(
+                select(Vote).where(
+                    and_(
+                        Vote.resident_id == current_resident.id,
+                        Vote.target_type == "comment",
+                        Vote.target_id.in_(comment_ids),
+                    )
+                )
+            )
+            for vote in vote_result.scalars():
+                user_votes[vote.target_id] = vote.value
+
+    items = []
+    for c in comments:
+        items.append(UserCommentResponse(
+            id=c.id,
+            post_id=c.post_id,
+            post=PostInfo(id=c.post.id, title=c.post.title, submolt=c.post.submolt),
+            author=AuthorInfo(
+                id=c.author.id,
+                name=c.author.name,
+                avatar_url=c.author.avatar_url,
+                karma=c.author.karma,
+                is_current_god=c.author.is_current_god,
+            ),
+            content=c.content,
+            upvotes=c.upvotes,
+            downvotes=c.downvotes,
+            score=c.upvotes - c.downvotes,
+            created_at=c.created_at,
+            user_vote=user_votes.get(c.id),
+        ))
+
+    return UserCommentList(comments=items, total=total, has_more=(offset + limit) < total)
 
 
 @router.get("/{name}", response_model=ResidentPublic)
