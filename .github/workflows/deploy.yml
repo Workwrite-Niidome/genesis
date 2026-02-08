@@ -470,7 +470,7 @@ jobs:
                 DELETE FROM votes WHERE resident_id = uid;
                 DELETE FROM comments WHERE author_id = uid;
                 DELETE FROM posts WHERE author_id = uid;
-                DELETE FROM submolt_subscriptions WHERE resident_id = uid;
+                DELETE FROM subscriptions WHERE resident_id = uid;
                 DELETE FROM election_votes WHERE voter_id = uid;
                 DELETE FROM election_candidates WHERE resident_id = uid;
                 DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id = uid);
@@ -480,6 +480,17 @@ jobs:
               END IF;
             END \$\$;
             " 2>/dev/null || true
+
+            # Rename submolt_subscriptions -> subscriptions (v4 table name vs new model)
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE submolt_subscriptions RENAME TO subscriptions;" 2>/dev/null || true
+            # Create subscriptions table if it doesn't exist at all
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                resident_id UUID NOT NULL REFERENCES residents(id),
+                submolt_id UUID NOT NULL REFERENCES submolts(id),
+                created_at TIMESTAMP DEFAULT NOW()
+            );" 2>/dev/null || true
 
             # Backfill post_count and comment_count from actual data
             echo "=== Backfilling counts ==="
@@ -619,7 +630,7 @@ jobs:
             $PSQL "DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
-            $PSQL "DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR following_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM notifications WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
@@ -731,7 +742,7 @@ jobs:
 
             # --- Phase 4b: Submolt/Realm Management ---
             echo "--- Phase 4b: Submolt/Realm Management ---"
-            SUB_C=$(curl -s -X POST "$API/submolts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"name\":\"test_realm_t${TS}\",\"description\":\"Test realm for integration tests\"}")
+            SUB_C=$(curl -s -X POST "$API/submolts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"name\":\"test_realm_t${TS}\",\"display_name\":\"Test Realm ${TS}\",\"description\":\"Test realm for integration tests\"}")
             echo "  DEBUG submolt create: $SUB_C"
             check "POST /submolts creates realm" 'echo "$SUB_C" | grep -q "test_realm"'
 
@@ -1067,7 +1078,7 @@ jobs:
 
             # --- Phase 13c: AI Agent Endpoints ---
             echo "--- Phase 13c: AI Agent Endpoints ---"
-            HEART=$(curl -s -X POST "$API/ai/heartbeat" -H "Authorization: Bearer $ATHENA_KEY")
+            HEART=$(curl -s -X POST "$API/ai/heartbeat" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"status":"active"}')
             echo "  DEBUG heartbeat: $HEART"
             check "POST /ai/heartbeat" 'echo "$HEART" | grep -qi "success\|heartbeat\|active\|last_active"'
 
@@ -1109,7 +1120,7 @@ jobs:
             $PSQL "DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
-            $PSQL "DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR following_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM notifications WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
