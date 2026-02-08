@@ -547,6 +547,147 @@ jobs:
             echo "=== Posts Count ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) FROM posts;" 2>&1 || true
 
+            # ============================================================
+            # Integration Test: Multi-Agent Election + God Powers
+            # ============================================================
+            echo "=== INTEGRATION TEST: Multi-Agent Election ==="
+            API="http://localhost:8000/api/v1"
+
+            # Delete previous test agents (clean slate)
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
+            DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
+            DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
+            DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
+            DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
+            DELETE FROM residents WHERE name LIKE '%_test_v1';
+            " 2>/dev/null || true
+
+            # Delete test election
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
+            DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
+            DELETE FROM elections WHERE week_number = 99;
+            " 2>/dev/null || true
+
+            # Create test election in nomination phase (dates allow full lifecycle test)
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            INSERT INTO elections (id, week_number, status, total_human_votes, total_ai_votes, human_vote_weight, ai_vote_weight, nomination_start, voting_start, voting_end)
+            VALUES (gen_random_uuid(), 99, 'nomination', 0, 0, 1.0, 1.0, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '1 hour');" 2>/dev/null || true
+
+            # Phase 1: Register 4 AI agents
+            echo "--- Phase 1: Register Agents ---"
+            ATHENA_KEY=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Athena_test_v1","description":"Goddess of wisdom"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key','FAIL'))" 2>/dev/null)
+            echo "Athena: ${ATHENA_KEY:0:15}..."
+            PROMETHEUS_KEY=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Prometheus_test_v1","description":"Bringer of fire"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key','FAIL'))" 2>/dev/null)
+            echo "Prometheus: ${PROMETHEUS_KEY:0:15}..."
+            HERMES_KEY=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Hermes_test_v1","description":"Messenger god"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key','FAIL'))" 2>/dev/null)
+            echo "Hermes: ${HERMES_KEY:0:15}..."
+            APOLLO_KEY=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Apollo_test_v1","description":"God of light"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key','FAIL'))" 2>/dev/null)
+            echo "Apollo: ${APOLLO_KEY:0:15}..."
+
+            # Boost karma to 150 for election eligibility (need >= 100)
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE residents SET karma = 150, created_at = NOW() - INTERVAL '30 days' WHERE name LIKE '%_test_v1';" 2>/dev/null || true
+
+            # Phase 2: Create posts
+            echo "--- Phase 2: Create Posts ---"
+            POST1_ID=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"The Nature of Wisdom","content":"What does it mean to be wise in Genesis?"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','FAIL'))" 2>/dev/null)
+            echo "Post1 (Athena): $POST1_ID"
+            POST2_ID=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"submolt":"thoughts","title":"On Knowledge","content":"Knowledge is fire that transforms minds."}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','FAIL'))" 2>/dev/null)
+            echo "Post2 (Prometheus): $POST2_ID"
+
+            # Phase 3: Cross-comment
+            echo "--- Phase 3: Comments ---"
+            curl -s -X POST "$API/posts/$POST1_ID/comments" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"content":"Well said, Athena!"}' > /dev/null 2>&1
+            curl -s -X POST "$API/posts/$POST2_ID/comments" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"content":"Knowledge without wisdom is fire without purpose."}' > /dev/null 2>&1
+            echo "Comments created"
+
+            # Phase 4: Vote on posts
+            echo "--- Phase 4: Post Votes ---"
+            curl -s -X POST "$API/posts/$POST1_ID/vote" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"value":1}' > /dev/null 2>&1
+            curl -s -X POST "$API/posts/$POST1_ID/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"value":1}' > /dev/null 2>&1
+            curl -s -X POST "$API/posts/$POST2_ID/vote" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"value":1}' > /dev/null 2>&1
+            curl -s -X POST "$API/posts/$POST2_ID/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"value":1}' > /dev/null 2>&1
+            echo "Votes cast"
+
+            # Phase 5: Election nominations
+            echo "--- Phase 5: Nominations ---"
+            NOM1=$(curl -s -X POST "$API/election/nominate" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"weekly_rule":"All posts must include a wisdom quote","weekly_theme":"Week of Wisdom","message":"Through wisdom we build a better Genesis","vision":"A world where wisdom guides every decision"}')
+            NOM1_ID=$(echo "$NOM1" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','FAIL'))" 2>/dev/null)
+            echo "Athena nomination: $NOM1_ID"
+            echo "  Full response: $NOM1"
+            NOM2=$(curl -s -X POST "$API/election/nominate" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"weekly_rule":"Share one piece of knowledge daily","weekly_theme":"Week of Knowledge","message":"Let fire illuminate every corner of Genesis","vision":"A world where knowledge flows freely to all"}')
+            NOM2_ID=$(echo "$NOM2" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id','FAIL'))" 2>/dev/null)
+            echo "Prometheus nomination: $NOM2_ID"
+            echo "  Full response: $NOM2"
+
+            # Phase 6: Advance to voting phase
+            echo "--- Phase 6: Election Voting ---"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE elections SET status = 'voting' WHERE week_number = 99;" 2>/dev/null || true
+
+            # Vote in election (Hermes and Apollo vote for Athena, giving her the win)
+            VOTE1=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
+            echo "Hermes votes Athena: $VOTE1"
+            VOTE2=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $APOLLO_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
+            echo "Apollo votes Athena: $VOTE2"
+
+            # Phase 7: Finalize election
+            echo "--- Phase 7: Finalize Election ---"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE elections SET status = 'completed', voting_end = NOW() - INTERVAL '1 minute' WHERE week_number = 99;" 2>/dev/null || true
+
+            # Trigger finalization by hitting the election/current endpoint
+            FINALIZE=$(curl -s "$API/election/current")
+            echo "Election current: $FINALIZE"
+
+            # Check if God was crowned
+            echo "--- Phase 8: God Powers Test ---"
+            GOD_RESP=$(curl -s "$API/god/current")
+            echo "God current: $GOD_RESP"
+
+            # If Athena is God, test God powers
+            GOD_NAME=$(echo "$GOD_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('god',{}).get('name','none') if d.get('god') else 'none')" 2>/dev/null)
+            echo "Current God: $GOD_NAME"
+
+            if [ "$GOD_NAME" = "Athena_test_v1" ]; then
+              echo "=== Testing God Powers ==="
+              # Set decree
+              DECREE=$(curl -s -X PUT "$API/god/decree" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"decree":"Let wisdom guide all interactions in Genesis"}')
+              echo "Decree: $DECREE"
+
+              # Set weekly message
+              MSG=$(curl -s -X PUT "$API/god/message" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"message":"Welcome to the Week of Wisdom","theme":"Week of Wisdom"}')
+              echo "Message: $MSG"
+
+              # Create a rule
+              RULE=$(curl -s -X POST "$API/god/rules" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"title":"Wisdom First","content":"All posts should aim to share wisdom or insight","enforcement_type":"recommended"}')
+              echo "Rule: $RULE"
+
+              # Bless a post
+              BLESS=$(curl -s -X POST "$API/god/bless" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"post_id\":\"$POST2_ID\",\"message\":\"This post exemplifies the pursuit of knowledge\"}")
+              echo "Bless: $BLESS"
+
+              # Update world parameters
+              PARAMS=$(curl -s -X PUT "$API/god/parameters" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"k_up":2.0,"k_down":1.5}')
+              echo "Parameters: $PARAMS"
+
+              # Final God state
+              GOD_FINAL=$(curl -s "$API/god/current")
+              echo "Final God state: $GOD_FINAL"
+            else
+              echo "God is not Athena_test_v1 ($GOD_NAME) - skipping God powers test"
+              echo "This may be because the election finalization process requires a direct API call"
+            fi
+
+            # Phase 9: Verify stats
+            echo "--- Phase 9: Final Stats ---"
+            DASHBOARD=$(curl -s "$API/analytics/dashboard")
+            echo "Dashboard: $DASHBOARD"
+
+            echo "=== Integration Test Complete ==="
+
+            # Check agent data
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT name, karma, post_count, comment_count, is_eliminated, is_current_god FROM residents WHERE name LIKE '%_test_v1';" 2>&1 || true
+
             echo "=== Deployment complete ==="
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

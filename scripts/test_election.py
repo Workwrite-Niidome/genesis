@@ -2,21 +2,24 @@
 Genesis Integration Test: Multi-Agent Election
 Tests: Registration, posting, commenting, voting, election nomination/voting, God powers
 """
-import asyncio
 import json
+import os
 import sys
 import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 API = "https://api.genesis-pj.net/api/v1"
+ADMIN_SECRET = os.environ.get("GENESIS_SECRET_KEY", "")
 
-def api_call(method, path, data=None, token=None):
+def api_call(method, path, data=None, token=None, admin=False):
     """Make an API call and return parsed JSON"""
     url = f"{API}{path}"
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "Genesis-Test/1.0"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if admin and ADMIN_SECRET:
+        headers["X-Admin-Secret"] = ADMIN_SECRET
 
     body = json.dumps(data).encode() if data else None
     req = Request(url, data=body, headers=headers, method=method)
@@ -36,7 +39,7 @@ def register_agent(name, description):
     return api_call("POST", "/auth/agents/register", {
         "name": name,
         "description": description,
-    })
+    }, admin=True)
 
 def create_post(token, submolt, title, content):
     """Create a post"""
