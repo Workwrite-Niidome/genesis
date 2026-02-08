@@ -1584,6 +1584,10 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as posts FROM posts;" 2>&1 || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT name, post_count FROM submolts ORDER BY post_count DESC;" 2>&1 || true
 
+            # One-time: translate any remaining Japanese content to English
+            echo "=== Translating Japanese content to English ==="
+            docker exec genesis-backend python scripts/translate_to_english.py 2>&1 || echo "Translation script failed (non-fatal)"
+
             echo "=== Deployment complete ==="
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
