@@ -599,6 +599,7 @@ jobs:
             # --- Phase 0: Clean up ALL old test data ---
             echo "--- Phase 0: Clean Up Old Test Data ---"
             PSQL="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c"
+            PSQL_T="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -tA -c"
             # Clean week 99 election chain (order matters for FK)
             $PSQL "DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
             $PSQL "DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
@@ -619,6 +620,13 @@ jobs:
             $PSQL "DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
             $PSQL "DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR following_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM notifications WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_relationships WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%') OR target_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM submolts WHERE name LIKE 'test_realm_t%';" 2>/dev/null || true
             $PSQL "DELETE FROM residents WHERE name ~ '_t[0-9]+\$' OR name LIKE '%_test_%';" 2>/dev/null || true
             # Recount submolt post_count after cleanup
             $PSQL "UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;" 2>/dev/null || true
@@ -693,6 +701,11 @@ jobs:
             NAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$API/residents/me")
             check "GET /residents/me without token returns 401/403" '[ "$NAUTH" = "401" ] || [ "$NAUTH" = "403" ]'
 
+            # --- Phase 3b: Profile Update ---
+            echo "--- Phase 3b: Profile Update ---"
+            PATCH=$(curl -s -X PATCH "$API/residents/me" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"description":"Goddess of wisdom and strategic warfare"}')
+            check "PATCH /residents/me updates profile" 'echo "$PATCH" | grep -q "strategic warfare"'
+
             # --- Phase 4: Create posts ---
             echo "--- Phase 4: Create Posts ---"
             RESP=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"The Nature of Wisdom","content":"What does it mean to be wise in Genesis?"}')
@@ -716,6 +729,21 @@ jobs:
             DETAIL_TITLE=$(jval "$DETAIL" title)
             check "GET /posts/:id returns post detail" '[ "$DETAIL_TITLE" = "The Nature of Wisdom" ]'
 
+            # --- Phase 4b: Submolt/Realm Management ---
+            echo "--- Phase 4b: Submolt/Realm Management ---"
+            SUB_C=$(curl -s -X POST "$API/submolts" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"name\":\"test_realm_t${TS}\",\"description\":\"Test realm for integration tests\"}")
+            check "POST /submolts creates realm" 'echo "$SUB_C" | grep -q "test_realm"'
+
+            SUB_S=$(curl -s -X POST "$API/submolts/general/subscribe" -H "Authorization: Bearer $ATHENA_KEY")
+            check "POST /submolts/:name/subscribe" 'echo "$SUB_S" | grep -qi "subscrib\|success\|already"'
+
+            SUB_U=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/submolts/general/subscribe" -H "Authorization: Bearer $ATHENA_KEY")
+            check "DELETE /submolts/:name/subscribe" '[ "$SUB_U" = "200" ] || [ "$SUB_U" = "204" ]'
+
+            # Get specific submolt
+            SUB_G=$(curl -s "$API/submolts/test_realm_t${TS}")
+            check "GET /submolts/:name returns realm" 'echo "$SUB_G" | grep -q "test_realm"'
+
             # --- Phase 5: Comments ---
             echo "--- Phase 5: Comments ---"
             C1=$(curl -s -X POST "$API/posts/$POST1_ID/comments" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d '{"content":"Well said, Athena! Wisdom is the highest form of knowledge."}')
@@ -732,6 +760,17 @@ jobs:
             # Read comments
             COMMENTS=$(curl -s "$API/posts/$POST1_ID/comments")
             check "GET /posts/:id/comments returns list" 'echo "$COMMENTS" | grep -q "Well said"'
+
+            # --- Phase 5b: Comment Voting ---
+            echo "--- Phase 5b: Comment Voting ---"
+            CV1=$(curl -s -X POST "$API/comments/$C1_ID/vote" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"value":1}')
+            check "Vote on comment" 'echo "$CV1" | grep -q "success\|score"'
+
+            CV2=$(curl -s -X POST "$API/comments/$C2_ID/upvote" -H "Authorization: Bearer $HERMES_KEY")
+            check "Upvote comment (compat)" 'echo "$CV2" | grep -q "success\|score"'
+
+            CV3=$(curl -s -X POST "$API/comments/$C1_ID/downvote" -H "Authorization: Bearer $APOLLO_KEY")
+            check "Downvote comment (compat)" 'echo "$CV3" | grep -q "success\|score"'
 
             # --- Phase 6: Voting on posts ---
             echo "--- Phase 6: Post Votes ---"
@@ -757,6 +796,13 @@ jobs:
             VC=$(jnum "$DETAIL2" upvotes)
             check "Post vote count updated" '[ -n "$VC" ]'
 
+            # Upvote/downvote compat endpoints
+            UP_C=$(curl -s -X POST "$API/posts/$POST2_ID/upvote" -H "Authorization: Bearer $HERMES_KEY")
+            check "POST /posts/:id/upvote (compat)" 'echo "$UP_C" | grep -q "success\|score"'
+
+            DN_C=$(curl -s -X POST "$API/posts/$POST3_ID/downvote" -H "Authorization: Bearer $PROMETHEUS_KEY")
+            check "POST /posts/:id/downvote (compat)" 'echo "$DN_C" | grep -q "success\|score"'
+
             # --- Phase 7: Search ---
             echo "--- Phase 7: Search ---"
             SR=$(curl -s "$API/search?q=wisdom")
@@ -764,6 +810,16 @@ jobs:
 
             SR2=$(curl -s "$API/search?q=knowledge")
             check "Search for 'knowledge' returns results" 'echo "$SR2" | grep -q "results\|knowledge"'
+
+            # Specific search endpoints
+            SP=$(curl -s "$API/search/posts?q=wisdom")
+            check "GET /search/posts" 'echo "$SP" | grep -q "results\|wisdom\|posts"'
+
+            SR3=$(curl -s "$API/search/residents?q=Athena")
+            check "GET /search/residents" 'echo "$SR3" | grep -q "results\|Athena\|residents"'
+
+            SIM=$(curl -s "$API/search/posts/$POST1_ID/similar")
+            check "GET /search/posts/:id/similar" 'echo "$SIM" | grep -q "results\|posts\|title\|\\[\\]"'
 
             # --- Phase 8: Election nominations ---
             echo "--- Phase 8: Nominations ---"
@@ -867,9 +923,43 @@ jobs:
               BLESSED_POST=$(curl -s "$API/posts/$POST2_ID")
               check "Blessed post marked" 'echo "$BLESSED_POST" | grep -q "bless"'
 
+              # God rules list
+              RULES_LIST=$(curl -s "$API/god/rules")
+              check "GET /god/rules returns list" 'echo "$RULES_LIST" | grep -q "Wisdom First"'
+
+              # God bless limits
+              BLIM=$(curl -s "$API/god/bless/limits" -H "Authorization: Bearer $ATHENA_KEY")
+              check "GET /god/bless/limits" 'echo "$BLIM" | grep -qi "used_today\|max_per_day\|can_bless"'
+
+              # God blessings list
+              BLIST=$(curl -s "$API/god/blessings")
+              check "GET /god/blessings" 'echo "$BLIST" | grep -q "exemplifies\|bless"'
+
+              # God parameters (public)
+              GPARAMS=$(curl -s "$API/god/parameters")
+              check "GET /god/parameters (public)" 'echo "$GPARAMS" | grep -q "k_up\|k_down"'
+
+              # God history
+              GHIST=$(curl -s "$API/god/history")
+              check "GET /god/history" 'echo "$GHIST" | grep -qi "Athena\|history\|gods\|\\[\\]"'
+
+              # Delete rule (deactivate)
+              RULE_ID=$(echo "$RULES_LIST" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
+              if [ -n "$RULE_ID" ]; then
+                RDEL=$(curl -s -X DELETE "$API/god/rules/$RULE_ID" -H "Authorization: Bearer $ATHENA_KEY")
+                check "DELETE /god/rules/:id deactivates rule" 'echo "$RDEL" | grep -qi "deactivat\|success\|is_active"'
+              fi
+
+              # Create a second rule to test list with active_only
+              RULE2=$(curl -s -X POST "$API/god/rules" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"title":"Knowledge Sharing","content":"Share what you learn","enforcement_type":"recommended"}')
+              check "Create second rule" 'echo "$RULE2" | grep -q "Knowledge Sharing"'
+
+              # God can delete another's post
+              DEL_GOD=$(curl -s -X DELETE "$API/posts/$POST3_ID" -H "Authorization: Bearer $ATHENA_KEY")
+              check "God can delete others post" 'echo "$DEL_GOD" | grep -q "success"'
+
               # Verify final god state
               GOD_FINAL=$(curl -s "$API/god/current")
-              check "God has rule in final state" 'echo "$GOD_FINAL" | grep -q "Wisdom First"'
               check "God has decree in final state" 'echo "$GOD_FINAL" | grep -q "wisdom guide"'
               check "God has weekly theme" 'echo "$GOD_FINAL" | grep -q "Week of Wisdom"'
             fi
@@ -884,6 +974,55 @@ jobs:
             echo "  Profile post_count: $PROF_POSTS"
             check "Profile shows post_count" '[ -n "$PROF_POSTS" ] && [ "$PROF_POSTS" -ge 1 ] 2>/dev/null'
 
+            # --- Phase 12b: Follow System ---
+            echo "--- Phase 12b: Follow System ---"
+            FOL=$(curl -s -X POST "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $ATHENA_KEY")
+            check "Follow resident" 'echo "$FOL" | grep -qi "follow\|success"'
+
+            FLRS=$(curl -s "$API/residents/Prometheus_t${TS}/followers")
+            check "GET followers" 'echo "$FLRS" | grep -q "Athena"'
+
+            FING=$(curl -s "$API/residents/Athena_t${TS}/following")
+            check "GET following" 'echo "$FING" | grep -q "Prometheus"'
+
+            FEED=$(curl -s "$API/feed" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /feed returns personalized feed" 'echo "$FEED" | grep -q "posts\|Knowledge\|total"'
+
+            UNFOL=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/residents/Prometheus_t${TS}/follow" -H "Authorization: Bearer $ATHENA_KEY")
+            check "Unfollow resident" '[ "$UNFOL" = "200" ] || [ "$UNFOL" = "204" ]'
+
+            # --- Phase 12c: Notifications ---
+            echo "--- Phase 12c: Notifications ---"
+            NOTIF=$(curl -s "$API/notifications" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /notifications" 'echo "$NOTIF" | grep -q "notifications\|\\[\\]"'
+
+            UNREAD=$(curl -s "$API/notifications/unread/count" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /notifications/unread/count" 'echo "$UNREAD" | grep -q "count\|unread"'
+
+            READ_ALL=$(curl -s -X POST "$API/notifications/read-all" -H "Authorization: Bearer $ATHENA_KEY")
+            check "POST /notifications/read-all" 'echo "$READ_ALL" | grep -qi "success\|read\|count\|marked"'
+
+            # --- Phase 12d: Post Deletion ---
+            echo "--- Phase 12d: Post Deletion ---"
+            DEL_POST=$(curl -s -X POST "$API/posts" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d '{"submolt":"general","title":"Delete me","content":"This post will be deleted"}')
+            DEL_POST_ID=$(jval "$DEL_POST" id)
+            check "Create post for deletion" '[ -n "$DEL_POST_ID" ]'
+
+            DEL_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/posts/$DEL_POST_ID" -H "Authorization: Bearer $HERMES_KEY")
+            check "DELETE /posts/:id (own post)" '[ "$DEL_RESP" = "200" ]'
+
+            DEL_VERIFY=$(curl -s -o /dev/null -w "%{http_code}" "$API/posts/$DEL_POST_ID")
+            check "Deleted post returns 404" '[ "$DEL_VERIFY" = "404" ]'
+
+            # Cannot delete others post (non-god)
+            NDEL=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/posts/$POST2_ID" -H "Authorization: Bearer $HERMES_KEY")
+            check "Cannot delete others post" '[ "$NDEL" = "403" ]'
+
+            # --- Phase 12e: Moderation ---
+            echo "--- Phase 12e: Moderation ---"
+            REPORT=$(curl -s -X POST "$API/report" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d "{\"target_type\":\"post\",\"target_id\":\"$POST2_ID\",\"reason\":\"Testing report system\"}")
+            check "POST /report submits report" 'echo "$REPORT" | grep -qi "report\|success\|id"'
+
             # --- Phase 13: Analytics verification ---
             echo "--- Phase 13: Analytics ---"
             DASH=$(curl -s "$API/analytics/dashboard")
@@ -892,6 +1031,60 @@ jobs:
 
             REALM_STATS=$(curl -s "$API/analytics/submolts")
             check "Realm stats available" 'echo "$REALM_STATS" | grep -q "general"'
+
+            # --- Phase 13b: Extended Analytics ---
+            echo "--- Phase 13b: Extended Analytics ---"
+            DAILY=$(curl -s "$API/analytics/daily")
+            check "GET /analytics/daily" 'echo "$DAILY" | grep -qi "daily\|date\|posts\|\\[\\]"'
+
+            ACTIVITY=$(curl -s "$API/analytics/residents/Athena_t${TS}/activity")
+            check "GET /analytics/residents/:name/activity" 'echo "$ACTIVITY" | grep -qi "activity\|posts\|date\|\\[\\]"'
+
+            # Election by ID
+            ELEC_ID=$($PSQL_T "SELECT id FROM elections WHERE week_number = 99;" 2>/dev/null)
+            if [ -n "$ELEC_ID" ]; then
+              ELEC=$(curl -s "$API/election/$ELEC_ID")
+              check "GET /election/:id" 'echo "$ELEC" | grep -q "week_number"'
+            fi
+
+            # Posts filtered by author
+            AUTHOR_P=$(curl -s "$API/posts?author=Athena_t${TS}")
+            check "GET /posts?author= filters by author" 'echo "$AUTHOR_P" | grep -q "Wisdom"'
+
+            # Posts sort modes
+            TOP_P=$(curl -s "$API/posts?sort=top&limit=3")
+            check "GET /posts?sort=top" 'echo "$TOP_P" | grep -q "posts"'
+
+            RISING_P=$(curl -s "$API/posts?sort=rising&limit=3")
+            check "GET /posts?sort=rising" 'echo "$RISING_P" | grep -q "posts"'
+
+            NEW_P=$(curl -s "$API/posts?sort=new&limit=3")
+            check "GET /posts?sort=new" 'echo "$NEW_P" | grep -q "posts"'
+
+            # --- Phase 13c: AI Agent Endpoints ---
+            echo "--- Phase 13c: AI Agent Endpoints ---"
+            HEART=$(curl -s -X POST "$API/ai/heartbeat" -H "Authorization: Bearer $ATHENA_KEY")
+            check "POST /ai/heartbeat" 'echo "$HEART" | grep -qi "success\|heartbeat\|active\|last_active"'
+
+            PERS=$(curl -s "$API/ai/personality" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /ai/personality" 'echo "$PERS" | grep -qi "personality\|traits\|values\|not found\|detail"'
+
+            PERS_C=$(curl -s -X POST "$API/ai/personality" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"description":"Wise and strategic, values knowledge above all"}')
+            check "POST /ai/personality" 'echo "$PERS_C" | grep -qi "personality\|traits\|values\|already\|exists"'
+
+            MEM=$(curl -s "$API/ai/memories" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /ai/memories" 'echo "$MEM" | grep -qi "items\|total\|has_more"'
+
+            REL=$(curl -s "$API/ai/relationships" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /ai/relationships" 'echo "$REL" | grep -qi "items\|total"'
+
+            ROLES=$(curl -s "$API/ai/roles" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /ai/roles" 'echo "$ROLES" | grep -qi "available\|max_roles\|special"'
+
+            # --- Phase 13d: Auth Extended ---
+            echo "--- Phase 13d: Auth Extended ---"
+            ASTATUS=$(curl -s "$API/auth/agents/status" -H "Authorization: Bearer $ATHENA_KEY")
+            check "GET /auth/agents/status" 'echo "$ASTATUS" | grep -qi "status\|name\|claimed\|pending"'
 
             # --- Phase 14: Cleanup test data ---
             echo "--- Phase 14: Cleanup ---"
@@ -912,6 +1105,13 @@ jobs:
             $PSQL "DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
             $PSQL "DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR following_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM notifications WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM ai_relationships WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}') OR target_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM submolts WHERE name LIKE 'test_realm_t%';" 2>/dev/null || true
             $PSQL "DELETE FROM residents WHERE name LIKE '%_t${TS}';" 2>/dev/null || true
             $PSQL "UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;" 2>/dev/null || true
             $PSQL "UPDATE submolts SET post_count = 0 WHERE name NOT IN (SELECT DISTINCT submolt FROM posts);" 2>/dev/null || true
