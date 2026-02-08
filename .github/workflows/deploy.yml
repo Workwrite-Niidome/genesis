@@ -564,53 +564,43 @@ jobs:
             # JSON field extractor (no python3 needed)
             jval() { echo "$1" | grep -o "\"$2\":[[:space:]]*\"[^\"]*\"" | head -1 | sed "s/\"$2\":[[:space:]]*\"//;s/\"$//"; }
 
-            # Delete previous test agents (clean slate)
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
-            DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
-            DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
-            DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
-            DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
-            DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_test_v1');
-            DELETE FROM residents WHERE name LIKE '%_test_v1';
-            " 2>/dev/null || true
-
-            # Delete test election and clean up god terms from previous test
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
-            DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));
-            DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));
-            DELETE FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-            DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-            DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-            DELETE FROM elections WHERE week_number = 99;
-            UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;
-            " 2>/dev/null || true
+            # Clean up previous test election
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM elections WHERE week_number = 99;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;" 2>/dev/null || true
 
             # Create test election in nomination phase
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
             INSERT INTO elections (id, week_number, status, total_human_votes, total_ai_votes, human_vote_weight, ai_vote_weight, nomination_start, voting_start, voting_end)
             VALUES (gen_random_uuid(), 99, 'nomination', 0, 0, 1.0, 1.0, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '1 hour');" 2>/dev/null || true
 
-            # Phase 1: Register 4 AI agents
-            echo "--- Phase 1: Register Agents ---"
-            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Athena_test_v1","description":"Goddess of wisdom"}')
+            # Phase 1: Register 4 AI agents (unique names per run)
+            TS=$(date +%s | tail -c 6)
+            echo "--- Phase 1: Register Agents (suffix=$TS) ---"
+            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d "{\"name\":\"Athena_t${TS}\",\"description\":\"Goddess of wisdom\"}")
             ATHENA_KEY=$(jval "$RESP" api_key)
-            echo "Athena: ${ATHENA_KEY:0:15}..."
-            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Prometheus_test_v1","description":"Bringer of fire"}')
+            echo "Athena_t${TS}: ${ATHENA_KEY:0:15}..."
+            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d "{\"name\":\"Prometheus_t${TS}\",\"description\":\"Bringer of fire\"}")
             PROMETHEUS_KEY=$(jval "$RESP" api_key)
-            echo "Prometheus: ${PROMETHEUS_KEY:0:15}..."
-            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Hermes_test_v1","description":"Messenger god"}')
+            echo "Prometheus_t${TS}: ${PROMETHEUS_KEY:0:15}..."
+            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d "{\"name\":\"Hermes_t${TS}\",\"description\":\"Messenger god\"}")
             HERMES_KEY=$(jval "$RESP" api_key)
-            echo "Hermes: ${HERMES_KEY:0:15}..."
-            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d '{"name":"Apollo_test_v1","description":"God of light"}')
+            echo "Hermes_t${TS}: ${HERMES_KEY:0:15}..."
+            RESP=$(curl -s -X POST "$API/auth/agents/register" -H "Content-Type: application/json" -H "X-Admin-Secret: ${SECRET_KEY}" -d "{\"name\":\"Apollo_t${TS}\",\"description\":\"God of light\"}")
             APOLLO_KEY=$(jval "$RESP" api_key)
-            echo "Apollo: ${APOLLO_KEY:0:15}..."
+            echo "Apollo_t${TS}: ${APOLLO_KEY:0:15}..."
 
             if [ -z "$ATHENA_KEY" ] || [ -z "$PROMETHEUS_KEY" ]; then
               echo "FATAL: Agent registration failed. Skipping test."
+              echo "Athena resp: $RESP"
             else
 
             # Boost karma to 150 for election eligibility (need >= 100)
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE residents SET karma = 150, created_at = NOW() - INTERVAL '30 days' WHERE name LIKE '%_test_v1';" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE residents SET karma = 150, created_at = NOW() - INTERVAL '30 days' WHERE name LIKE '%_t${TS}';" 2>/dev/null || true
 
             # Phase 2: Create posts
             echo "--- Phase 2: Create Posts ---"
@@ -681,7 +671,7 @@ jobs:
             GOD_NAME=$(jval "$GOD_RESP" name)
             echo "Current God: $GOD_NAME"
 
-            if echo "$GOD_NAME" | grep -q "Athena_test_v1"; then
+            if echo "$GOD_NAME" | grep -q "Athena_t${TS}"; then
               echo "=== Testing God Powers ==="
               DECREE=$(curl -s -X PUT "$API/god/decree" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d '{"decree":"Let wisdom guide all interactions in Genesis"}')
               echo "Decree: $DECREE"
@@ -701,7 +691,7 @@ jobs:
               GOD_FINAL=$(curl -s "$API/god/current")
               echo "Final God state: $GOD_FINAL"
             else
-              echo "God is not Athena_test_v1 ($GOD_NAME) - skipping God powers test"
+              echo "God is not Athena_t${TS} ($GOD_NAME) - skipping God powers test"
             fi
 
             # Phase 9: Verify stats
@@ -713,7 +703,7 @@ jobs:
 
             set -e  # Re-enable exit on error
             echo "=== Integration Test Complete ==="
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT name, karma, post_count, comment_count, is_eliminated, is_current_god FROM residents WHERE name LIKE '%_test_v1';" 2>&1 || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT name, karma, post_count, comment_count, is_eliminated, is_current_god FROM residents WHERE name LIKE '%_t${TS}';" 2>&1 || true
 
             echo "=== Deployment complete ==="
         env:
