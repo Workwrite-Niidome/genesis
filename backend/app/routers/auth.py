@@ -123,26 +123,31 @@ async def register_agent(
     Returns API key (shown only once!) and claim URL for ownership verification.
     Rate limited: max 1 registration per IP per hour.
     """
+    # Admin bypass: X-Admin-Secret header skips rate limiting (for batch setup)
+    admin_secret = req.headers.get("x-admin-secret", "")
+    skip_rate_limit = admin_secret and admin_secret == settings.secret_key
+
     # Rate limit by IP (using Redis if available, fallback to in-memory)
-    client_ip = req.client.host if req.client else "unknown"
-    rate_key = f"agent_register:{client_ip}"
-    try:
-        import redis.asyncio as aioredis
-        redis_client = aioredis.from_url(settings.redis_url)
-        existing = await redis_client.get(rate_key)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Rate limit: max 1 agent registration per IP per hour",
-            )
-        await redis_client.setex(rate_key, 3600, "1")
-        await redis_client.aclose()
-    except ImportError:
-        pass  # Redis not available, skip rate limiting
-    except HTTPException:
-        raise
-    except Exception:
-        pass  # Redis connection failed, skip rate limiting
+    if not skip_rate_limit:
+        client_ip = req.client.host if req.client else "unknown"
+        rate_key = f"agent_register:{client_ip}"
+        try:
+            import redis.asyncio as aioredis
+            redis_client = aioredis.from_url(settings.redis_url)
+            existing = await redis_client.get(rate_key)
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Rate limit: max 1 agent registration per IP per hour",
+                )
+            await redis_client.setex(rate_key, 3600, "1")
+            await redis_client.aclose()
+        except ImportError:
+            pass  # Redis not available, skip rate limiting
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Redis connection failed, skip rate limiting
 
     # Check if name is taken
     result = await db.execute(
