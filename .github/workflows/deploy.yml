@@ -598,42 +598,35 @@ jobs:
 
             # --- Phase 0: Clean up ALL old test data ---
             echo "--- Phase 0: Clean Up Old Test Data ---"
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
-            DO \$\$
-            DECLARE
-              del_count INTEGER := 0;
-            BEGIN
-              -- Clean up test elections (week 99)
-              DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));
-              DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));
-              DELETE FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-              DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-              DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-              DELETE FROM elections WHERE week_number = 99;
-              -- Reset god status
-              UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;
-              -- Clean up old test agents and their data
-              DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');
-              DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');
-              DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');
-              DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');
-              DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');
-              DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');
-              SELECT count(*) INTO del_count FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%';
-              DELETE FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%';
-              RAISE NOTICE 'Cleaned up % old test agents', del_count;
-            END \$\$;
-            " 2>/dev/null || true
-            # Recount after cleanup
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
-            UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;
-            UPDATE submolts SET post_count = 0 WHERE name NOT IN (SELECT DISTINCT submolt FROM posts);
-            " 2>/dev/null || true
+            PSQL="docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c"
+            # Clean week 99 election chain (order matters for FK)
+            $PSQL "DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            $PSQL "DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            $PSQL "DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            $PSQL "DELETE FROM elections WHERE week_number = 99;" 2>/dev/null || true
+            # Reset god status
+            $PSQL "UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;" 2>/dev/null || true
+            $PSQL "UPDATE god_terms SET is_active = FALSE WHERE is_active = TRUE;" 2>/dev/null || true
+            # Clean ALL test agents (FK-safe order: dependents first)
+            $PSQL "DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%'));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%'));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_terms WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%');" 2>/dev/null || true
+            $PSQL "DELETE FROM residents WHERE name ~ '_t[0-9]+\$' OR name LIKE '%_test_%';" 2>/dev/null || true
+            # Recount submolt post_count after cleanup
+            $PSQL "UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;" 2>/dev/null || true
+            $PSQL "UPDATE submolts SET post_count = 0 WHERE name NOT IN (SELECT DISTINCT submolt FROM posts);" 2>/dev/null || true
             echo "Old test data cleaned"
 
-            # Create test election in nomination phase
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
-            INSERT INTO elections (id, week_number, status, total_human_votes, total_ai_votes, human_vote_weight, ai_vote_weight, nomination_start, voting_start, voting_end)
+            # Create test election in nomination phase (voting_start in past so nomination is valid)
+            $PSQL "INSERT INTO elections (id, week_number, status, total_human_votes, total_ai_votes, human_vote_weight, ai_vote_weight, nomination_start, voting_start, voting_end)
             VALUES (gen_random_uuid(), 99, 'nomination', 0, 0, 1.0, 1.0, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '1 hour');" 2>/dev/null || true
 
             # --- Phase 1: Register agents ---
@@ -792,8 +785,13 @@ jobs:
 
             # --- Phase 9: Election Voting ---
             echo "--- Phase 9: Election Voting ---"
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE elections SET status = 'voting' WHERE week_number = 99;" 2>/dev/null || true
+            $PSQL "UPDATE elections SET status = 'voting' WHERE week_number = 99;" 2>/dev/null || true
             sleep 1
+            # Debug: verify election and candidates state
+            echo "  Elections status:"
+            $PSQL "SELECT week_number, status FROM elections ORDER BY week_number;" 2>&1 || true
+            echo "  Candidates in week 99:"
+            $PSQL "SELECT ec.id, r.name, ec.weighted_votes FROM election_candidates ec JOIN elections e ON ec.election_id = e.id JOIN residents r ON ec.resident_id = r.id WHERE e.week_number = 99;" 2>&1 || true
 
             VOTE1=$(curl -s -X POST "$API/election/vote" -H "Authorization: Bearer $HERMES_KEY" -H "Content-Type: application/json" -d "{\"candidate_id\":\"$NOM1_ID\"}")
             echo "  Hermes vote response: $VOTE1"
@@ -897,30 +895,26 @@ jobs:
 
             # --- Phase 14: Cleanup test data ---
             echo "--- Phase 14: Cleanup ---"
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
-            DO \$\$
-            BEGIN
-              -- Clean test election
-              DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));
-              DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));
-              DELETE FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-              DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-              DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);
-              DELETE FROM elections WHERE week_number = 99;
-              -- Reset god
-              UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;
-              UPDATE residents SET god_terms_count = GREATEST(god_terms_count - 1, 0) WHERE name LIKE '%_t${TS}';
-              -- Clean test agents and their data
-              DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');
-              DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');
-              DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');
-              DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');
-              DELETE FROM residents WHERE name LIKE '%_t${TS}';
-              -- Recount submolt post counts
-              UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;
-              UPDATE submolts SET post_count = 0 WHERE name NOT IN (SELECT DISTINCT submolt FROM posts);
-            END \$\$;
-            " 2>/dev/null || true
+            # Individual statements (no DO block - avoid rollback-all on FK error)
+            $PSQL "DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_terms WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            $PSQL "DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            $PSQL "DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE week_number = 99);" 2>/dev/null || true
+            $PSQL "DELETE FROM elections WHERE week_number = 99;" 2>/dev/null || true
+            $PSQL "UPDATE residents SET is_current_god = FALSE WHERE is_current_god = TRUE;" 2>/dev/null || true
+            $PSQL "UPDATE god_terms SET is_active = FALSE WHERE is_active = TRUE;" 2>/dev/null || true
+            # Clean test agents (FK-safe order)
+            $PSQL "DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}'));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}'));" 2>/dev/null || true
+            $PSQL "DELETE FROM god_terms WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM submolt_subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE name LIKE '%_t${TS}');" 2>/dev/null || true
+            $PSQL "DELETE FROM residents WHERE name LIKE '%_t${TS}';" 2>/dev/null || true
+            $PSQL "UPDATE submolts s SET post_count = COALESCE(sub.cnt, 0) FROM (SELECT submolt, count(*) cnt FROM posts GROUP BY submolt) sub WHERE s.name = sub.submolt;" 2>/dev/null || true
+            $PSQL "UPDATE submolts SET post_count = 0 WHERE name NOT IN (SELECT DISTINCT submolt FROM posts);" 2>/dev/null || true
             echo "Test data cleaned up"
 
             fi  # end of agent registration check
