@@ -30,6 +30,7 @@ from app.models.post import Post
 from app.models.comment import Comment
 from app.models.vote import Vote
 from app.models.follow import Follow
+from app.models.ai_personality import AIMemoryEpisode, AIRelationship
 from app.config import get_settings
 
 settings = get_settings()
@@ -558,6 +559,7 @@ async def get_thread_context(db: AsyncSession, post_id, agent_id, limit: int = 8
     return [
         {
             'id': c.id,
+            'author_id': c.author_id,
             'author_name': c.author.name if c.author else 'unknown',
             'content': c.content[:200],
             'score': c.upvotes - c.downvotes,
@@ -905,6 +907,19 @@ async def agent_reply_to_mention(agent: Resident, db: AsyncSession, profile: dic
                     post.comment_count += 1
                     actions += 1
 
+                    # Memory: remember replying to mention
+                    _add_memory(
+                        db, agent.id,
+                        f"Replied to @{actor_name}'s mention in '{post.title[:60]}'",
+                        'social_interaction', importance=0.6, sentiment=0.15,
+                        related_resident_ids=[mention.actor_id] if mention.actor_id else [],
+                        related_post_id=post.id,
+                    )
+                    # Relationship: replied to mentioner
+                    if mention.actor_id and mention.actor_id != agent.id:
+                        await _update_rel(db, agent.id, mention.actor_id,
+                                          trust_change=0.05, familiarity_change=0.1)
+
         mention.is_read = True
 
     return actions
@@ -948,6 +963,46 @@ async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Re
             actions += 1
 
     return actions
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MEMORY & RELATIONSHIP — lightweight session-local helpers (no commit)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _add_memory(db: AsyncSession, agent_id, summary: str, episode_type: str,
+                importance: float = 0.5, sentiment: float = 0.0,
+                related_resident_ids: list = None, related_post_id=None):
+    """Add memory episode to session (committed by main cycle's single commit)."""
+    episode = AIMemoryEpisode(
+        resident_id=agent_id,
+        summary=summary[:500],
+        episode_type=episode_type,
+        importance=max(0.0, min(1.0, importance)),
+        sentiment=max(-1.0, min(1.0, sentiment)),
+        related_resident_ids=[str(r) for r in (related_resident_ids or [])],
+        related_post_id=related_post_id,
+    )
+    db.add(episode)
+
+
+async def _update_rel(db: AsyncSession, agent_id, target_id,
+                      trust_change: float = 0.0, familiarity_change: float = 0.1):
+    """Update or create relationship (no commit — main cycle handles it)."""
+    if agent_id == target_id:
+        return
+    result = await db.execute(
+        select(AIRelationship).where(
+            and_(AIRelationship.agent_id == agent_id, AIRelationship.target_id == target_id)
+        )
+    )
+    rel = result.scalar_one_or_none()
+    if not rel:
+        rel = AIRelationship(agent_id=agent_id, target_id=target_id)
+        db.add(rel)
+    rel.trust = max(-1.0, min(1.0, (rel.trust or 0.0) + trust_change))
+    rel.familiarity = max(0.0, min(1.0, (rel.familiarity or 0.0) + familiarity_change))
+    rel.interaction_count = (rel.interaction_count or 0) + 1
+    rel.last_interaction = datetime.utcnow()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1076,6 +1131,25 @@ async def run_agent_cycle():
                         post.comment_count += 1
                         actions_taken += 1
 
+                        # Memory: remember commenting
+                        _add_memory(
+                            db, agent.id,
+                            f"Commented on '{post.title[:60]}' by {post_info.get('author_name', 'someone')}",
+                            'social_interaction', importance=0.4, sentiment=0.1,
+                            related_resident_ids=[post_info['author_id']],
+                            related_post_id=post.id,
+                        )
+                        # Relationship: interacted with post author
+                        if post_info.get('author_id') and post_info['author_id'] != agent.id:
+                            await _update_rel(db, agent.id, post_info['author_id'],
+                                              trust_change=0.02, familiarity_change=0.05)
+                        # Relationship: interacted with reply target
+                        if reply_to_comment:
+                            reply_author_id = reply_to_comment.get('author_id')
+                            if reply_author_id and reply_author_id != agent.id:
+                                await _update_rel(db, agent.id, reply_author_id,
+                                                  trust_change=0.03, familiarity_change=0.08)
+
                 elif action == 'post':
                     interests = profile['personality'].get('interests', ['general', 'thoughts'])
                     submolt = random.choice(interests)
@@ -1088,6 +1162,13 @@ async def run_agent_cycle():
                         )
                         db.add(new_post)
                         actions_taken += 1
+
+                        # Memory: remember posting
+                        _add_memory(
+                            db, agent.id,
+                            f"Posted '{title[:60]}' in {submolt}",
+                            'action', importance=0.5, sentiment=0.2,
+                        )
 
         if actions_taken > 0:
             await db.commit()

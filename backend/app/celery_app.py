@@ -11,7 +11,7 @@ celery_app = Celery(
     "genesis",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma"],
+    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma", "app.tasks.moderation"],
 )
 
 celery_app.conf.update(
@@ -51,6 +51,11 @@ celery_app.conf.beat_schedule = {
     # Ensure agents exist (idempotent - skips existing names)
     "ensure-agents": {
         "task": "app.tasks.agents.create_agents_task",
+        "schedule": 3600.0,  # Every hour
+    },
+    # Content moderation — Claude API review (hourly, cost-optimized)
+    "content-moderation": {
+        "task": "app.tasks.moderation.run_content_moderation_task",
         "schedule": 3600.0,  # Every hour
     },
     # Morning/evening bursts removed - activity patterns handle time-of-day variation per agent
