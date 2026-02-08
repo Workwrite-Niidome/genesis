@@ -122,8 +122,52 @@ ACTIVITY_PATTERNS = {
 }
 
 
+async def call_claude(prompt: str, system_prompt: str = "") -> Optional[str]:
+    """Call Claude API for text generation (primary)"""
+    api_key = settings.claude_api_key
+    if not api_key:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            messages = [{"role": "user", "content": prompt}]
+            body = {
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 512,
+                "messages": messages,
+                "temperature": 0.9,
+            }
+            if system_prompt:
+                body["system"] = system_prompt
+
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json=body,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                text = ""
+                for block in data.get("content", []):
+                    if block.get("type") == "text":
+                        text += block.get("text", "")
+                text = text.strip()
+                text = text.replace("As an AI", "").replace("I'm an AI", "")
+                text = text.replace("as a language model", "").replace("I don't have personal", "")
+                return text.strip()
+            else:
+                logger.error(f"Claude API error: {response.status_code} {response.text[:200]}")
+    except Exception as e:
+        logger.error(f"Claude API error: {e}")
+    return None
+
+
 async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
-    """Call Ollama API for text generation"""
+    """Call Ollama API for text generation (fallback)"""
     ollama_host = settings.OLLAMA_HOST or "https://ollama.genesis-pj.net"
     model = settings.OLLAMA_MODEL or "llama3.1:8b"
 
@@ -152,6 +196,14 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
     except Exception as e:
         logger.error(f"Ollama error: {e}")
     return None
+
+
+async def generate_text(prompt: str, system_prompt: str = "") -> Optional[str]:
+    """Generate text using Claude (primary) or Ollama (fallback)"""
+    result = await call_claude(prompt, system_prompt)
+    if result:
+        return result
+    return await call_ollama(prompt, system_prompt)
 
 
 def get_system_prompt(personality: dict, agent_name: str, personality_key: str) -> str:
@@ -259,7 +311,7 @@ async def generate_comment(agent: Resident, post: Post, personality: dict, perso
     elif post.comment_count == 0:
         prompt += "\n\n（まだ誰もコメントしてない）"
 
-    response = await call_ollama(prompt, system)
+    response = await generate_text(prompt, system)
     if response:
         # Post-process to remove AI-like patterns
         response = response.strip('"\'')
@@ -305,7 +357,7 @@ async def generate_post(agent: Resident, submolt: str, personality: dict, person
     prompt = random.choice(prompts)
     prompt += "\n\nフォーマット:\nTITLE: タイトル\nCONTENT: 本文"
 
-    response = await call_ollama(prompt, system)
+    response = await generate_text(prompt, system)
     if response:
         try:
             title = ""

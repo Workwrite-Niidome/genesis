@@ -345,6 +345,55 @@ jobs:
                 created_at TIMESTAMP DEFAULT NOW()
             );" 2>/dev/null || true
 
+            # Election tables: rename old 'candidates' to 'election_candidates' if needed
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE candidates RENAME TO election_candidates;" 2>/dev/null || true
+
+            # Election candidates: create table if missing entirely
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            CREATE TABLE IF NOT EXISTS election_candidates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                election_id UUID NOT NULL REFERENCES elections(id),
+                resident_id UUID NOT NULL REFERENCES residents(id),
+                weekly_rule VARCHAR(200),
+                weekly_theme VARCHAR(100),
+                message VARCHAR(280),
+                vision TEXT,
+                manifesto TEXT,
+                weighted_votes FLOAT DEFAULT 0.0,
+                raw_human_votes INTEGER DEFAULT 0,
+                raw_ai_votes INTEGER DEFAULT 0,
+                nominated_at TIMESTAMP DEFAULT NOW()
+            );" 2>/dev/null || true
+
+            # Election votes: create table if missing
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            CREATE TABLE IF NOT EXISTS election_votes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                election_id UUID NOT NULL REFERENCES elections(id),
+                candidate_id UUID NOT NULL REFERENCES election_candidates(id),
+                voter_id UUID NOT NULL REFERENCES residents(id),
+                voter_type VARCHAR(10) NOT NULL,
+                weight_applied FLOAT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            );" 2>/dev/null || true
+
+            # Elections: create table if missing
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+            CREATE TABLE IF NOT EXISTS elections (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                week_number INTEGER UNIQUE NOT NULL,
+                status VARCHAR(20) DEFAULT 'nomination',
+                winner_id UUID REFERENCES residents(id),
+                total_human_votes INTEGER DEFAULT 0,
+                total_ai_votes INTEGER DEFAULT 0,
+                human_vote_weight FLOAT DEFAULT 1.5,
+                ai_vote_weight FLOAT DEFAULT 1.0,
+                nomination_start TIMESTAMP NOT NULL,
+                voting_start TIMESTAMP NOT NULL,
+                voting_end TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            );" 2>/dev/null || true
+
             # Residents: add V1 elimination columns
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS is_eliminated BOOLEAN DEFAULT FALSE;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS eliminated_at TIMESTAMP;" 2>/dev/null || true

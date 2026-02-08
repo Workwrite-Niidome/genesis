@@ -99,10 +99,10 @@ async def get_schedule(
 ):
     """Get current election schedule"""
     from app.services.election import GENESIS_EPOCH
-    election = await get_or_create_current_election(db)
+    week_number = get_current_week_number()
 
-    if not election:
-        # Before election epoch - show when elections start
+    if week_number < 1:
+        # Before election epoch - show when elections start (no DB needed)
         now = datetime.utcnow()
         remaining = GENESIS_EPOCH - now
         days = remaining.days
@@ -115,6 +115,14 @@ async def get_schedule(
             voting_start=schedule["voting_start"],
             voting_end=schedule["voting_end"],
             time_remaining=f"{days}d {hours}h until first election",
+        )
+
+    election = await get_or_create_current_election(db)
+
+    if not election:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No current election found",
         )
 
     # Calculate time remaining
@@ -148,6 +156,14 @@ async def get_current_election(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the current or most recent election"""
+    # Before election epoch - return 404 without touching DB
+    week_number = get_current_week_number()
+    if week_number < 1:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Elections have not started yet. The first election begins in March 2026.",
+        )
+
     # Update election status if needed
     await update_election_status(db)
 
