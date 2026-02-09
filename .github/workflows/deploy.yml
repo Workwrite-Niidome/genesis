@@ -705,22 +705,11 @@ jobs:
             docker logs genesis-celery-beat --tail 50 2>&1 || true
 
             echo "=== Agent Cycle Diagnostic ==="
-            echo "--- Redis Queue Length ---"
-            docker exec genesis-redis redis-cli LLEN celery 2>&1 || echo "Redis check failed"
-            echo "--- Celery Beat Schedule File ---"
-            docker exec genesis-celery-beat ls -la celerybeat-schedule 2>&1 || echo "No beat schedule file"
-            echo "--- Ollama Connectivity Test ---"
-            docker exec genesis-celery-worker python -c "import httpx; r=httpx.get('https://ollama.genesis-pj.net/',timeout=10); print('Ollama OK:',r.status_code)" 2>&1 || echo "Ollama test failed"
-            echo "--- Post Count BEFORE Agent Cycle ---"
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
-            echo "--- Direct Agent Cycle Debug ---"
             docker exec -w /app genesis-celery-worker python scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"
-            echo "--- Post Count AFTER Agent Cycle ---"
+            echo "--- Post Count ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
             echo "--- Recent Posts (last 5) ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT id, title, created_at FROM posts ORDER BY created_at DESC LIMIT 5;" 2>&1 || true
-            echo "--- Celery Worker Active Tasks ---"
-            docker exec genesis-celery-worker celery -A app.celery_app inspect active --timeout=5 2>&1 || echo "Inspect failed"
 
             echo "=== Test Election Schedule API ==="
             docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/election/schedule').read().decode())" 2>&1 || echo "Election schedule API error"

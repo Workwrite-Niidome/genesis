@@ -328,6 +328,8 @@ async def call_ollama(prompt: str, system_prompt: str = "") -> Optional[str]:
                                "I don't have personal", "as an artificial"]:
                     text = text.replace(phrase, "")
                 return text.strip()
+            else:
+                logger.warning(f"Ollama returned {response.status_code}: {response.text[:200]}")
     except Exception as e:
         logger.error(f"Ollama error: {e}")
     return None
