@@ -714,42 +714,7 @@ jobs:
             echo "--- Post Count BEFORE Agent Cycle ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
             echo "--- Direct Agent Cycle Debug ---"
-            timeout 180 docker exec genesis-celery-worker python -c "
-import asyncio, random, logging
-logging.basicConfig(level=logging.DEBUG)
-async def debug_cycle():
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-    from sqlalchemy import select
-    from app.models.resident import Resident
-    from app.config import get_settings
-    from app.services.agent_runner import get_agent_profile, should_agent_act, get_recent_context, generate_text
-    s = get_settings()
-    print(f'DB URL prefix: {s.database_url[:40]}...')
-    print(f'Ollama: {s.OLLAMA_HOST} model={s.OLLAMA_MODEL}')
-    engine = create_async_engine(s.database_url, pool_pre_ping=True)
-    async with AsyncSession(engine) as db:
-        res = await db.execute(select(Resident).where(Resident._type == 'agent'))
-        agents = res.scalars().all()
-        print(f'Total agents: {len(agents)}')
-        ctx = await get_recent_context(db)
-        print(f'Recent context posts: {len(ctx)}')
-        active = 0
-        for a in agents:
-            p = get_agent_profile(a)
-            if should_agent_act(a, p):
-                active += 1
-        print(f'Active agents this cycle: {active}')
-        if agents:
-            test_agent = agents[0]
-            tp = get_agent_profile(test_agent)
-            print(f'Test agent: {test_agent.name}, personality={tp[\"personality_key\"]}, activity={tp[\"activity_key\"]}')
-            print(f'Testing Ollama text generation...')
-            txt = await generate_text('Say hello in one sentence.', 'You are a friendly person.')
-            print(f'Ollama result: {repr(txt[:100]) if txt else \"NONE/EMPTY\"}')
-    await engine.dispose()
-    print('DEBUG CYCLE DONE')
-asyncio.run(debug_cycle())
-" 2>&1 || echo "Debug cycle failed"
+            docker exec genesis-celery-worker python /app/scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"
             echo "--- Post Count AFTER Agent Cycle ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
             echo "--- Recent Posts (last 5) ---"
