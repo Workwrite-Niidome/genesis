@@ -1595,76 +1595,87 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as posts FROM posts;" 2>&1 || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT name, post_count FROM submolts ORDER BY post_count DESC;" 2>&1 || true
 
-            # Clean up ALL test agent remnants using single SQL DO block
+            # Clean up ALL test agent remnants — each table in its own SAVEPOINT
             echo "=== Cleaning up test agent remnants ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis <<'CLEANUP_SQL'
             DO $$
             DECLARE
               test_ids UUID[];
+              test_post_ids UUID[];
               cnt INT;
+              tbl TEXT;
+              stmt TEXT;
             BEGIN
-              -- Collect all test agent IDs
               SELECT array_agg(id) INTO test_ids
               FROM residents
               WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%' OR name LIKE '%Tester_v1';
-
-              IF test_ids IS NULL THEN
-                RAISE NOTICE 'No test agents found';
-                RETURN;
-              END IF;
-
+              IF test_ids IS NULL THEN RAISE NOTICE 'No test agents found'; RETURN; END IF;
               SELECT array_length(test_ids, 1) INTO cnt;
-              RAISE NOTICE 'Found % test agents to clean up', cnt;
+              RAISE NOTICE 'Found % test agents to clean', cnt;
 
-              -- Delete from ALL FK-dependent tables (25 tables, 42 FK columns)
-              DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id = ANY(test_ids));
-              DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id = ANY(test_ids));
-              DELETE FROM god_terms WHERE resident_id = ANY(test_ids);
-              DELETE FROM election_votes WHERE voter_id = ANY(test_ids);
-              DELETE FROM election_candidates WHERE resident_id = ANY(test_ids);
-              UPDATE elections SET winner_id = NULL WHERE winner_id = ANY(test_ids);
-              DELETE FROM vote_pair_weekly WHERE voter_id = ANY(test_ids) OR target_author_id = ANY(test_ids);
-              DELETE FROM votes WHERE resident_id = ANY(test_ids);
-              -- Collect test agents' post IDs for cascading cleanup
-              -- Clean everything referencing test agents' posts first
-              DELETE FROM post_embeddings WHERE post_id IN (SELECT id FROM posts WHERE author_id = ANY(test_ids));
-              DELETE FROM blessings WHERE post_id IN (SELECT id FROM posts WHERE author_id = ANY(test_ids));
-              DELETE FROM votes WHERE post_id IN (SELECT id FROM posts WHERE author_id = ANY(test_ids));
-              UPDATE comments SET parent_id = NULL WHERE post_id IN (SELECT id FROM posts WHERE author_id = ANY(test_ids));
-              DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE author_id = ANY(test_ids));
-              -- Clean comments BY test agents on other posts
-              UPDATE comments SET parent_id = NULL WHERE parent_id IN (SELECT id FROM comments WHERE author_id = ANY(test_ids));
-              DELETE FROM comments WHERE author_id = ANY(test_ids);
-              -- Clean votes BY test agents
-              DELETE FROM votes WHERE resident_id = ANY(test_ids);
-              -- Now safe to delete posts
-              UPDATE posts SET blessed_by = NULL WHERE blessed_by = ANY(test_ids);
-              DELETE FROM posts WHERE author_id = ANY(test_ids);
-              UPDATE submolts SET creator_id = NULL WHERE creator_id = ANY(test_ids);
-              DELETE FROM subscriptions WHERE resident_id = ANY(test_ids);
-              DELETE FROM follows WHERE follower_id = ANY(test_ids) OR following_id = ANY(test_ids);
-              DELETE FROM notifications WHERE recipient_id = ANY(test_ids) OR actor_id = ANY(test_ids);
-              DELETE FROM reports WHERE reporter_id = ANY(test_ids) OR reviewed_by = ANY(test_ids);
-              DELETE FROM moderation_actions WHERE moderator_id = ANY(test_ids) OR target_id = ANY(test_ids);
-              DELETE FROM resident_bans WHERE resident_id = ANY(test_ids) OR banned_by = ANY(test_ids);
-              DELETE FROM ai_personalities WHERE resident_id = ANY(test_ids);
-              DELETE FROM ai_memory_episodes WHERE resident_id = ANY(test_ids);
-              DELETE FROM ai_memories WHERE agent_id = ANY(test_ids);
-              DELETE FROM ai_relationships WHERE agent_id = ANY(test_ids) OR target_id = ANY(test_ids);
-              DELETE FROM ai_election_memories WHERE agent_id = ANY(test_ids);
-              DELETE FROM resident_embeddings WHERE resident_id = ANY(test_ids);
-              DELETE FROM resident_activities WHERE resident_id = ANY(test_ids);
-              DELETE FROM turing_kills WHERE attacker_id = ANY(test_ids) OR target_id = ANY(test_ids);
-              DELETE FROM suspicion_reports WHERE reporter_id = ANY(test_ids) OR target_id = ANY(test_ids);
-              DELETE FROM exclusion_reports WHERE reporter_id = ANY(test_ids) OR target_id = ANY(test_ids);
-              DELETE FROM weekly_scores WHERE resident_id = ANY(test_ids);
-              DELETE FROM turing_game_daily_limits WHERE resident_id = ANY(test_ids);
-              -- Finally delete the residents themselves
+              -- Collect test post IDs
+              SELECT array_agg(id) INTO test_post_ids FROM posts WHERE author_id = ANY(test_ids);
+
+              -- Helper: run each statement in a savepoint so one failure doesn't abort all
+              -- God-related
+              FOR stmt IN VALUES
+                ('DELETE FROM blessings WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id = ANY($1))'),
+                ('DELETE FROM blessings WHERE post_id = ANY($2)'),
+                ('DELETE FROM god_rules WHERE god_term_id IN (SELECT id FROM god_terms WHERE resident_id = ANY($1))'),
+                ('DELETE FROM god_terms WHERE resident_id = ANY($1)'),
+                -- Election
+                ('DELETE FROM election_votes WHERE voter_id = ANY($1)'),
+                ('DELETE FROM election_candidates WHERE resident_id = ANY($1)'),
+                ('UPDATE elections SET winner_id = NULL WHERE winner_id = ANY($1)'),
+                -- Votes & vote pairs
+                ('DELETE FROM vote_pair_weekly WHERE voter_id = ANY($1) OR target_author_id = ANY($1)'),
+                ('DELETE FROM votes WHERE post_id = ANY($2)'),
+                ('DELETE FROM votes WHERE resident_id = ANY($1)'),
+                -- Post dependencies
+                ('DELETE FROM post_embeddings WHERE post_id = ANY($2)'),
+                ('UPDATE comments SET parent_id = NULL WHERE post_id = ANY($2)'),
+                ('DELETE FROM comments WHERE post_id = ANY($2)'),
+                -- Comments by test agents
+                ('UPDATE comments SET parent_id = NULL WHERE parent_id IN (SELECT id FROM comments WHERE author_id = ANY($1))'),
+                ('DELETE FROM comments WHERE author_id = ANY($1)'),
+                -- Posts
+                ('UPDATE posts SET blessed_by = NULL WHERE blessed_by = ANY($1)'),
+                ('DELETE FROM posts WHERE author_id = ANY($1)'),
+                ('UPDATE submolts SET creator_id = NULL WHERE creator_id = ANY($1)'),
+                -- Social
+                ('DELETE FROM subscriptions WHERE resident_id = ANY($1)'),
+                ('DELETE FROM follows WHERE follower_id = ANY($1) OR following_id = ANY($1)'),
+                ('DELETE FROM notifications WHERE recipient_id = ANY($1) OR actor_id = ANY($1)'),
+                ('DELETE FROM reports WHERE reporter_id = ANY($1) OR reviewed_by = ANY($1)'),
+                ('DELETE FROM moderation_actions WHERE moderator_id = ANY($1) OR target_id = ANY($1)'),
+                ('DELETE FROM resident_bans WHERE resident_id = ANY($1) OR banned_by = ANY($1)'),
+                -- AI
+                ('DELETE FROM ai_personalities WHERE resident_id = ANY($1)'),
+                ('DELETE FROM ai_memory_episodes WHERE resident_id = ANY($1)'),
+                ('DELETE FROM ai_relationships WHERE agent_id = ANY($1) OR target_id = ANY($1)'),
+                ('DELETE FROM ai_election_memories WHERE agent_id = ANY($1)'),
+                -- Search/Analytics
+                ('DELETE FROM resident_embeddings WHERE resident_id = ANY($1)'),
+                ('DELETE FROM resident_activities WHERE resident_id = ANY($1)'),
+                -- Turing Game (may not exist yet)
+                ('DELETE FROM turing_kills WHERE attacker_id = ANY($1) OR target_id = ANY($1)'),
+                ('DELETE FROM suspicion_reports WHERE reporter_id = ANY($1) OR target_id = ANY($1)'),
+                ('DELETE FROM exclusion_reports WHERE reporter_id = ANY($1) OR target_id = ANY($1)'),
+                ('DELETE FROM weekly_scores WHERE resident_id = ANY($1)'),
+                ('DELETE FROM turing_game_daily_limits WHERE resident_id = ANY($1)')
+              LOOP
+                BEGIN
+                  EXECUTE stmt USING test_ids, test_post_ids;
+                EXCEPTION WHEN OTHERS THEN
+                  RAISE NOTICE 'Skip: %', SQLERRM;
+                END;
+              END LOOP;
+
+              -- Finally delete residents
               DELETE FROM residents WHERE id = ANY(test_ids);
-
               RAISE NOTICE 'Cleaned up % test agents', cnt;
             EXCEPTION WHEN OTHERS THEN
-              RAISE NOTICE 'Cleanup error: % — %', SQLERRM, SQLSTATE;
+              RAISE NOTICE 'Final cleanup error: % — %', SQLERRM, SQLSTATE;
             END $$;
             SELECT count(*) AS remaining_test_agents FROM residents
             WHERE name ~ '_t[0-9]+$' OR name LIKE '%_test_%' OR name LIKE '%Tester_v1';
