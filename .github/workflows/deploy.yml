@@ -1520,15 +1520,10 @@ jobs:
             echo "  Human IDs: ${HUMAN1_ID:0:8}... ${HUMAN2_ID:0:8}... ${HUMAN3_ID:0:8}..."
 
             # Generate JWT tokens for humans via backend container
-            HUMAN1_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "
-from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta
-s=get_settings(); print(jwt.encode({'sub':'$HUMAN1_ID','exp':datetime.utcnow()+timedelta(hours=1)},s.secret_key,algorithm=s.algorithm))" 2>/dev/null)
-            HUMAN2_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "
-from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta
-s=get_settings(); print(jwt.encode({'sub':'$HUMAN2_ID','exp':datetime.utcnow()+timedelta(hours=1)},s.secret_key,algorithm=s.algorithm))" 2>/dev/null)
-            HUMAN3_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "
-from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta
-s=get_settings(); print(jwt.encode({'sub':'$HUMAN3_ID','exp':datetime.utcnow()+timedelta(hours=1)},s.secret_key,algorithm=s.algorithm))" 2>/dev/null)
+            JWT_PY="from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta; s=get_settings(); print(jwt.encode(dict(sub='SUBID',exp=datetime.utcnow()+timedelta(hours=1)),s.secret_key,algorithm=s.algorithm))"
+            HUMAN1_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "${JWT_PY//SUBID/$HUMAN1_ID}" 2>/dev/null)
+            HUMAN2_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "${JWT_PY//SUBID/$HUMAN2_ID}" 2>/dev/null)
+            HUMAN3_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "${JWT_PY//SUBID/$HUMAN3_ID}" 2>/dev/null)
 
             if [ -z "$HUMAN1_TOKEN" ] || [ -z "$HUMAN1_ID" ]; then
               echo "  WARN: Could not create test humans, skipping Turing Game tests"
