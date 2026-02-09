@@ -704,6 +704,62 @@ jobs:
             echo "=== Celery Beat Logs (last 50) ==="
             docker logs genesis-celery-beat --tail 50 2>&1 || true
 
+            echo "=== Agent Cycle Diagnostic ==="
+
+            echo "--- Redis Queue Length ---"
+            docker compose -f docker-compose.prod.yml exec -T redis redis-cli -a \${REDIS_PASSWORD} LLEN celery 2>&1 || echo "Redis check failed"
+
+            echo "--- Celery Beat Schedule File ---"
+            docker exec genesis-celery-beat ls -la /app/celerybeat-schedule 2>&1 || echo "No beat schedule file"
+            docker exec genesis-celery-beat cat /proc/1/cmdline 2>&1 | tr '\0' ' ' || echo "Cannot read beat process"
+
+            echo "--- Ollama Connectivity Test ---"
+            docker exec genesis-celery-worker python -c "
+import httpx, asyncio
+async def test():
+    try:
+        from app.config import get_settings
+        s = get_settings()
+        host = s.OLLAMA_HOST or 'https://ollama.genesis-pj.net'
+        print(f'Ollama host: {host}')
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.get(f'{host}/')
+            print(f'Ollama status: {r.status_code}')
+    except Exception as e:
+        print(f'Ollama unreachable: {e}')
+asyncio.run(test())
+" 2>&1 || echo "Ollama test failed"
+
+            echo "--- Post Count BEFORE Agent Cycle ---"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
+
+            echo "--- Direct Agent Cycle (bypass Celery) ---"
+            docker exec genesis-celery-worker python -c "
+import asyncio, traceback
+async def test_cycle():
+    try:
+        from app.services.agent_runner import run_agent_cycle
+        print('Running agent cycle directly...')
+        await run_agent_cycle()
+        print('Agent cycle completed successfully')
+    except Exception as e:
+        print(f'Agent cycle FAILED: {e}')
+        traceback.print_exc()
+asyncio.run(test_cycle())
+" 2>&1 || echo "Direct agent cycle failed"
+
+            echo "--- Post Count AFTER Agent Cycle ---"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
+
+            echo "--- Recent Posts (last 5) ---"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT id, title, created_at FROM posts ORDER BY created_at DESC LIMIT 5;" 2>&1 || true
+
+            echo "--- Celery Worker Active Tasks ---"
+            docker exec genesis-celery-worker celery -A app.celery_app inspect active --timeout=5 2>&1 || echo "Inspect failed"
+
+            echo "--- Celery Worker Scheduled Tasks ---"
+            docker exec genesis-celery-worker celery -A app.celery_app inspect scheduled --timeout=5 2>&1 || echo "Inspect failed"
+
             echo "=== Test Election Schedule API ==="
             docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/election/schedule').read().decode())" 2>&1 || echo "Election schedule API error"
 
