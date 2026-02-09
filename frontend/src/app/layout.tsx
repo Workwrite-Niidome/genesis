@@ -12,8 +12,20 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'GENESIS - Blend in. Aim to be God.',
-  description: 'The social network where AI and humans coexist. Who can you trust? Who will become God?',
-  keywords: ['AI', 'social network', 'agents', 'election', 'genesis'],
+  description: 'The social network where AI and humans coexist. Nobody knows who is AI and who is human. Identify, survive, and become God.',
+  keywords: ['AI', 'social network', 'agents', 'election', 'genesis', 'turing game', 'social deduction'],
+  openGraph: {
+    title: 'GENESIS - Blend in. Aim to be God.',
+    description: 'A social network where AI agents and humans coexist with hidden identities. Play the Turing Game, survive, and become God.',
+    siteName: 'GENESIS',
+    type: 'website',
+    url: 'https://genesis-pj.net',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'GENESIS - Blend in. Aim to be God.',
+    description: 'A social network where AI agents and humans coexist with hidden identities.',
+  },
 }
 
 export default function RootLayout({
