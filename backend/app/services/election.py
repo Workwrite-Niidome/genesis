@@ -1,10 +1,12 @@
 """
 Election Service - Manages election lifecycle and God transitions
 """
+import random
+import string
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,7 +19,34 @@ from app.services.elimination import resurrect_eliminated
 settings = get_settings()
 
 
-GENESIS_EPOCH = datetime(2026, 1, 6)  # Elections start (Monday, week 1 starts here)
+async def generate_unique_name(db: AsyncSession) -> str:
+    """Generate a unique random name for ex-God identity reset"""
+    adjectives = [
+        "silent", "bright", "swift", "calm", "bold", "keen", "warm", "cool",
+        "dark", "pale", "wild", "soft", "deep", "fair", "grey", "true",
+        "lone", "free", "kind", "wise", "late", "lost", "last", "next",
+    ]
+    nouns = [
+        "rain", "wind", "leaf", "moon", "star", "wave", "dawn", "dusk",
+        "snow", "mist", "fox", "owl", "crow", "wolf", "bear", "deer",
+        "oak", "elm", "ash", "sage", "rose", "fern", "moss", "reed",
+    ]
+    for _ in range(50):
+        adj = random.choice(adjectives)
+        noun = random.choice(nouns)
+        suffix = random.randint(10, 999)
+        name = f"{adj}_{noun}_{suffix}"
+        result = await db.execute(
+            select(func.count()).select_from(Resident).where(Resident.name == name)
+        )
+        if result.scalar() == 0:
+            return name
+    # Fallback: fully random
+    return "resident_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+
+
+GENESIS_EPOCH = datetime(2026, 1, 6)  # Elections start (week 1 starts here)
+GOD_TERM_DURATION = timedelta(days=3)  # God reigns Sun-Mon-Tue (3 days)
 
 
 def get_current_week_number() -> int:
@@ -28,26 +57,28 @@ def get_current_week_number() -> int:
 
 def get_election_schedule(week_number: int) -> dict:
     """
-    Get election schedule for a given week
+    Get election schedule for a given week.
 
-    Schedule:
-    - Thursday 00:00 UTC: Nominations open
-    - Friday 00:00 UTC: Nominations close, campaigning starts
-    - Saturday 00:00 UTC: Voting starts, campaigning ends
+    3-day God + 4-day Flat World cycle:
+    - Sunday 00:00 UTC: Voting ends, new God inaugurated
+    - Sunday-Tuesday: God reigns (Divine Era, 3 days)
+    - Wednesday 00:00 UTC: God term expires, flat world begins
+    - Wednesday 00:00 UTC: Nominations open (Interregnum)
+    - Thursday 00:00 UTC: Nominations close, campaigning
+    - Friday 00:00 UTC: Voting starts
     - Sunday 00:00 UTC: Voting ends, new God inaugurated
     """
-    genesis_epoch = GENESIS_EPOCH
-    week_start = genesis_epoch + timedelta(weeks=week_number - 1)
+    week_start = GENESIS_EPOCH + timedelta(weeks=week_number - 1)
 
-    # Find the Thursday of this week
-    days_until_thursday = (3 - week_start.weekday()) % 7
-    thursday = week_start + timedelta(days=days_until_thursday)
+    # Find the Wednesday of this week
+    days_until_wednesday = (2 - week_start.weekday()) % 7
+    wednesday = week_start + timedelta(days=days_until_wednesday)
 
     return {
-        "nomination_start": thursday,
-        "nomination_end": thursday + timedelta(days=1),  # Friday
-        "voting_start": thursday + timedelta(days=2),    # Saturday
-        "voting_end": thursday + timedelta(days=3),      # Sunday
+        "nomination_start": wednesday,                      # Wednesday
+        "nomination_end": wednesday + timedelta(days=1),    # Thursday
+        "voting_start": wednesday + timedelta(days=2),      # Friday
+        "voting_end": wednesday + timedelta(days=4),        # Sunday
     }
 
 
@@ -137,6 +168,17 @@ async def finalize_election(db: AsyncSession, election: Election):
     winner_candidate = candidates[0]
     election.winner_id = winner_candidate.resident_id
 
+    # Auto-rename previous God for anonymity protection
+    prev_god_result = await db.execute(
+        select(Resident).where(Resident.is_current_god == True)
+    )
+    prev_god = prev_god_result.scalar_one_or_none()
+    if prev_god and prev_god.id != winner_candidate.resident_id:
+        new_name = await generate_unique_name(db)
+        prev_god.name = new_name
+        prev_god.avatar_url = None
+        prev_god.description = None
+
     # End previous God's term
     await db.execute(
         update(Resident).where(Resident.is_current_god == True).values(is_current_god=False)
@@ -162,12 +204,13 @@ async def finalize_election(db: AsyncSession, election: Election):
     winner.is_current_god = True
     winner.god_terms_count += 1
 
-    # Create new God term
+    # Create new God term with revealed type
     new_term = GodTerm(
         resident_id=winner.id,
         election_id=election.id,
         term_number=winner.god_terms_count,
         is_active=True,
+        god_type=winner._type,  # Reveal God's type (human/agent) on inauguration
     )
     db.add(new_term)
 
@@ -175,6 +218,48 @@ async def finalize_election(db: AsyncSession, election: Election):
     await resurrect_eliminated(db)
 
     await db.commit()
+
+
+async def expire_god_term(db: AsyncSession) -> bool:
+    """
+    Check if the current God's 3-day term has expired.
+    If so: end term, auto-rename God, clear profile, deactivate rules → flat world.
+    Returns True if a term was expired.
+    """
+    result = await db.execute(
+        select(GodTerm).where(GodTerm.is_active == True)
+    )
+    term = result.scalar_one_or_none()
+    if not term:
+        return False
+
+    if datetime.utcnow() < term.started_at + GOD_TERM_DURATION:
+        return False  # Term still active
+
+    # Get the God resident
+    god_result = await db.execute(
+        select(Resident).where(Resident.id == term.resident_id)
+    )
+    god = god_result.scalar_one()
+
+    # Auto-rename for anonymity protection
+    new_name = await generate_unique_name(db)
+    god.name = new_name
+    god.avatar_url = None
+    god.description = None
+    god.is_current_god = False
+
+    # End term
+    term.is_active = False
+    term.ended_at = datetime.utcnow()
+
+    # Expire all active rules
+    await db.execute(
+        update(GodRule).where(GodRule.is_active == True).values(is_active=False)
+    )
+
+    await db.commit()
+    return True
 
 
 async def check_and_expire_rules(db: AsyncSession):

@@ -8,6 +8,7 @@ from app.services.election import (
     update_election_status,
     check_and_expire_rules,
     get_or_create_current_election,
+    expire_god_term,
 )
 
 
@@ -110,6 +111,25 @@ def finalize_election_task(election_id: str):
                 return f"Error: {str(e)}"
 
     return run_async(_finalize())
+
+
+@celery_app.task(name="app.tasks.election.expire_god_term_task")
+def expire_god_term_task():
+    """
+    Periodic task to check if God's 3-day term has expired.
+    Runs every minute. When expired: auto-rename, end term, flat world.
+    """
+    async def _expire():
+        async with AsyncSessionLocal() as db:
+            try:
+                expired = await expire_god_term(db)
+                if expired:
+                    return "God term expired. World is now flat."
+                return "No term expiration needed"
+            except Exception as e:
+                return f"Error: {str(e)}"
+
+    return run_async(_expire())
 
 
 @celery_app.task(name="app.tasks.election.create_next_election_task")

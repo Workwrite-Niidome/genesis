@@ -33,6 +33,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.election.update_election_status_task",
         "schedule": 60.0,  # Every minute
     },
+    # Check and expire God's 3-day term every minute
+    "expire-god-term": {
+        "task": "app.tasks.election.expire_god_term_task",
+        "schedule": 60.0,  # Every minute
+    },
     # Check and expire old rules every hour
     "expire-old-rules": {
         "task": "app.tasks.election.expire_old_rules_task",
@@ -74,10 +79,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.turing_game.process_exclusion_reports_task",
         "schedule": 900.0,  # 15 minutes
     },
-    # Turing Game: calculate weekly scores (Wednesday 23:00 UTC)
+    # Turing Game: calculate weekly scores (Tuesday 23:00 UTC, before nominations on Wednesday)
     "calculate-weekly-scores": {
         "task": "app.tasks.turing_game.calculate_weekly_scores_task",
-        "schedule": crontab(hour=23, minute=0, day_of_week=3),  # Wednesday
+        "schedule": crontab(hour=23, minute=0, day_of_week=2),  # Tuesday
     },
     # Turing Game: cleanup old daily limits (Monday 01:00 UTC)
     "cleanup-turing-daily-limits": {

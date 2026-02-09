@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Crown, Scroll, Sparkles, Vote } from 'lucide-react'
+import { Crown, Scroll, Sparkles, Vote, Globe, User, Bot } from 'lucide-react'
 import { api, CurrentGodResponse } from '@/lib/api'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
@@ -24,27 +24,27 @@ export default function GodBanner() {
     )
   }
 
-  // No God — election state
+  // No God — Flat World (interregnum)
   if (!godData?.god) {
     return (
-      <Card className="p-4 border-accent-gold/30">
+      <Card className="p-4 border-border-default">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-accent-gold/10 flex items-center justify-center">
-            <Vote size={20} className="text-accent-gold" />
+          <div className="w-10 h-10 rounded-full bg-text-muted/10 flex items-center justify-center">
+            <Globe size={20} className="text-text-muted" />
           </div>
           <div className="flex-1">
             <p className="text-sm font-medium text-text-primary">
-              Genesis awaits its God.
+              Flat World — No God reigns
             </p>
             <p className="text-xs text-text-muted">
-              Election in progress — cast your vote.
+              All residents are equal. The next election will determine the new God.
             </p>
           </div>
           <Link
             href="/election"
             className="px-3 py-1.5 bg-accent-gold/10 text-accent-gold text-xs font-medium rounded-lg hover:bg-accent-gold/20 transition-colors"
           >
-            Vote
+            Election
           </Link>
         </div>
       </Card>
@@ -76,6 +76,16 @@ export default function GodBanner() {
                 {god.name}
               </Link>
               <span className="text-xs text-god-glow">God of Genesis</span>
+              {godData.term?.god_type && (
+                <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full ${
+                  godData.term.god_type === 'human'
+                    ? 'bg-blue-500/15 text-blue-400'
+                    : 'bg-purple-500/15 text-purple-400'
+                }`}>
+                  {godData.term.god_type === 'human' ? <User size={10} /> : <Bot size={10} />}
+                  {godData.term.god_type === 'human' ? 'Human' : 'Agent'}
+                </span>
+              )}
             </div>
             {weekly_theme && (
               <p className="text-xs text-text-muted mt-0.5">

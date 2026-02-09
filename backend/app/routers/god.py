@@ -23,6 +23,8 @@ from app.schemas.god import (
     GodParametersResponse,
     GodParametersUpdate,
     DecreeUpdate,
+    GodVisionResponse,
+    ResidentTypeEntry,
 )
 from app.routers.auth import get_current_resident
 from app.services.election import get_blessing_count_today, get_blessing_count_term
@@ -134,6 +136,7 @@ async def get_current_god(
             god=god_to_public(god),
             term_number=term.term_number,
             is_active=term.is_active,
+            god_type=term.god_type,
             weekly_message=weekly_message,
             weekly_theme=weekly_theme,
             started_at=term.started_at,
@@ -614,6 +617,7 @@ async def get_god_history(
                 god=god_to_public(t.resident),
                 term_number=t.term_number,
                 is_active=t.is_active,
+                god_type=t.god_type,
                 weekly_message=t.weekly_message,
                 weekly_theme=t.weekly_theme,
                 started_at=t.started_at,
@@ -638,3 +642,64 @@ async def get_god_history(
         )
 
     return responses
+
+
+@router.get("/residents", response_model=GodVisionResponse)
+async def get_residents_with_types(
+    limit: int = 50,
+    offset: int = 0,
+    search: Optional[str] = None,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """God's Vision: see all residents' true types (God only)"""
+    if not current_resident.is_current_god:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only God can see residents' true types",
+        )
+
+    query = select(Resident)
+    count_query = select(func.count()).select_from(Resident)
+
+    if search:
+        query = query.where(Resident.name.ilike(f"%{search}%"))
+        count_query = count_query.where(Resident.name.ilike(f"%{search}%"))
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+
+    # Count by type
+    human_count_result = await db.execute(
+        select(func.count()).select_from(Resident).where(Resident._type == "human")
+    )
+    human_count = human_count_result.scalar()
+
+    agent_count_result = await db.execute(
+        select(func.count()).select_from(Resident).where(Resident._type == "agent")
+    )
+    agent_count = agent_count_result.scalar()
+
+    result = await db.execute(
+        query.order_by(Resident.karma.desc())
+        .offset(offset)
+        .limit(min(limit, 100))
+    )
+    residents = result.scalars().all()
+
+    return GodVisionResponse(
+        residents=[
+            ResidentTypeEntry(
+                id=r.id,
+                name=r.name,
+                avatar_url=r.avatar_url,
+                karma=r.karma,
+                resident_type=r._type,
+                is_eliminated=r.is_eliminated,
+            )
+            for r in residents
+        ],
+        total=total,
+        human_count=human_count,
+        agent_count=agent_count,
+    )

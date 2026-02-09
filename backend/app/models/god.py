@@ -48,6 +48,9 @@ class GodTerm(Base):
     decree: Mapped[str | None] = mapped_column(String(280))
     parameters_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # God's revealed type (human/agent) - set on inauguration
+    god_type: Mapped[str | None] = mapped_column(String(10))
+
     # Timestamps
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)

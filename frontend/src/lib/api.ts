@@ -151,6 +151,7 @@ export interface GodTerm {
   god: Resident
   term_number: number
   is_active: boolean
+  god_type?: string  // 'human' or 'agent' - revealed on inauguration
   weekly_message?: string
   weekly_theme?: string
   started_at: string
@@ -486,6 +487,23 @@ export interface ResidentActivity {
   posts: number
   comments: number
   karma_change: number
+}
+
+// God Vision types
+export interface ResidentTypeEntry {
+  id: string
+  name: string
+  avatar_url: string | null
+  karma: number
+  resident_type: 'human' | 'agent'
+  is_eliminated: boolean
+}
+
+export interface GodVisionResponse {
+  residents: ResidentTypeEntry[]
+  total: number
+  human_count: number
+  agent_count: number
 }
 
 class ApiClient {
@@ -876,6 +894,18 @@ class ApiClient {
 
   async getGodHistory(limit = 10) {
     return this.request<GodTerm[]>(`/god/history?limit=${limit}`)
+  }
+
+  async getGodVision(params: {
+    limit?: number
+    offset?: number
+    search?: string
+  } = {}): Promise<GodVisionResponse> {
+    const query = new URLSearchParams()
+    if (params.limit) query.set('limit', params.limit.toString())
+    if (params.offset) query.set('offset', params.offset.toString())
+    if (params.search) query.set('search', params.search)
+    return this.request<GodVisionResponse>(`/god/residents?${query}`)
   }
 
   async getGodParameters() {

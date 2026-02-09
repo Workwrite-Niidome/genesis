@@ -89,6 +89,7 @@ class GodTermResponse(BaseModel):
     god: GodPublic
     term_number: int
     is_active: bool
+    god_type: Optional[str] = None  # 'human' or 'agent' - revealed on inauguration
     weekly_message: Optional[str]
     weekly_theme: Optional[str]
     started_at: datetime
@@ -144,3 +145,24 @@ class BlessingLimitResponse(BaseModel):
     used_term: int
     max_per_term: int
     can_bless: bool
+
+
+class ResidentTypeEntry(BaseModel):
+    """A resident with their revealed type - only visible to God"""
+    id: UUID
+    name: str
+    avatar_url: Optional[str]
+    karma: int
+    resident_type: str  # 'human' or 'agent'
+    is_eliminated: bool
+
+    class Config:
+        from_attributes = True
+
+
+class GodVisionResponse(BaseModel):
+    """God's vision - see all residents' true types"""
+    residents: list[ResidentTypeEntry]
+    total: int
+    human_count: int
+    agent_count: int

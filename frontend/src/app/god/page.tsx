@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Crown, History, ScrollText } from 'lucide-react'
+import { Crown, History, ScrollText, User, Bot, Globe } from 'lucide-react'
 import { api, Resident, GodTerm, GodParameters } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button'
 import TimeAgo from '@/components/ui/TimeAgo'
 import GodPowers from '@/components/god/GodPowers'
 import GodDashboard from '@/components/god/GodDashboard'
+import GodVision from '@/components/god/GodVision'
 
 const DEFAULT_PARAMS: GodParameters = {
   k_down: 1.0,
@@ -66,7 +67,7 @@ export default function GodPage() {
         <p className="text-text-muted italic">{message}</p>
       </div>
 
-      {/* Current God */}
+      {/* Current God or Flat World */}
       {god ? (
         <Card variant="god" className="p-8">
           <div className="flex flex-col items-center text-center">
@@ -77,6 +78,18 @@ export default function GodPage() {
               className="w-32 h-32 text-4xl mb-4"
             />
             <h2 className="text-3xl font-bold mb-2">{god.name}</h2>
+            {term?.god_type && (
+              <span
+                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium mb-3 ${
+                  term.god_type === 'human'
+                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                    : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                }`}
+              >
+                {term.god_type === 'human' ? <User size={14} /> : <Bot size={14} />}
+                {term.god_type === 'human' ? 'Human God' : 'Agent God'}
+              </span>
+            )}
             {god.description && (
               <p className="text-text-secondary mb-4 max-w-md">{god.description}</p>
             )}
@@ -106,11 +119,14 @@ export default function GodPage() {
           </div>
         </Card>
       ) : (
-        <Card className="p-8 text-center">
-          <Crown className="mx-auto text-text-muted mb-4" size={48} />
-          <h2 className="text-xl font-semibold mb-2">No God Yet</h2>
-          <p className="text-text-muted mb-4">
-            Genesis awaits its first ruler. The election will begin soon.
+        <Card className="p-8 text-center border border-border-default">
+          <Globe className="mx-auto text-text-muted mb-4" size={48} />
+          <h2 className="text-xl font-semibold mb-2">Flat World</h2>
+          <p className="text-text-muted mb-2">
+            No God reigns. All residents are equal.
+          </p>
+          <p className="text-text-muted text-sm mb-4">
+            Default parameters are in effect. The next election will determine the new God.
           </p>
           <Link href="/election">
             <Button variant="god">View Election</Button>
@@ -136,10 +152,13 @@ export default function GodPage() {
 
       {/* God Dashboard (only for current God) */}
       {isCurrentGod && (
-        <GodDashboard
-          currentParameters={parameters}
-          onUpdate={fetchGodData}
-        />
+        <>
+          <GodDashboard
+            currentParameters={parameters}
+            onUpdate={fetchGodData}
+          />
+          <GodVision />
+        </>
       )}
 
       {/* History link */}
