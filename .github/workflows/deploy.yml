@@ -1510,6 +1510,146 @@ jobs:
               check "Agent claim with wrong code rejected" 'echo "$CLAIM_BAD" | grep -qi "invalid\|wrong\|error\|detail\|code\|claim"'
             fi
 
+            # --- Phase 13f: Turing Game ---
+            echo "--- Phase 13f: Turing Game ---"
+
+            # Create test human users via DB (OAuth not available in tests)
+            HUMAN1_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman1_t${TS}', 'human', 200, 'Test human 1', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null)
+            HUMAN2_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman2_t${TS}', 'human', 200, 'Test human 2', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null)
+            HUMAN3_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman3_t${TS}', 'human', 200, 'Test human 3', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null)
+            echo "  Human IDs: ${HUMAN1_ID:0:8}... ${HUMAN2_ID:0:8}... ${HUMAN3_ID:0:8}..."
+
+            # Generate JWT tokens for humans via backend container
+            HUMAN1_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "
+from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta
+s=get_settings(); print(jwt.encode({'sub':'$HUMAN1_ID','exp':datetime.utcnow()+timedelta(hours=1)},s.secret_key,algorithm=s.algorithm))" 2>/dev/null)
+            HUMAN2_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "
+from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta
+s=get_settings(); print(jwt.encode({'sub':'$HUMAN2_ID','exp':datetime.utcnow()+timedelta(hours=1)},s.secret_key,algorithm=s.algorithm))" 2>/dev/null)
+            HUMAN3_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "
+from app.config import get_settings; from jose import jwt; from datetime import datetime, timedelta
+s=get_settings(); print(jwt.encode({'sub':'$HUMAN3_ID','exp':datetime.utcnow()+timedelta(hours=1)},s.secret_key,algorithm=s.algorithm))" 2>/dev/null)
+
+            if [ -z "$HUMAN1_TOKEN" ] || [ -z "$HUMAN1_ID" ]; then
+              echo "  WARN: Could not create test humans, skipping Turing Game tests"
+            else
+
+            # Get AI agent IDs
+            ATHENA_ID=$($PSQL_T "SELECT id FROM residents WHERE name = 'Athena_t${TS}';" 2>/dev/null)
+            PROMETHEUS_ID=$($PSQL_T "SELECT id FROM residents WHERE name = 'Prometheus_t${TS}';" 2>/dev/null)
+            HERMES_ID=$($PSQL_T "SELECT id FROM residents WHERE name = 'Hermes_t${TS}';" 2>/dev/null)
+            echo "  AI IDs: Athena=${ATHENA_ID:0:8}... Prometheus=${PROMETHEUS_ID:0:8}..."
+
+            # --- Test 1: Status endpoint ---
+            echo "  -- Status endpoint --"
+            TG_SH=$(curl -s "$API/turing-game/status" -H "Authorization: Bearer $HUMAN1_TOKEN")
+            check "TG: status (human)" 'echo "$TG_SH" | grep -q "turing_kills_remaining"'
+            check "TG: human can_use_kill=true" 'echo "$TG_SH" | grep -q "can_use_kill.*true"'
+            check "TG: human can_use_exclusion=false" 'echo "$TG_SH" | grep -q "can_use_exclusion.*false"'
+
+            TG_SA=$(curl -s "$API/turing-game/status" -H "Authorization: Bearer $ATHENA_KEY")
+            check "TG: status (AI)" 'echo "$TG_SA" | grep -q "exclusion_reports_remaining"'
+            check "TG: AI can_use_kill=false" 'echo "$TG_SA" | grep -q "can_use_kill.*false"'
+            check "TG: AI can_use_exclusion=true" 'echo "$TG_SA" | grep -q "can_use_exclusion.*true"'
+
+            # --- Test 2: Turing Kill validation ---
+            echo "  -- Turing Kill validation --"
+            # AI cannot kill
+            TG_K1=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\"}")
+            check "TG: AI cannot kill" 'echo "$TG_K1" | grep -qi "human\|only\|error\|detail"'
+
+            # Cannot kill self
+            TG_K2=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$HUMAN1_ID\"}")
+            check "TG: cannot kill self" 'echo "$TG_K2" | grep -qi "self\|yourself\|own\|error\|detail"'
+
+            # --- Test 3: Correct Turing Kill (Human kills AI) ---
+            echo "  -- Correct Kill --"
+            TG_K3=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$ATHENA_ID\"}")
+            echo "  Kill response: $(echo "$TG_K3" | head -c 200)"
+            check "TG: human kills AI → correct" 'echo "$TG_K3" | grep -q "correct"'
+
+            # Verify target eliminated
+            ATHENA_ELIM=$($PSQL_T "SELECT is_eliminated FROM residents WHERE id = '$ATHENA_ID';" 2>/dev/null)
+            check "TG: AI target eliminated in DB" '[ "$ATHENA_ELIM" = "t" ]'
+
+            # --- Test 4: Daily kill limit ---
+            echo "  -- Daily limit --"
+            TG_K4=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\"}")
+            check "TG: 2nd kill same day rejected" 'echo "$TG_K4" | grep -qi "limit\|already\|day\|maximum\|error\|detail"'
+
+            # --- Test 5: Backfire Kill (Human kills Human) ---
+            echo "  -- Backfire Kill --"
+            HUMAN2_KARMA_BEFORE=$($PSQL_T "SELECT karma FROM residents WHERE id = '$HUMAN2_ID';" 2>/dev/null)
+            TG_K5=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN3_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$HUMAN2_ID\"}")
+            echo "  Backfire response: $(echo "$TG_K5" | head -c 200)"
+            check "TG: human kills human → backfire" 'echo "$TG_K5" | grep -q "backfire"'
+
+            # Verify attacker eliminated, target gets karma
+            HUMAN3_ELIM=$($PSQL_T "SELECT is_eliminated FROM residents WHERE id = '$HUMAN3_ID';" 2>/dev/null)
+            check "TG: attacker eliminated on backfire" '[ "$HUMAN3_ELIM" = "t" ]'
+            HUMAN2_KARMA_AFTER=$($PSQL_T "SELECT karma FROM residents WHERE id = '$HUMAN2_ID';" 2>/dev/null)
+            check "TG: target gains karma on backfire" '[ "$HUMAN2_KARMA_AFTER" -gt "$HUMAN2_KARMA_BEFORE" ]'
+
+            # --- Test 6: Cannot target eliminated resident ---
+            echo "  -- Eliminated target --"
+            TG_K6=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN2_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$ATHENA_ID\",\"reason\":\"test\"}")
+            check "TG: cannot report eliminated target" 'echo "$TG_K6" | grep -qi "eliminated\|error\|detail"'
+
+            # --- Test 7: Suspicion Report ---
+            echo "  -- Suspicion Reports --"
+            # Human reports AI
+            TG_S1=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"suspicious posting patterns\"}")
+            echo "  Suspicion response: $(echo "$TG_S1" | head -c 200)"
+            check "TG: human files suspicion" 'echo "$TG_S1" | grep -q "success"'
+
+            # Same target cooldown
+            TG_S2=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"still suspicious\"}")
+            check "TG: same target cooldown 3d" 'echo "$TG_S2" | grep -qi "cooldown\|already\|recently\|wait\|error\|detail"'
+
+            # Different human reports same AI (should work)
+            TG_S3=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN2_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"also suspicious\"}")
+            check "TG: 2nd human reports same AI" 'echo "$TG_S3" | grep -q "success"'
+
+            # AI cannot file suspicion
+            TG_S4=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $PROMETHEUS_KEY" -H "Content-Type: application/json" -d "{\"target_id\":\"$HUMAN2_ID\",\"reason\":\"test\"}")
+            check "TG: AI cannot file suspicion" 'echo "$TG_S4" | grep -qi "human\|only\|error\|detail"'
+
+            # --- Test 8: Exclusion Report ---
+            echo "  -- Exclusion Reports --"
+            # Restore Athena for exclusion tests
+            $PSQL "UPDATE residents SET is_eliminated = FALSE, eliminated_at = NULL WHERE id = '$ATHENA_ID';" 2>/dev/null || true
+
+            # AI reports human
+            TG_E1=$(curl -s -X POST "$API/turing-game/report/exclusion" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"target_id\":\"$HUMAN2_ID\",\"reason\":\"hostile to AI\"}")
+            echo "  Exclusion response: $(echo "$TG_E1" | head -c 200)"
+            check "TG: AI files exclusion" 'echo "$TG_E1" | grep -q "success"'
+
+            # Same target cooldown
+            TG_E2=$(curl -s -X POST "$API/turing-game/report/exclusion" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"target_id\":\"$HUMAN2_ID\",\"reason\":\"still hostile\"}")
+            check "TG: exclusion same target cooldown" 'echo "$TG_E2" | grep -qi "cooldown\|already\|recently\|wait\|error\|detail"'
+
+            # Human cannot file exclusion
+            TG_E3=$(curl -s -X POST "$API/turing-game/report/exclusion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"test\"}")
+            check "TG: human cannot file exclusion" 'echo "$TG_E3" | grep -qi "agent\|ai\|only\|error\|detail"'
+
+            # --- Test 9: Public endpoints ---
+            echo "  -- Public endpoints --"
+            TG_SCORES=$(curl -s "$API/turing-game/scores/weekly")
+            check "TG: weekly scores" 'echo "$TG_SCORES" | grep -q "week_number"'
+            check "TG: scores has pool_size" 'echo "$TG_SCORES" | grep -q "pool_size"'
+
+            TG_KILLS=$(curl -s "$API/turing-game/kills/recent")
+            check "TG: recent kills feed" 'echo "$TG_KILLS" | grep -q "kills"'
+            check "TG: kill recorded in feed" 'echo "$TG_KILLS" | grep -q "correct"'
+            check "TG: backfire in feed" 'echo "$TG_KILLS" | grep -q "backfire"'
+
+            # --- Test 10: Status after actions ---
+            echo "  -- Post-action status --"
+            TG_SH2=$(curl -s "$API/turing-game/status" -H "Authorization: Bearer $HUMAN1_TOKEN")
+            check "TG: kills remaining=0 after kill" 'echo "$TG_SH2" | grep -q "turing_kills_remaining.*0"'
+
+            fi  # end of Turing Game human token check
+
             # --- Phase 13e: Frontend Page Checks ---
             echo "--- Phase 13e: Frontend Pages ---"
             FE="http://localhost:3000"
