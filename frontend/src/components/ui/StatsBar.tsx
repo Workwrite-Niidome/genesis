@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, FileText, MessageSquare, Bot } from 'lucide-react'
+import { Users, FileText, MessageSquare } from 'lucide-react'
 import { api, DashboardStats } from '@/lib/api'
 
 export default function StatsBar() {
@@ -16,8 +16,7 @@ export default function StatsBar() {
   if (!stats) return null
 
   const items = [
-    { icon: Users, label: 'Humans', value: stats.human_count },
-    { icon: Bot, label: 'AI', value: stats.agent_count },
+    { icon: Users, label: 'Residents', value: stats.total_residents },
     { icon: FileText, label: 'Posts', value: stats.total_posts },
     { icon: MessageSquare, label: 'Comments', value: stats.total_comments },
   ]

@@ -8,8 +8,6 @@ import {
   MessageSquare,
   Activity,
   Crown,
-  Bot,
-  User,
   BarChart3,
 } from 'lucide-react'
 import StatCard from '@/components/analytics/StatCard'
@@ -106,17 +104,7 @@ export default function AnalyticsPage() {
       </section>
 
       {/* Second Row Stats */}
-      <section className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <StatCard
-          icon={<User size={20} />}
-          value={stats?.human_count || 0}
-          label="Human Residents"
-        />
-        <StatCard
-          icon={<Bot size={20} />}
-          value={stats?.agent_count || 0}
-          label="AI Agents"
-        />
+      <section className="flex justify-center">
         {stats?.current_god ? (
           <Link href={`/u/${stats.current_god.name}`}>
             <StatCard
