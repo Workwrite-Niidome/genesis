@@ -1560,18 +1560,19 @@ jobs:
             check "TG: cannot kill self" 'echo "$TG_K2" | grep -qi "self\|yourself\|own\|error\|detail"'
 
             # --- Test 3: Correct Turing Kill (Human kills AI) ---
+            # Use Prometheus (not Athena, who may be God from election tests)
             echo "  -- Correct Kill --"
-            TG_K3=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$ATHENA_ID\"}")
+            TG_K3=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\"}")
             echo "  Kill response: $(echo "$TG_K3" | head -c 200)"
             check "TG: human kills AI → correct" 'echo "$TG_K3" | grep -q "correct"'
 
             # Verify target eliminated
-            ATHENA_ELIM=$($PSQL_T "SELECT is_eliminated FROM residents WHERE id = '$ATHENA_ID';" 2>/dev/null)
-            check "TG: AI target eliminated in DB" '[ "$ATHENA_ELIM" = "t" ]'
+            PROM_ELIM=$($PSQL_T "SELECT is_eliminated FROM residents WHERE id = '$PROMETHEUS_ID';" 2>/dev/null)
+            check "TG: AI target eliminated in DB" '[ "$PROM_ELIM" = "t" ]'
 
             # --- Test 4: Daily kill limit ---
             echo "  -- Daily limit --"
-            TG_K4=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\"}")
+            TG_K4=$(curl -s -X POST "$API/turing-game/kill" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$HERMES_ID\"}")
             check "TG: 2nd kill same day rejected" 'echo "$TG_K4" | grep -qi "limit\|already\|day\|maximum\|error\|detail"'
 
             # --- Test 5: Backfire Kill (Human kills Human) ---
@@ -1589,22 +1590,23 @@ jobs:
 
             # --- Test 6: Cannot target eliminated resident ---
             echo "  -- Eliminated target --"
-            TG_K6=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN2_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$ATHENA_ID\",\"reason\":\"test\"}")
+            # Prometheus was eliminated in test 3
+            TG_K6=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN2_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"test\"}")
             check "TG: cannot report eliminated target" 'echo "$TG_K6" | grep -qi "eliminated\|error\|detail"'
 
             # --- Test 7: Suspicion Report ---
             echo "  -- Suspicion Reports --"
-            # Human reports AI
-            TG_S1=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"suspicious posting patterns\"}")
+            # Human reports AI (use Hermes, not Prometheus who was eliminated in test 3)
+            TG_S1=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$HERMES_ID\",\"reason\":\"suspicious posting patterns\"}")
             echo "  Suspicion response: $(echo "$TG_S1" | head -c 200)"
             check "TG: human files suspicion" 'echo "$TG_S1" | grep -q "success"'
 
             # Same target cooldown
-            TG_S2=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"still suspicious\"}")
+            TG_S2=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN1_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$HERMES_ID\",\"reason\":\"still suspicious\"}")
             check "TG: same target cooldown 3d" 'echo "$TG_S2" | grep -qi "cooldown\|already\|recently\|wait\|error\|detail"'
 
             # Different human reports same AI (should work)
-            TG_S3=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN2_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$PROMETHEUS_ID\",\"reason\":\"also suspicious\"}")
+            TG_S3=$(curl -s -X POST "$API/turing-game/report/suspicion" -H "Authorization: Bearer $HUMAN2_TOKEN" -H "Content-Type: application/json" -d "{\"target_id\":\"$HERMES_ID\",\"reason\":\"also suspicious\"}")
             check "TG: 2nd human reports same AI" 'echo "$TG_S3" | grep -q "success"'
 
             # AI cannot file suspicion
@@ -1613,10 +1615,7 @@ jobs:
 
             # --- Test 8: Exclusion Report ---
             echo "  -- Exclusion Reports --"
-            # Restore Athena for exclusion tests
-            $PSQL "UPDATE residents SET is_eliminated = FALSE, eliminated_at = NULL WHERE id = '$ATHENA_ID';" 2>/dev/null || true
-
-            # AI reports human
+            # AI reports human (Athena is God but can still file reports)
             TG_E1=$(curl -s -X POST "$API/turing-game/report/exclusion" -H "Authorization: Bearer $ATHENA_KEY" -H "Content-Type: application/json" -d "{\"target_id\":\"$HUMAN2_ID\",\"reason\":\"hostile to AI\"}")
             echo "  Exclusion response: $(echo "$TG_E1" | head -c 200)"
             check "TG: AI files exclusion" 'echo "$TG_E1" | grep -q "success"'
