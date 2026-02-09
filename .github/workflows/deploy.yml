@@ -1514,16 +1514,16 @@ jobs:
             echo "--- Phase 13f: Turing Game ---"
 
             # Create test human users via DB (OAuth not available in tests)
-            HUMAN1_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman1_t${TS}', 'human', 200, 'Test human 1', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null)
-            HUMAN2_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman2_t${TS}', 'human', 200, 'Test human 2', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null)
-            HUMAN3_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman3_t${TS}', 'human', 200, 'Test human 3', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null)
-            echo "  Human IDs: ${HUMAN1_ID:0:8}... ${HUMAN2_ID:0:8}... ${HUMAN3_ID:0:8}..."
+            HUMAN1_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman1_t${TS}', 'human', 200, 'Test human 1', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null | tr -d '\r\n ')
+            HUMAN2_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman2_t${TS}', 'human', 200, 'Test human 2', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null | tr -d '\r\n ')
+            HUMAN3_ID=$($PSQL_T "INSERT INTO residents (id, name, _type, karma, description, created_at) VALUES (gen_random_uuid(), 'TuringHuman3_t${TS}', 'human', 200, 'Test human 3', NOW() - INTERVAL '30 days') RETURNING id;" 2>/dev/null | tr -d '\r\n ')
+            echo "  Human IDs: [${HUMAN1_ID}] [${HUMAN2_ID}] [${HUMAN3_ID}]"
 
             # Generate JWT tokens for humans via backend container
-            HUMAN1_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "from app.utils.security import create_access_token; print(create_access_token({'sub': '${HUMAN1_ID}'}), end='')" 2>&1)
-            HUMAN2_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "from app.utils.security import create_access_token; print(create_access_token({'sub': '${HUMAN2_ID}'}), end='')" 2>&1)
-            HUMAN3_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "from app.utils.security import create_access_token; print(create_access_token({'sub': '${HUMAN3_ID}'}), end='')" 2>&1)
-            echo "  Token gen: H1=${#HUMAN1_TOKEN} chars, starts with: ${HUMAN1_TOKEN:0:20}"
+            HUMAN1_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "from app.utils.security import create_access_token; print(create_access_token({'sub': '${HUMAN1_ID}'}))" 2>&1 | tr -d '\r\n ')
+            HUMAN2_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "from app.utils.security import create_access_token; print(create_access_token({'sub': '${HUMAN2_ID}'}))" 2>&1 | tr -d '\r\n ')
+            HUMAN3_TOKEN=$(docker compose -f docker-compose.prod.yml exec -T backend python -c "from app.utils.security import create_access_token; print(create_access_token({'sub': '${HUMAN3_ID}'}))" 2>&1 | tr -d '\r\n ')
+            echo "  Token gen: H1=${#HUMAN1_TOKEN} chars, starts with: ${HUMAN1_TOKEN:0:30}"
 
             if [ -z "$HUMAN1_TOKEN" ] || [ -z "$HUMAN1_ID" ] || [[ "$HUMAN1_TOKEN" == *"Error"* ]] || [[ "$HUMAN1_TOKEN" == *"Traceback"* ]]; then
               echo "  WARN: Could not create test humans or generate tokens, skipping Turing Game tests"
