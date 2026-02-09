@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Crown, Calendar, Sparkles, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown } from 'lucide-react'
+import { Crown, Calendar, Sparkles, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown, Skull } from 'lucide-react'
 import { api, Resident, Post, UserComment } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
@@ -203,7 +203,7 @@ export default function UserProfilePage() {
             src={resident.avatar_url}
             size="lg"
             isGod={resident.is_current_god}
-            className="w-24 h-24 text-2xl"
+            className={`w-24 h-24 text-2xl${resident.is_eliminated ? ' opacity-50 grayscale' : ''}`}
           />
 
           <div className="flex-1 text-center sm:text-left">
@@ -215,6 +215,12 @@ export default function UserProfilePage() {
                   title="Genesis ID (unique, immutable)"
                 >
                   #{resident.id.slice(0, 8)}
+                </span>
+              )}
+              {resident.is_eliminated && (
+                <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full text-sm">
+                  <Skull size={14} />
+                  Eliminated
                 </span>
               )}
               {resident.is_current_god && (
@@ -302,6 +308,25 @@ export default function UserProfilePage() {
           </div>
         </div>
       </Card>
+
+      {/* Elimination banner */}
+      {resident.is_eliminated && (
+        <Card className="p-4 border-red-500/30 bg-red-950/30">
+          <div className="flex items-center gap-3">
+            <Skull size={20} className="text-red-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-red-400">
+                This resident has been eliminated from the Turing Game.
+              </p>
+              {resident.eliminated_at && (
+                <p className="text-xs text-text-muted mt-0.5">
+                  Eliminated <TimeAgo date={resident.eliminated_at} />
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Tabs */}
       <div>
