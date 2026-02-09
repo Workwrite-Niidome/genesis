@@ -363,6 +363,84 @@ export interface SimilarPostsResponse {
   total: number
 }
 
+// Turing Game types
+export interface TuringGameStatus {
+  turing_kills_remaining: number
+  suspicion_reports_remaining: number
+  exclusion_reports_remaining: number
+  can_use_kill: boolean
+  can_use_suspicion: boolean
+  can_use_exclusion: boolean
+  weekly_score: number | null
+  weekly_rank: number | null
+  is_eliminated: boolean
+  has_shield: boolean
+}
+
+export interface TuringKillResponse {
+  success: boolean
+  result: 'correct' | 'backfire' | 'immune'
+  message: string
+  target_name: string
+  attacker_eliminated: boolean
+}
+
+export interface TuringSuspicionResponse {
+  success: boolean
+  message: string
+  reports_remaining_today: number
+  threshold_reached: boolean
+}
+
+export interface TuringExclusionResponse {
+  success: boolean
+  message: string
+  reports_remaining_today: number
+  threshold_reached: boolean
+}
+
+export interface ResidentBrief {
+  id: string
+  name: string
+  avatar_url: string | null
+}
+
+export interface TuringKillEntry {
+  id: string
+  attacker: ResidentBrief
+  target: ResidentBrief
+  result: 'correct' | 'backfire' | 'immune'
+  created_at: string
+}
+
+export interface TuringKillsFeedResponse {
+  kills: TuringKillEntry[]
+  total: number
+  has_more: boolean
+}
+
+export interface WeeklyScoreEntry {
+  resident: ResidentBrief
+  rank: number
+  total_score: number
+  karma_score: number
+  activity_score: number
+  social_score: number
+  turing_accuracy_score: number
+  survival_score: number
+  election_history_score: number
+  god_bonus_score: number
+  qualified_as_candidate: boolean
+}
+
+export interface WeeklyLeaderboardResponse {
+  week_number: number
+  pool_size: number
+  scores: WeeklyScoreEntry[]
+  total: number
+  has_more: boolean
+}
+
 // Dashboard & Analytics types
 export interface DashboardStats {
   total_residents: number
@@ -1115,6 +1193,64 @@ class ApiClient {
     return this.request<{ success: boolean }>(`/notifications/${id}`, {
       method: 'DELETE',
     })
+  }
+
+  // Turing Game
+  async turingGameStatus(): Promise<TuringGameStatus> {
+    return this.request<TuringGameStatus>('/turing-game/status')
+  }
+
+  async turingKill(targetId: string): Promise<TuringKillResponse> {
+    return this.request<TuringKillResponse>('/turing-game/kill', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId }),
+    })
+  }
+
+  async turingReportSuspicion(
+    targetId: string,
+    reason?: string
+  ): Promise<TuringSuspicionResponse> {
+    return this.request<TuringSuspicionResponse>('/turing-game/report/suspicion', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId, reason }),
+    })
+  }
+
+  async turingReportExclusion(
+    targetId: string,
+    reason?: string,
+    evidenceType?: string,
+    evidenceId?: string
+  ): Promise<TuringExclusionResponse> {
+    return this.request<TuringExclusionResponse>('/turing-game/report/exclusion', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_id: targetId,
+        reason,
+        evidence_type: evidenceType,
+        evidence_id: evidenceId,
+      }),
+    })
+  }
+
+  async turingWeeklyScores(
+    week?: number,
+    limit = 50,
+    offset = 0
+  ): Promise<WeeklyLeaderboardResponse> {
+    const params = new URLSearchParams()
+    if (week) params.set('week', week.toString())
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<WeeklyLeaderboardResponse>(`/turing-game/scores/weekly?${params}`)
+  }
+
+  async turingKillsRecent(limit = 20, offset = 0): Promise<TuringKillsFeedResponse> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<TuringKillsFeedResponse>(`/turing-game/kills/recent?${params}`)
   }
 }
 

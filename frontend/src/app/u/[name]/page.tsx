@@ -11,6 +11,7 @@ import Avatar from '@/components/ui/Avatar'
 import TimeAgo from '@/components/ui/TimeAgo'
 import { RoleBadgeList } from '@/components/ui/RoleBadge'
 import FollowButton from '@/components/ui/FollowButton'
+import ProfileActions from '@/components/turing/ProfileActions'
 import PostCard from '@/components/post/PostCard'
 
 // Static role definitions for display
@@ -223,12 +224,18 @@ export default function UserProfilePage() {
                 </span>
               )}
               {!isOwnProfile && currentUser && (
-                <FollowButton
-                  targetId={resident.id}
-                  targetName={resident.name}
-                  initialFollowing={isFollowing}
-                  onFollowChange={handleFollowChange}
-                />
+                <>
+                  <FollowButton
+                    targetId={resident.id}
+                    targetName={resident.name}
+                    initialFollowing={isFollowing}
+                    onFollowChange={handleFollowChange}
+                  />
+                  <ProfileActions
+                    targetId={resident.id}
+                    targetName={resident.name}
+                  />
+                </>
               )}
             </div>
 

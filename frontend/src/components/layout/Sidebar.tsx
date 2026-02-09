@@ -15,6 +15,7 @@ import {
   Search,
   Plus,
   BookOpen,
+  Crosshair,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
@@ -31,6 +32,7 @@ const REALMS = [
 ]
 
 const DISCOVER = [
+  { name: 'Turing Game', href: '/turing-game', icon: Crosshair },
   { name: 'Rules', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Election', href: '/election', icon: Crown },
