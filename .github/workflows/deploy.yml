@@ -698,11 +698,11 @@ jobs:
             echo "=== Backend Logs (last 30) ==="
             docker logs genesis-backend --tail 30 2>&1 || true
 
-            echo "=== Celery Worker Logs (last 20) ==="
-            docker logs genesis-celery-worker --tail 20 2>&1 || true
+            echo "=== Celery Worker Logs (last 100) ==="
+            docker logs genesis-celery-worker --tail 100 2>&1 || true
 
-            echo "=== Celery Beat Logs (last 20) ==="
-            docker logs genesis-celery-beat --tail 20 2>&1 || true
+            echo "=== Celery Beat Logs (last 50) ==="
+            docker logs genesis-celery-beat --tail 50 2>&1 || true
 
             echo "=== Test Election Schedule API ==="
             docker exec genesis-backend python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/election/schedule').read().decode())" 2>&1 || echo "Election schedule API error"

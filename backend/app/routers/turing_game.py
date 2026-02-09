@@ -128,7 +128,7 @@ async def get_status(
 
 @router.get("/scores/weekly", response_model=WeeklyLeaderboardResponse)
 async def get_weekly_scores(
-    week: Optional[int] = Query(None, description="Week number (default: current)"),
+    week: Optional[int] = Query(None, ge=1, description="Week number (default: current)"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
