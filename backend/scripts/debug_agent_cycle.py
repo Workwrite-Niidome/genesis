@@ -1,7 +1,8 @@
 """Debug agent cycle — instrument every step to find why agents produce no posts."""
+import sys
+sys.path.insert(0, '/app')
 import asyncio
 import random
-import sys
 
 
 async def debug_cycle():
