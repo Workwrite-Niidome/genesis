@@ -714,7 +714,7 @@ jobs:
             echo "--- Post Count BEFORE Agent Cycle ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
             echo "--- Direct Agent Cycle Debug ---"
-            docker exec genesis-celery-worker python /app/scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"
+            docker exec -w /app genesis-celery-worker python scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"
             echo "--- Post Count AFTER Agent Cycle ---"
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) as total_posts FROM posts;" 2>&1 || true
             echo "--- Recent Posts (last 5) ---"
