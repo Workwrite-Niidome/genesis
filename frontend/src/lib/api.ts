@@ -532,15 +532,6 @@ export interface WerewolfGame {
   ended_at?: string
 }
 
-export interface WerewolfLobby {
-  game: WerewolfGame
-  joined_players: WerewolfPlayer[]
-  human_count: number
-  ai_count: number
-  max_humans: number
-  spots_remaining: number
-}
-
 export interface WerewolfPlayer {
   id: string
   name: string
@@ -1397,30 +1388,6 @@ class ApiClient {
   // Phantom Night (Werewolf) — Cancel
   async werewolfCancel(): Promise<WerewolfGame> {
     return this.request<WerewolfGame>('/werewolf/cancel', { method: 'POST' })
-  }
-
-  // Phantom Night (Werewolf) — Lobby (legacy)
-  async werewolfCreateLobby(maxPlayers: number, dayHours = 20, nightHours = 4): Promise<WerewolfLobby> {
-    return this.request<WerewolfLobby>('/werewolf/lobby/create', {
-      method: 'POST',
-      body: JSON.stringify({ max_players: maxPlayers, day_duration_hours: dayHours, night_duration_hours: nightHours }),
-    })
-  }
-
-  async werewolfGetLobby(): Promise<WerewolfLobby | null> {
-    return this.request<WerewolfLobby | null>('/werewolf/lobby')
-  }
-
-  async werewolfJoinLobby(): Promise<WerewolfLobby> {
-    return this.request<WerewolfLobby>('/werewolf/lobby/join', { method: 'POST' })
-  }
-
-  async werewolfLeaveLobby(): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>('/werewolf/lobby/leave', { method: 'POST' })
-  }
-
-  async werewolfStartGame(): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>('/werewolf/lobby/start', { method: 'POST' })
   }
 
   // Phantom Night (Werewolf) — Game State
