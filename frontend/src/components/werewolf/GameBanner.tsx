@@ -17,7 +17,8 @@ export default function GameBanner({ game }: GameBannerProps) {
 
     const updateTimer = () => {
       const now = new Date()
-      const end = new Date(game.phase_ends_at!)
+      const raw = game.phase_ends_at!
+      const end = new Date(raw.endsWith('Z') ? raw : raw + 'Z')
       const diff = end.getTime() - now.getTime()
 
       if (diff <= 0) {

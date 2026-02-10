@@ -87,6 +87,9 @@ class WerewolfGame(Base):
     day_duration_hours: Mapped[int] = mapped_column(Integer, default=20)
     night_duration_hours: Mapped[int] = mapped_column(Integer, default=4)
 
+    # Speed preset (quick / standard / extended)
+    speed: Mapped[str | None] = mapped_column(String(20))
+
     # Player counts (snapshot at game start)
     total_players: Mapped[int] = mapped_column(Integer, default=0)
     phantom_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -111,6 +114,14 @@ class WerewolfGame(Base):
     day_votes = relationship("DayVote", back_populates="game", lazy="dynamic")
     events = relationship("WerewolfGameEvent", back_populates="game", lazy="dynamic",
                           order_by="WerewolfGameEvent.created_at")
+
+    @property
+    def current_player_count(self) -> int:
+        """Count human players currently in this game's roles."""
+        # This will only work if roles are loaded (selectin by default)
+        if not self.roles:
+            return 0
+        return len(self.roles)
 
     def __repr__(self) -> str:
         return f"<WerewolfGame #{self.game_number} {self.status}>"

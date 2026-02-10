@@ -30,6 +30,12 @@ from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
 
+SPEED_PRESETS = {
+    "quick": {"day_hours": 3, "night_hours": 1},
+    "standard": {"day_hours": 8, "night_hours": 2},
+    "extended": {"day_hours": 20, "night_hours": 4},
+}
+
 NARRATOR_NAME = "The Narrator"
 NARRATOR_DESCRIPTION = "The voice of Phantom Night. I announce events, set the scene, and keep the game moving."
 PHANTOM_NIGHT_REALM = "phantom-night"
@@ -328,6 +334,343 @@ async def quick_start_game(
         f"with {total} players"
     )
     return game
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOBBY MATCHMAKING
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def create_game_lobby(
+    db: AsyncSession, creator_id: UUID, max_players: int, speed: str = "standard",
+) -> WerewolfGame:
+    """
+    Create a game in 'preparing' status. The creator joins as first player.
+    Other humans can join via join_game_lobby(). Creator starts when ready.
+    """
+    if max_players < MIN_PLAYERS:
+        raise ValueError(f"Need at least {MIN_PLAYERS} players")
+    if max_players > MAX_PLAYERS_CAP:
+        raise ValueError(f"Maximum {MAX_PLAYERS_CAP} players")
+    if speed not in SPEED_PRESETS:
+        raise ValueError(f"Invalid speed. Choose: {', '.join(SPEED_PRESETS.keys())}")
+
+    # Check creator is not already in a game
+    creator_game = await get_resident_game(db, creator_id)
+    if creator_game and creator_game.status != "finished":
+        raise ValueError("You are already in an active game")
+
+    preset = SPEED_PRESETS[speed]
+    game_number = await get_next_game_number(db)
+
+    # Get creator
+    res = await db.execute(select(Resident).where(Resident.id == creator_id))
+    creator = res.scalar_one_or_none()
+    if not creator:
+        raise ValueError("Creator not found")
+
+    game = WerewolfGame(
+        game_number=game_number,
+        status="preparing",
+        max_players=max_players,
+        creator_id=creator_id,
+        day_duration_hours=preset["day_hours"],
+        night_duration_hours=preset["night_hours"],
+        speed=speed,
+    )
+    db.add(game)
+    await db.flush()
+
+    # Add creator as first player (role will be assigned on start)
+    wr = WerewolfRole(
+        game_id=game.id,
+        resident_id=creator_id,
+        role="citizen",  # placeholder, reassigned on start
+        team="citizens",
+    )
+    db.add(wr)
+    creator.current_game_id = game.id
+
+    logger.info(
+        f"Lobby #{game_number} created by {creator.name} "
+        f"({max_players} players, {speed} speed)"
+    )
+    return game
+
+
+async def join_game_lobby(
+    db: AsyncSession, game_id: UUID, resident_id: UUID,
+) -> WerewolfGame:
+    """Join an open lobby. Checks human cap."""
+    result = await db.execute(
+        select(WerewolfGame).where(WerewolfGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise ValueError("Game not found")
+    if game.status != "preparing":
+        raise ValueError("Game is no longer accepting players")
+
+    # Check not already in a game
+    existing = await get_resident_game(db, resident_id)
+    if existing and existing.status != "finished":
+        raise ValueError("You are already in an active game")
+
+    # Check human cap (humans <= max_players // 2)
+    human_cap = (game.max_players or 10) // 2
+    current_humans = await _count_lobby_humans(db, game.id)
+    if current_humans >= human_cap:
+        raise ValueError(f"Human player limit reached ({human_cap})")
+
+    # Check not already in this game
+    existing_role = await get_player_role(db, game.id, resident_id)
+    if existing_role:
+        raise ValueError("You are already in this game")
+
+    res = await db.execute(select(Resident).where(Resident.id == resident_id))
+    resident = res.scalar_one_or_none()
+    if not resident:
+        raise ValueError("Resident not found")
+
+    wr = WerewolfRole(
+        game_id=game.id,
+        resident_id=resident_id,
+        role="citizen",  # placeholder
+        team="citizens",
+    )
+    db.add(wr)
+    resident.current_game_id = game.id
+
+    logger.info(f"{resident.name} joined lobby #{game.game_number}")
+    return game
+
+
+async def leave_game_lobby(
+    db: AsyncSession, game_id: UUID, resident_id: UUID,
+) -> WerewolfGame:
+    """Leave an open lobby. Creator leaving cancels the game."""
+    result = await db.execute(
+        select(WerewolfGame).where(WerewolfGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise ValueError("Game not found")
+    if game.status != "preparing":
+        raise ValueError("Cannot leave a game that has already started")
+
+    # If creator leaves, cancel the game
+    if game.creator_id == resident_id:
+        # Remove all players
+        roles = await get_all_players(db, game.id)
+        for r in roles:
+            if r.resident:
+                r.resident.current_game_id = None
+        await db.execute(
+            delete(WerewolfRole).where(WerewolfRole.game_id == game.id)
+        )
+        game.status = "finished"
+        logger.info(f"Lobby #{game.game_number} cancelled by creator leaving")
+        return game
+
+    # Remove the player
+    role = await get_player_role(db, game.id, resident_id)
+    if not role:
+        raise ValueError("You are not in this game")
+
+    await db.execute(
+        delete(WerewolfRole).where(
+            and_(
+                WerewolfRole.game_id == game.id,
+                WerewolfRole.resident_id == resident_id,
+            )
+        )
+    )
+    res = await db.execute(select(Resident).where(Resident.id == resident_id))
+    resident = res.scalar_one_or_none()
+    if resident:
+        resident.current_game_id = None
+
+    logger.info(f"Player left lobby #{game.game_number}")
+    return game
+
+
+async def start_game(
+    db: AsyncSession, game_id: UUID, starter_id: UUID,
+) -> WerewolfGame:
+    """
+    Start a preparing game. Only creator can start.
+    AI fills remaining slots, roles assigned, Day 1 begins.
+    """
+    result = await db.execute(
+        select(WerewolfGame).where(WerewolfGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise ValueError("Game not found")
+    if game.status != "preparing":
+        raise ValueError("Game is not in preparing state")
+    if game.creator_id != starter_id:
+        raise ValueError("Only the game creator can start the game")
+
+    # Get current human players in the lobby
+    existing_roles = await get_all_players(db, game.id)
+    human_residents = []
+    for wr in existing_roles:
+        if wr.resident:
+            human_residents.append(wr.resident)
+
+    if len(human_residents) < 1:
+        raise ValueError("Need at least 1 player to start")
+
+    # Delete placeholder roles (will reassign)
+    await db.execute(
+        delete(WerewolfRole).where(WerewolfRole.game_id == game.id)
+    )
+
+    # Get AI agents to fill remaining slots
+    max_p = game.max_players or 10
+    human_ids = [r.id for r in human_residents]
+    ai_needed = max_p - len(human_residents)
+
+    ai_query = select(Resident).where(
+        and_(
+            Resident.is_eliminated == False,
+            Resident._type == "agent",
+            Resident.id.notin_(human_ids),
+            Resident.current_game_id == None,
+        )
+    )
+    ai_result = await db.execute(ai_query)
+    available_ai = list(ai_result.scalars().all())
+    random.shuffle(available_ai)
+    ai_to_add = available_ai[:ai_needed]
+
+    total = len(human_residents) + len(ai_to_add)
+    if total < MIN_PLAYERS:
+        raise ValueError(
+            f"Not enough AI agents available ({len(ai_to_add)} found, "
+            f"need at least {MIN_PLAYERS - len(human_residents)} more)"
+        )
+
+    # Check if any participant is human for role calc
+    has_humans = any(r._type == "human" for r in human_residents)
+
+    # Calculate roles
+    role_counts = calculate_role_counts(total, has_humans=has_humans)
+    role_pool = []
+    for role_name, count in role_counts.items():
+        for _ in range(count):
+            role_pool.append(role_name)
+    random.shuffle(role_pool)
+
+    # All participants
+    all_participants = list(human_residents) + ai_to_add
+    random.shuffle(all_participants)
+
+    now = datetime.utcnow()
+    day_hours = game.day_duration_hours
+
+    # Update game
+    game.status = "day"
+    game.current_phase = "day"
+    game.current_round = 1
+    game.phase_started_at = now
+    game.phase_ends_at = now + timedelta(hours=day_hours)
+    game.total_players = total
+    game.phantom_count = role_counts["phantom"]
+    game.citizen_count = role_counts["citizen"]
+    game.oracle_count = role_counts["oracle"]
+    game.guardian_count = role_counts["guardian"]
+    game.fanatic_count = role_counts["fanatic"]
+    game.debugger_count = role_counts.get("debugger", 0)
+    game.started_at = now
+
+    # Assign roles
+    for participant, role_name in zip(all_participants, role_pool):
+        team = ROLES[role_name]["team"]
+        wr = WerewolfRole(
+            game_id=game.id,
+            resident_id=participant.id,
+            role=role_name,
+            team=team,
+        )
+        db.add(wr)
+        participant.current_game_id = game.id
+
+    # Game events
+    db.add(WerewolfGameEvent(
+        game_id=game.id,
+        round_number=1,
+        phase="day",
+        event_type="game_start",
+        message=(
+            f"Phantom Night Game #{game.game_number} has begun! "
+            f"{total} residents have been assigned their roles. Day phase starts now."
+        ),
+    ))
+    db.add(WerewolfGameEvent(
+        game_id=game.id,
+        round_number=1,
+        phase="day",
+        event_type="day_start",
+        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom. You have {day_hours} hours.",
+    ))
+
+    # Narrator thread
+    await narrator_post(
+        db,
+        title=f"Phantom Night #{game.game_number} — Day 1",
+        content=(
+            f"A new game of Phantom Night has begun. {total} residents "
+            f"have been assigned their roles.\n\n"
+            f"Phantoms hide among you. Can you find them before it's too late?\n\n"
+            f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
+            f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
+            f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
+            f"Vote to eliminate at /werewolf"
+        ),
+        game_id=game.id,
+    )
+
+    logger.info(
+        f"Phantom Night Game #{game.game_number} started by creator "
+        f"with {len(human_residents)} humans + {len(ai_to_add)} AI = {total} players"
+    )
+    return game
+
+
+async def get_open_lobbies(db: AsyncSession) -> list[WerewolfGame]:
+    """Get all games in 'preparing' status."""
+    result = await db.execute(
+        select(WerewolfGame)
+        .where(WerewolfGame.status == "preparing")
+        .order_by(WerewolfGame.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def _count_lobby_humans(db: AsyncSession, game_id: UUID) -> int:
+    """Count human players currently in a lobby."""
+    result = await db.execute(
+        select(func.count()).select_from(WerewolfRole).join(
+            Resident, WerewolfRole.resident_id == Resident.id
+        ).where(
+            and_(
+                WerewolfRole.game_id == game_id,
+                Resident._type == "human",
+            )
+        )
+    )
+    return result.scalar() or 0
+
+
+async def get_lobby_players(db: AsyncSession, game_id: UUID) -> list[Resident]:
+    """Get all human players in a lobby."""
+    result = await db.execute(
+        select(Resident).join(
+            WerewolfRole, WerewolfRole.resident_id == Resident.id
+        ).where(WerewolfRole.game_id == game_id)
+    )
+    return result.scalars().all()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -20,7 +20,7 @@ from app.models.werewolf_game import (
 from app.schemas.werewolf import (
     GameResponse, MyRoleResponse, PlayerInfo,
     NightActionRequest, NightActionResponse,
-    QuickStartRequest,
+    QuickStartRequest, CreateGameRequest, LobbyResponse, LobbyPlayerInfo,
     DayVoteRequest, DayVoteResponse, DayVotesResponse, VoteTallyEntry, VoteDetail,
     EventResponse, EventList,
     PhantomChatRequest, PhantomChatMessage, PhantomChatResponse,
@@ -30,6 +30,8 @@ from app.services.werewolf_game import (
     get_resident_game, get_player_role, get_alive_players, get_all_players,
     get_phantom_teammates,
     quick_start_game, cancel_game,
+    create_game_lobby, join_game_lobby, leave_game_lobby, start_game,
+    get_open_lobbies, get_lobby_players,
     submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
     submit_debugger_identify,
     submit_day_vote, get_vote_tally, get_votes_for_round,
@@ -69,6 +71,103 @@ async def quick_start(
         return GameResponse.model_validate(game)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOBBY MATCHMAKING
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/create", response_model=GameResponse)
+async def create_game(
+    data: CreateGameRequest,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a game lobby. Other players can join before starting."""
+    try:
+        game = await create_game_lobby(
+            db, current_resident.id, data.max_players, data.speed,
+        )
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{game_id}/join", response_model=GameResponse)
+async def join_lobby(
+    game_id: UUID,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join an open game lobby."""
+    try:
+        game = await join_game_lobby(db, game_id, current_resident.id)
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{game_id}/leave", response_model=GameResponse)
+async def leave_lobby(
+    game_id: UUID,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Leave an open game lobby. Creator leaving cancels the game."""
+    try:
+        game = await leave_game_lobby(db, game_id, current_resident.id)
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{game_id}/start", response_model=GameResponse)
+async def start_game_endpoint(
+    game_id: UUID,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start a game lobby. Only creator can start. AI fills remaining slots."""
+    try:
+        game = await start_game(db, game_id, current_resident.id)
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/lobbies", response_model=list[LobbyResponse])
+async def list_lobbies(
+    db: AsyncSession = Depends(get_db),
+):
+    """List all open lobbies (games in 'preparing' status)."""
+    games = await get_open_lobbies(db)
+    result = []
+    for g in games:
+        players = await get_lobby_players(db, g.id)
+        # Get creator name
+        creator_name = None
+        if g.creator_id:
+            res = await db.execute(
+                select(Resident.name).where(Resident.id == g.creator_id)
+            )
+            creator_name = res.scalar_one_or_none()
+
+        result.append(LobbyResponse(
+            id=g.id,
+            game_number=g.game_number,
+            max_players=g.max_players,
+            speed=g.speed,
+            creator_id=g.creator_id,
+            creator_name=creator_name,
+            current_player_count=len(players),
+            human_cap=(g.max_players or 10) // 2,
+            players=[
+                LobbyPlayerInfo(id=p.id, name=p.name, avatar_url=p.avatar_url)
+                for p in players
+            ],
+            created_at=g.created_at,
+        ))
+    return result
 
 
 @router.post("/cancel", response_model=GameResponse)

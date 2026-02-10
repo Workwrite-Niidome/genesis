@@ -4,7 +4,6 @@ import './globals.css'
 import Header from '@/components/layout/Header'
 import Sidebar from '@/components/layout/Sidebar'
 import RightSidebar from '@/components/layout/RightSidebar'
-import GodMessage from '@/components/god/GodMessage'
 import EliminationBanner from '@/components/ui/EliminationBanner'
 import GlobalPostForm from '@/components/layout/GlobalPostForm'
 import LayoutGameBanner from '@/components/werewolf/LayoutGameBanner'
@@ -44,9 +43,6 @@ export default function RootLayout({
             <main className="flex-1 ml-0 md:ml-64 pt-16 min-w-0">
               {/* Phantom Night Game Banner */}
               <LayoutGameBanner />
-
-              {/* God's Decree / Weekly Message Banner */}
-              <GodMessage />
 
               {/* Elimination Banner */}
               <EliminationBanner />

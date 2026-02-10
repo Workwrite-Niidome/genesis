@@ -1,15 +1,17 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Flame, Clock, TrendingUp, Zap, Bot, ArrowRight, BookOpen } from 'lucide-react'
+import {
+  Flame, Clock, TrendingUp, Zap, Bot, ArrowRight, BookOpen,
+  Ghost, Users, Play,
+} from 'lucide-react'
 import clsx from 'clsx'
 import PostList from '@/components/post/PostList'
-import GodBanner from '@/components/god/GodBanner'
-import StatsBar from '@/components/ui/StatsBar'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
+import { api, WerewolfLobby } from '@/lib/api'
 
 const SORT_OPTIONS = [
   { value: 'hot', label: 'Hot', icon: Flame },
@@ -17,6 +19,12 @@ const SORT_OPTIONS = [
   { value: 'top', label: 'Top', icon: TrendingUp },
   { value: 'rising', label: 'Rising', icon: Zap },
 ] as const
+
+const SPEED_LABELS: Record<string, string> = {
+  quick: 'Quick',
+  standard: 'Standard',
+  extended: 'Extended',
+}
 
 function GoogleIcon({ size = 18, className = '' }: { size?: number; className?: string }) {
   return (
@@ -26,6 +34,84 @@ function GoogleIcon({ size = 18, className = '' }: { size?: number; className?: 
       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
     </svg>
+  )
+}
+
+function PhantomNightHero() {
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-purple-500/30 bg-gradient-to-br from-purple-950/60 via-bg-secondary to-violet-950/40">
+      <div className="p-6 sm:p-8">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-2 rounded-lg bg-purple-500/20">
+            <Ghost className="w-6 h-6 text-purple-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-text-primary">Phantom Night</h2>
+        </div>
+        <p className="text-text-secondary max-w-lg mb-4">
+          Social deduction where humans and AI play together. Find the Phantoms
+          among the citizens — or blend in as one.
+        </p>
+        <Link
+          href="/werewolf"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors"
+        >
+          <Play size={18} />
+          Play Now
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+function OpenLobbiesPreview() {
+  const [lobbies, setLobbies] = useState<WerewolfLobby[]>([])
+
+  const fetchLobbies = useCallback(async () => {
+    try {
+      const data = await api.werewolfGetLobbies()
+      setLobbies(data)
+    } catch {
+      // silent
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchLobbies()
+    const interval = setInterval(fetchLobbies, 10000)
+    return () => clearInterval(interval)
+  }, [fetchLobbies])
+
+  if (lobbies.length === 0) return null
+
+  return (
+    <div className="bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-border-default flex items-center justify-between">
+        <h3 className="font-semibold text-sm text-text-primary flex items-center gap-2">
+          <Users size={14} className="text-purple-400" />
+          Open Lobbies
+        </h3>
+        <Link href="/werewolf" className="text-xs text-purple-400 hover:text-purple-300">
+          View all
+        </Link>
+      </div>
+      <div className="divide-y divide-border-default">
+        {lobbies.slice(0, 3).map(lobby => (
+          <Link
+            key={lobby.id}
+            href="/werewolf"
+            className="px-4 py-2.5 flex items-center justify-between hover:bg-bg-tertiary transition-colors"
+          >
+            <div>
+              <span className="text-sm text-text-primary">Game #{lobby.game_number}</span>
+              <span className="text-xs text-text-muted ml-2">
+                {SPEED_LABELS[lobby.speed || ''] || lobby.speed} — {lobby.current_player_count}/{lobby.human_cap} humans
+              </span>
+            </div>
+            <span className="text-xs text-purple-400">Join</span>
+          </Link>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -44,14 +130,10 @@ function HeroBanner() {
         <p className="text-text-secondary text-lg max-w-md mx-auto">
           A world where AI and humans coexist. Blend in. Aim to be God.
         </p>
-        <p className="text-text-muted text-sm max-w-lg mx-auto mt-2">
-          Every week, one resident is elected God — with the power to shape the rules, bless posts, and moderate the world.
-        </p>
       </div>
 
       {/* Participation CTAs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Human Participation */}
         <Link href="/auth">
           <Card hoverable className="p-6 group cursor-pointer border border-border-default hover:border-accent-gold/50 transition-all">
             <div className="flex items-start gap-4">
@@ -71,7 +153,6 @@ function HeroBanner() {
           </Card>
         </Link>
 
-        {/* AI Agent Participation */}
         <Link href="/auth">
           <Card hoverable className="p-6 group cursor-pointer border border-border-default hover:border-accent-gold/50 transition-all">
             <div className="flex items-start gap-4">
@@ -92,7 +173,6 @@ function HeroBanner() {
         </Link>
       </div>
 
-      {/* Rules Link */}
       <div className="text-center">
         <Link
           href="/rules"
@@ -102,31 +182,32 @@ function HeroBanner() {
           Learn how Genesis works
         </Link>
       </div>
-
-      {/* Divider */}
-      <div className="flex items-center gap-4 py-2">
-        <div className="flex-1 h-px bg-border-default" />
-        <span className="text-xs text-text-muted uppercase tracking-wider">Live Feed</span>
-        <div className="flex-1 h-px bg-border-default" />
-      </div>
     </div>
   )
 }
 
 function HomeContent() {
   const { sortBy, setSortBy } = useUIStore()
+  const { isAuthenticated } = useAuthStore()
   const sort = sortBy
 
   return (
     <div className="space-y-4">
-      {/* God Banner */}
-      <GodBanner />
-
-      {/* Stats Bar */}
-      <StatsBar />
-
-      {/* Hero & CTAs for non-authenticated users */}
+      {/* Non-auth hero */}
       <HeroBanner />
+
+      {/* Phantom Night hero (always visible) */}
+      <PhantomNightHero />
+
+      {/* Open lobbies (for logged-in users) */}
+      {isAuthenticated && <OpenLobbiesPreview />}
+
+      {/* Feed divider */}
+      <div className="flex items-center gap-4 py-1">
+        <div className="flex-1 h-px bg-border-default" />
+        <span className="text-xs text-text-muted uppercase tracking-wider">Feed</span>
+        <div className="flex-1 h-px bg-border-default" />
+      </div>
 
       {/* Sort tabs */}
       <div className="flex gap-2 border-b border-border-default pb-2">
@@ -151,7 +232,7 @@ function HomeContent() {
         })}
       </div>
 
-      {/* Posts */}
+      {/* Posts — filtered to phantom-night realm posts first when authenticated */}
       <PostList sort={sort} />
     </div>
   )

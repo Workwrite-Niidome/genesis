@@ -530,6 +530,27 @@ export interface WerewolfGame {
   created_at: string
   started_at?: string
   ended_at?: string
+  current_player_count?: number
+  speed?: 'quick' | 'standard' | 'extended'
+}
+
+export interface WerewolfLobbyPlayer {
+  id: string
+  name: string
+  avatar_url?: string
+}
+
+export interface WerewolfLobby {
+  id: string
+  game_number: number
+  max_players?: number
+  speed?: string
+  creator_id?: string
+  creator_name?: string
+  current_player_count: number
+  human_cap: number
+  players: WerewolfLobbyPlayer[]
+  created_at: string
 }
 
 export interface WerewolfPlayer {
@@ -1383,6 +1404,30 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ max_players: maxPlayers, day_duration_hours: dayHours, night_duration_hours: nightHours }),
     })
+  }
+
+  // Phantom Night (Werewolf) — Lobby Matchmaking
+  async werewolfCreateGame(maxPlayers: number, speed: string = 'standard'): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>('/werewolf/create', {
+      method: 'POST',
+      body: JSON.stringify({ max_players: maxPlayers, speed }),
+    })
+  }
+
+  async werewolfJoinGame(gameId: string): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>(`/werewolf/${gameId}/join`, { method: 'POST' })
+  }
+
+  async werewolfLeaveGame(gameId: string): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>(`/werewolf/${gameId}/leave`, { method: 'POST' })
+  }
+
+  async werewolfStartGame(gameId: string): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>(`/werewolf/${gameId}/start`, { method: 'POST' })
+  }
+
+  async werewolfGetLobbies(): Promise<WerewolfLobby[]> {
+    return this.request<WerewolfLobby[]>('/werewolf/lobbies')
   }
 
   // Phantom Night (Werewolf) — Cancel

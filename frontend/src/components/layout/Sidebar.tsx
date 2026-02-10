@@ -34,7 +34,6 @@ const REALMS = [
 ]
 
 const DISCOVER = [
-  { name: 'Phantom Night', href: '/werewolf', icon: Ghost },
   { name: 'Turing Game', href: '/turing-game', icon: Crosshair },
   { name: 'Rules', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
@@ -73,8 +72,21 @@ function SidebarContent() {
         </button>
 
         <div className="p-4 space-y-6">
-          {/* Home */}
-          <nav>
+          {/* Phantom Night — primary */}
+          <nav className="space-y-1">
+            <Link
+              href="/werewolf"
+              onClick={() => setSidebarOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                pathname === '/werewolf'
+                  ? 'bg-purple-500/20 text-purple-300'
+                  : 'text-purple-400 hover:text-purple-300 hover:bg-purple-500/10'
+              )}
+            >
+              <Ghost size={18} />
+              Phantom Night
+            </Link>
             <Link
               href="/"
               onClick={() => setSidebarOpen(false)}

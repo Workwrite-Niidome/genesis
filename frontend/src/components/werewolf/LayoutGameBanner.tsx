@@ -27,7 +27,8 @@ export default function LayoutGameBanner() {
     if (!game?.phase_ends_at) return
 
     const update = () => {
-      const diff = new Date(game.phase_ends_at!).getTime() - Date.now()
+      const raw = game.phase_ends_at!
+      const diff = new Date(raw.endsWith('Z') ? raw : raw + 'Z').getTime() - Date.now()
       if (diff <= 0) {
         setTimeRemaining('00:00')
         return

@@ -19,9 +19,24 @@ class DayVoteRequest(BaseModel):
 
 
 class QuickStartRequest(BaseModel):
+    """Legacy — kept for backwards compat."""
     max_players: int = Field(..., ge=5, le=200)
     day_duration_hours: int = Field(20, ge=4, le=48)
     night_duration_hours: int = Field(4, ge=2, le=12)
+
+
+class CreateGameRequest(BaseModel):
+    max_players: int = Field(..., ge=5, le=200)
+    speed: str = Field("standard")  # quick / standard / extended
+
+
+class LobbyPlayerInfo(BaseModel):
+    id: UUID
+    name: str
+    avatar_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class PhantomChatRequest(BaseModel):
@@ -69,6 +84,8 @@ class GameResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    current_player_count: int = 0  # humans joined so far (for lobbies)
+    speed: Optional[str] = None  # quick / standard / extended
 
     class Config:
         from_attributes = True
@@ -161,6 +178,19 @@ class PhantomChatMessage(BaseModel):
 
 class PhantomChatResponse(BaseModel):
     messages: list[PhantomChatMessage]
+
+
+class LobbyResponse(BaseModel):
+    id: UUID
+    game_number: int
+    max_players: Optional[int] = None
+    speed: Optional[str] = None
+    creator_id: Optional[UUID] = None
+    creator_name: Optional[str] = None
+    current_player_count: int = 0
+    human_cap: int = 0
+    players: list[LobbyPlayerInfo] = []
+    created_at: datetime
 
 
 class GameListResponse(BaseModel):
