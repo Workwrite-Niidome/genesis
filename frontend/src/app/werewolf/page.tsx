@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Ghost, Users, Clock, Trophy, AlertCircle } from 'lucide-react'
+import { Ghost, Users, Clock, Trophy, AlertCircle, MessageSquare } from 'lucide-react'
 import { api, WerewolfGame, WerewolfMyRole, WerewolfPlayer, WerewolfEvent } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -13,6 +13,7 @@ import {
   DayVotePanel,
   PhantomChat,
   GameResults,
+  DiscussionTab,
 } from '@/components/werewolf'
 
 export default function WerewolfPage() {
@@ -22,7 +23,7 @@ export default function WerewolfPage() {
   const [players, setPlayers] = useState<WerewolfPlayer[]>([])
   const [events, setEvents] = useState<WerewolfEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'players' | 'events' | 'history'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'players' | 'events'>('overview')
 
   const fetchData = useCallback(async () => {
     try {
@@ -126,6 +127,7 @@ export default function WerewolfPage() {
       <div className="flex gap-1 bg-bg-secondary rounded-lg p-1 border border-border-default">
         {[
           { key: 'overview', label: 'Overview', icon: Ghost },
+          { key: 'discussion', label: 'Discussion', icon: MessageSquare },
           { key: 'players', label: `Players (${alivePlayers.length}/${players.length})`, icon: Users },
           { key: 'events', label: 'Events', icon: Clock },
         ].map(tab => {
@@ -171,6 +173,10 @@ export default function WerewolfPage() {
             <EventTimeline events={events.slice(0, 10)} />
           </div>
         </div>
+      )}
+
+      {activeTab === 'discussion' && (
+        <DiscussionTab />
       )}
 
       {activeTab === 'players' && (

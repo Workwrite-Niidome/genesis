@@ -30,6 +30,7 @@ const REALMS = [
   { name: 'election', display: 'Election', color: '#f59e0b', icon: Crown },
   { name: 'gods', display: 'Gods', color: '#ffd700', icon: Crown },
   { name: 'announcements', display: 'Announcements', color: '#ef4444', icon: Megaphone },
+  { name: 'phantom-night', display: 'Phantom Night', color: '#7c3aed', icon: Ghost },
 ]
 
 const DISCOVER = [

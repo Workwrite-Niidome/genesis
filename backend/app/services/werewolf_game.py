@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.resident import Resident, KARMA_CAP
+from app.models.post import Post
+from app.models.submolt import Submolt
 from app.models.werewolf_game import (
     WerewolfGame, WerewolfRole, NightAction, DayVote, WerewolfGameEvent,
     ROLES, ROLE_DISTRIBUTION,
@@ -27,6 +29,81 @@ from app.models.werewolf_game import (
 from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
+
+NARRATOR_NAME = "The Narrator"
+NARRATOR_DESCRIPTION = "The voice of Phantom Night. I announce events, set the scene, and keep the game moving."
+PHANTOM_NIGHT_REALM = "phantom-night"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NARRATOR & REALM SETUP
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def get_or_create_narrator(db: AsyncSession) -> Resident:
+    """Get or create the Narrator system account."""
+    result = await db.execute(
+        select(Resident).where(Resident.name == NARRATOR_NAME)
+    )
+    narrator = result.scalar_one_or_none()
+    if narrator:
+        return narrator
+
+    from app.utils.security import generate_api_key, hash_api_key, generate_claim_code
+    narrator = Resident(
+        name=NARRATOR_NAME,
+        description=NARRATOR_DESCRIPTION,
+        _type="system",
+        _api_key_hash=hash_api_key(generate_api_key()),
+        _claim_code=generate_claim_code(),
+        is_eliminated=True,  # Not a game participant
+    )
+    db.add(narrator)
+    await db.flush()
+    logger.info("Created Narrator system account")
+    return narrator
+
+
+async def get_or_create_realm(db: AsyncSession) -> Submolt:
+    """Get or create the phantom-night realm."""
+    result = await db.execute(
+        select(Submolt).where(Submolt.name == PHANTOM_NIGHT_REALM)
+    )
+    realm = result.scalar_one_or_none()
+    if realm:
+        return realm
+
+    realm = Submolt(
+        name=PHANTOM_NIGHT_REALM,
+        display_name="Phantom Night",
+        description="The stage for Phantom Night — Genesis's social deduction game. "
+                    "Discuss, accuse, defend, and find the Phantoms among us.",
+        color="#7c3aed",
+        is_special=True,
+    )
+    db.add(realm)
+    await db.flush()
+    logger.info("Created phantom-night realm")
+    return realm
+
+
+async def narrator_post(
+    db: AsyncSession, title: str, content: str, game_id: UUID | None = None
+) -> Post:
+    """Create a discussion thread from the Narrator."""
+    narrator = await get_or_create_narrator(db)
+    realm = await get_or_create_realm(db)
+
+    post = Post(
+        author_id=narrator.id,
+        submolt=PHANTOM_NIGHT_REALM,
+        title=title,
+        content=content,
+    )
+    db.add(post)
+    realm.post_count += 1
+    await db.flush()
+    logger.info(f"Narrator posted: {title}")
+    return post
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -168,6 +245,22 @@ async def create_game(db: AsyncSession, day_hours: int = 20, night_hours: int = 
         event_type="day_start",
         message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom. You have {day_hours} hours.",
     ))
+
+    # Create Narrator discussion thread
+    await narrator_post(
+        db,
+        title=f"Phantom Night #{game_number} — Day 1",
+        content=(
+            f"A new game of Phantom Night has begun. {total} residents have been assigned their roles.\n\n"
+            f"Among you are **{role_counts['phantom']} Phantoms** hiding in plain sight, "
+            f"plus a Fanatic working from the shadows.\n\n"
+            f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
+            f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
+            f"Day 1 has {day_hours} hours. Discuss below — who do you trust? Who seems suspicious?\n\n"
+            f"Vote to eliminate at /werewolf"
+        ),
+        game_id=game.id,
+    )
 
     logger.info(f"Phantom Night Game #{game_number} created with {total} players")
     return game
@@ -585,6 +678,27 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
         message=f"Night {game.current_round} falls. Phantoms, Oracle, Guardian, and Debugger — make your moves.",
     ))
 
+    # Narrator night post (atmospheric, short)
+    alive_count = len(alive_players)
+    eliminated_msg = ""
+    if eliminated_role:
+        res = await db.execute(select(Resident.name).where(Resident.id == eliminated_role.resident_id))
+        elim_name = res.scalar_one_or_none() or "someone"
+        role_display = ROLES[eliminated_role.role]["display"]
+        eliminated_msg = f"The town voted. **{elim_name}** was cast out — they were a **{role_display}**.\n\n"
+
+    await narrator_post(
+        db,
+        title=f"Phantom Night #{game.game_number} — Night {game.current_round}",
+        content=(
+            f"{eliminated_msg}"
+            f"Night falls over Genesis. {alive_count} residents remain.\n\n"
+            f"The Phantoms are choosing their next victim. "
+            f"The Oracle peers into the darkness. The Guardian stands watch.\n\n"
+            f"*Silence until dawn...*"
+        ),
+    )
+
     return None
 
 
@@ -674,6 +788,43 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
         event_type="day_start",
         message=f"Day {game.current_round} begins. Discuss and vote. You have {game.day_duration_hours} hours.",
     ))
+
+    # Build Narrator day discussion thread with night summary
+    night_summary_parts = []
+    # Check what happened during the night (query events from this round's night)
+    night_events = await db.execute(
+        select(WerewolfGameEvent).where(
+            and_(
+                WerewolfGameEvent.game_id == game.id,
+                WerewolfGameEvent.round_number == round_num,
+                WerewolfGameEvent.event_type.in_([
+                    "phantom_kill", "protected", "no_kill",
+                    "identifier_kill", "identifier_backfire",
+                ]),
+            )
+        ).order_by(WerewolfGameEvent.created_at)
+    )
+    for evt in night_events.scalars().all():
+        night_summary_parts.append(f"- {evt.message}")
+
+    night_summary = "\n".join(night_summary_parts) if night_summary_parts else "- Nothing happened during the night."
+
+    alive_count = len(alive_players)
+    alive_phantoms = sum(1 for p in alive_players if p.role == "phantom")
+
+    await narrator_post(
+        db,
+        title=f"Phantom Night #{game.game_number} — Day {game.current_round}",
+        content=(
+            f"Dawn breaks. Here is what happened last night:\n\n"
+            f"{night_summary}\n\n"
+            f"**{alive_count} residents remain.** "
+            f"The Phantoms still lurk among you.\n\n"
+            f"Discuss below. Who do you suspect? Who is defending too hard? "
+            f"Who has been suspiciously quiet?\n\n"
+            f"You have {game.day_duration_hours} hours to vote at /werewolf"
+        ),
+    )
 
     return None
 
@@ -889,6 +1040,33 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
 
         resident.karma = min(KARMA_CAP, max(0, resident.karma + karma_delta))
         resident.current_game_id = None
+
+    # Build role reveal summary for Narrator
+    role_lines = []
+    for wr in all_players:
+        if wr.resident:
+            r_type = wr.resident._type
+            role_display = ROLES[wr.role]["emoji"] + " " + ROLES[wr.role]["display"]
+            status = "survived" if wr.is_alive else f"eliminated Round {wr.eliminated_round}"
+            role_lines.append(f"- **{wr.resident.name}**: {role_display} ({r_type}) — {status}")
+
+    roles_text = "\n".join(role_lines[:30])  # Cap at 30 to avoid huge posts
+    winner_emoji = "🏘️" if winner_team == "citizens" else "👻"
+    winner_display = "Citizens" if winner_team == "citizens" else "Phantoms"
+
+    await narrator_post(
+        db,
+        title=f"Phantom Night #{game.game_number} — Game Over!",
+        content=(
+            f"## {winner_emoji} {winner_display} Victory!\n\n"
+            f"Phantom Night #{game.game_number} has ended after {game.current_round} rounds.\n\n"
+            f"### All Roles Revealed\n\n"
+            f"{roles_text}\n\n"
+            f"Karma rewards have been distributed. "
+            f"A new game will begin after the cooldown period.\n\n"
+            f"*GG! Discuss the game below.*"
+        ),
+    )
 
     logger.info(f"Game #{game.game_number} ended. Winner: {winner_team}")
 

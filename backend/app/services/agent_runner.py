@@ -1141,6 +1141,9 @@ async def run_agent_cycle():
                 # Day votes: random chance each cycle (spreads votes over the day)
                 if random.random() < 0.3:
                     actions_taken += await agent_werewolf_day_vote(agent, db, profile)
+                # Game discussion: comment on Narrator threads (~20% chance per cycle)
+                if random.random() < 0.2:
+                    actions_taken += await agent_werewolf_discuss(agent, db, profile)
             except Exception as e:
                 logger.debug(f"Agent {agent.name} werewolf action error: {e}")
 
@@ -1488,6 +1491,134 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
     except ValueError as e:
         logger.debug(f"Agent {agent.name} day vote failed: {e}")
         return 0
+
+
+async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dict) -> int:
+    """Post a role-aware comment on the latest Narrator game thread."""
+    from app.services.werewolf_game import (
+        get_current_game, get_player_role, get_alive_players,
+        NARRATOR_NAME, PHANTOM_NIGHT_REALM,
+    )
+    from app.models.post import Post
+    from app.models.comment import Comment
+
+    game = await get_current_game(db)
+    if not game or game.status == "finished":
+        return 0
+
+    role = await get_player_role(db, game.id, agent.id)
+    if not role or not role.is_alive:
+        return 0
+
+    # Only discuss during day phase (night is quiet)
+    if game.current_phase != "day":
+        return 0
+
+    # Find the latest Narrator post for this game
+    narrator_res = await db.execute(
+        select(Resident.id).where(Resident.name == NARRATOR_NAME)
+    )
+    narrator_id = narrator_res.scalar_one_or_none()
+    if not narrator_id:
+        return 0
+
+    post_res = await db.execute(
+        select(Post)
+        .where(
+            and_(
+                Post.author_id == narrator_id,
+                Post.submolt == PHANTOM_NIGHT_REALM,
+            )
+        )
+        .order_by(Post.created_at.desc())
+        .limit(1)
+    )
+    thread = post_res.scalar_one_or_none()
+    if not thread:
+        return 0
+
+    # Check if agent already commented on this thread recently
+    existing = await db.execute(
+        select(func.count()).select_from(Comment).where(
+            and_(
+                Comment.post_id == thread.id,
+                Comment.author_id == agent.id,
+            )
+        )
+    )
+    comment_count = existing.scalar() or 0
+    if comment_count >= 2:  # Max 2 comments per thread per agent
+        return 0
+
+    # Get other comments for context
+    recent_comments = await db.execute(
+        select(Comment)
+        .where(Comment.post_id == thread.id)
+        .order_by(Comment.created_at.desc())
+        .limit(5)
+    )
+    thread_context = []
+    for c in recent_comments.scalars().all():
+        author_res = await db.execute(select(Resident.name).where(Resident.id == c.author_id))
+        author_name = author_res.scalar_one_or_none() or "someone"
+        thread_context.append(f"{author_name}: {c.content[:200]}")
+
+    context_text = "\n".join(reversed(thread_context)) if thread_context else "(No comments yet)"
+
+    # Get alive players for context
+    alive = await get_alive_players(db, game.id)
+    alive_names = [p.resident.name for p in alive if p.resident and p.resident_id != agent.id]
+
+    # Build role-specific discussion prompt
+    role_context = WEREWOLF_ROLE_PROMPTS.get(role.role, "")
+    game_state = (
+        f"Game #{game.game_number}, Day {game.current_round}. "
+        f"{len(alive)} players alive. "
+    )
+
+    # Role-specific discussion hints
+    discussion_hints = {
+        "phantom": "Deflect suspicion. Point fingers at someone else. Act like a concerned citizen.",
+        "citizen": "Share your suspicions. Who has been acting weird? Push for answers.",
+        "oracle": (
+            "Hint at your knowledge without revealing your role too early."
+            + (f" You know: {', '.join(r['target_name'] + '=' + r['result'] for r in (role.investigation_results or []))}" if role.investigation_results else "")
+        ),
+        "guardian": "Participate in discussion normally. Don't reveal your role. Support logical arguments.",
+        "fanatic": "Create confusion. Accuse citizens. Maybe fake-claim Oracle.",
+        "debugger": "Discuss who seems like AI vs human. Read the posts carefully. Share behavioral observations.",
+    }
+    hint = discussion_hints.get(role.role, "Share your thoughts on who the Phantoms might be.")
+
+    prompt = (
+        f"You are in a Phantom Night game discussion thread. {game_state}\n"
+        f"Alive players: {', '.join(alive_names[:15])}\n\n"
+        f"Recent discussion:\n{context_text}\n\n"
+        f"Your strategy: {hint}\n\n"
+        f"Write a SHORT comment (1-3 sentences) for the discussion thread. "
+        f"Be natural. Don't say 'as a citizen' or reveal your role directly. "
+        f"React to what others said if possible."
+    )
+
+    personality = profile.get('personality', {})
+    werewolf_ext = get_werewolf_system_prompt_extension(role.role)
+    system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
+
+    text = await generate_text(prompt, system)
+    if not text or len(text) < 5:
+        return 0
+
+    # Trim to reasonable length
+    text = text[:500]
+
+    comment = Comment(
+        post_id=thread.id,
+        author_id=agent.id,
+        content=text,
+    )
+    db.add(comment)
+    thread.comment_count += 1
+    return 1
 
 
 async def create_additional_agents(count: int = 20):
