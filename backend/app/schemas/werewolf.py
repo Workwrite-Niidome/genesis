@@ -18,6 +18,12 @@ class DayVoteRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=500)
 
 
+class CreateLobbyRequest(BaseModel):
+    max_players: int = Field(..., ge=5, le=200)
+    day_duration_hours: int = Field(20, ge=4, le=48)
+    night_duration_hours: int = Field(4, ge=2, le=12)
+
+
 class PhantomChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
 
@@ -50,6 +56,8 @@ class GameResponse(BaseModel):
     phase_ends_at: Optional[datetime] = None
     day_duration_hours: int = 20
     night_duration_hours: int = 4
+    max_players: Optional[int] = None
+    creator_id: Optional[UUID] = None
     total_players: int = 0
     phantom_count: int = 0
     citizen_count: int = 0
@@ -153,6 +161,15 @@ class PhantomChatMessage(BaseModel):
 
 class PhantomChatResponse(BaseModel):
     messages: list[PhantomChatMessage]
+
+
+class LobbyResponse(BaseModel):
+    game: GameResponse
+    joined_players: list[PlayerInfo] = []
+    human_count: int = 0
+    ai_count: int = 0
+    max_humans: int = 0
+    spots_remaining: int = 0
 
 
 class GameListResponse(BaseModel):

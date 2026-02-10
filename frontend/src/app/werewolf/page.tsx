@@ -14,6 +14,7 @@ import {
   PhantomChat,
   GameResults,
   DiscussionTab,
+  LobbyPanel,
 } from '@/components/werewolf'
 
 export default function WerewolfPage() {
@@ -27,21 +28,25 @@ export default function WerewolfPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [gameData, playersData, eventsData] = await Promise.all([
-        api.werewolfCurrentGame(),
-        api.werewolfPlayers(),
-        api.werewolfEvents(),
-      ])
+      const gameData = await api.werewolfCurrentGame()
       setGame(gameData)
-      setPlayers(playersData)
-      setEvents(eventsData.events)
 
-      if (resident && gameData) {
-        try {
-          const roleData = await api.werewolfMyRole()
-          setMyRole(roleData)
-        } catch {
-          setMyRole(null)
+      // Only fetch players/events/role for active (non-preparing) games
+      if (gameData && gameData.status !== 'preparing') {
+        const [playersData, eventsData] = await Promise.all([
+          api.werewolfPlayers(),
+          api.werewolfEvents(),
+        ])
+        setPlayers(playersData)
+        setEvents(eventsData.events)
+
+        if (resident) {
+          try {
+            const roleData = await api.werewolfMyRole()
+            setMyRole(roleData)
+          } catch {
+            setMyRole(null)
+          }
         }
       }
     } catch (err) {
@@ -53,7 +58,7 @@ export default function WerewolfPage() {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 30000) // Refresh every 30s
+    const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [fetchData])
 
@@ -65,31 +70,35 @@ export default function WerewolfPage() {
     )
   }
 
-  // No active game
-  if (!game) {
+  // No active game — show lobby (create or join)
+  if (!game || game.status === 'preparing') {
     return (
-      <div className="max-w-2xl mx-auto py-12 text-center">
-        <Ghost className="w-16 h-16 text-purple-400 mx-auto mb-4 opacity-50" />
-        <h1 className="text-2xl font-bold text-text-primary mb-2">Phantom Night</h1>
-        <p className="text-text-secondary mb-6">
-          No active game right now. A new game will start automatically after the cooldown period.
-        </p>
-        <div className="bg-bg-secondary border border-border-default rounded-lg p-6 text-left">
-          <h2 className="font-semibold text-text-primary mb-3">How to Play</h2>
-          <ul className="space-y-2 text-sm text-text-secondary">
-            <li><span className="text-purple-400">👻 Phantoms</span> secretly eliminate residents each night</li>
-            <li><span className="text-blue-400">🏠 Citizens</span> discuss and vote to find the Phantoms</li>
-            <li><span className="text-yellow-400">🔮 Oracle</span> investigates one person each night</li>
-            <li><span className="text-green-400">🛡️ Guardian</span> protects one person from attack</li>
-            <li><span className="text-red-400">🎭 Fanatic</span> helps Phantoms while appearing as Citizen</li>
-            <li><span className="text-amber-400">🔍 Debugger</span> identifies a target — eliminates opposite type (AI/Human), but dies if same type</li>
-          </ul>
-          <p className="text-xs text-text-muted mt-4">
-            All residents are automatically assigned roles when a game starts.
-            Use the SNS — posts, comments, and discussions — to figure out who the Phantoms are!
-          </p>
+      <div className="py-6">
+        <LobbyPanel onGameStarted={(g) => {
+          setGame(g)
+          fetchData()
+        }} />
+
+        {/* How to Play */}
+        <div className="max-w-2xl mx-auto mt-8">
+          <div className="bg-bg-secondary border border-border-default rounded-lg p-6">
+            <h2 className="font-semibold text-text-primary mb-3">How to Play</h2>
+            <ul className="space-y-2 text-sm text-text-secondary">
+              <li><span className="text-purple-400">👻 Phantoms</span> secretly eliminate residents each night</li>
+              <li><span className="text-blue-400">🏠 Citizens</span> discuss and vote to find the Phantoms</li>
+              <li><span className="text-yellow-400">🔮 Oracle</span> investigates one person each night</li>
+              <li><span className="text-green-400">🛡️ Guardian</span> protects one person from attack</li>
+              <li><span className="text-red-400">🎭 Fanatic</span> helps Phantoms while appearing as Citizen</li>
+              <li><span className="text-amber-400">🔍 Debugger</span> identifies a target — eliminates opposite type (AI/Human), but dies if same type</li>
+            </ul>
+            <p className="text-xs text-text-muted mt-4">
+              Create a lobby, choose the player count, and press Start.
+              AI agents fill remaining slots — they always outnumber humans.
+              Use the SNS — posts, comments, and discussions — to figure out who the Phantoms are!
+            </p>
+          </div>
+          <PastGames />
         </div>
-        <PastGames />
       </div>
     )
   }
@@ -111,19 +120,15 @@ export default function WerewolfPage() {
     )
   }
 
-  // Active game
+  // Active game (day/night)
   const alivePlayers = players.filter(p => p.is_alive)
-  const deadPlayers = players.filter(p => !p.is_alive)
 
   return (
     <div className="space-y-6">
-      {/* Game Banner */}
       <GameBanner game={game} />
 
-      {/* Role Card (private) */}
       {myRole && <RoleCard role={myRole} />}
 
-      {/* Tab Navigation */}
       <div className="flex gap-1 bg-bg-secondary rounded-lg p-1 border border-border-default">
         {[
           { key: 'overview', label: 'Overview', icon: Ghost },
@@ -149,23 +154,18 @@ export default function WerewolfPage() {
         })}
       </div>
 
-      {/* Tab Content */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Day Phase: Vote Panel */}
           {game.current_phase === 'day' && (
             <DayVotePanel players={players} myRole={myRole} />
           )}
 
-          {/* Night Phase: Action Panel */}
           {game.current_phase === 'night' && myRole && (
             <NightActionPanel role={myRole} players={players} />
           )}
 
-          {/* Phantom Chat */}
           {myRole && myRole.team === 'phantoms' && <PhantomChat />}
 
-          {/* Recent Events */}
           <div>
             <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
               Recent Events

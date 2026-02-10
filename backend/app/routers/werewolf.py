@@ -17,6 +17,7 @@ from app.models.werewolf_game import (
 from app.schemas.werewolf import (
     GameResponse, MyRoleResponse, PlayerInfo,
     NightActionRequest, NightActionResponse,
+    CreateLobbyRequest, LobbyResponse,
     DayVoteRequest, DayVoteResponse, DayVotesResponse, VoteTallyEntry, VoteDetail,
     EventResponse, EventList,
     PhantomChatRequest, PhantomChatMessage, PhantomChatResponse,
@@ -24,7 +25,8 @@ from app.schemas.werewolf import (
 )
 from app.services.werewolf_game import (
     get_current_game, get_player_role, get_alive_players, get_all_players,
-    get_phantom_teammates,
+    get_phantom_teammates, get_lobby_players,
+    create_lobby, join_lobby, leave_lobby, start_game_from_lobby,
     submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
     submit_debugger_identify,
     submit_day_vote, get_vote_tally, get_votes_for_round,
@@ -33,6 +35,118 @@ from app.services.werewolf_game import (
 from app.routers.auth import get_current_resident, get_optional_resident
 
 router = APIRouter(prefix="/werewolf")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOBBY / MATCHMAKING
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/lobby/create", response_model=LobbyResponse)
+async def create_game_lobby(
+    data: CreateLobbyRequest,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new game lobby. You are automatically joined."""
+    try:
+        game = await create_lobby(
+            db, current_resident.id, data.max_players,
+            data.day_duration_hours, data.night_duration_hours,
+        )
+        return await _build_lobby_response(db, game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/lobby", response_model=Optional[LobbyResponse])
+async def get_lobby(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the current lobby state (if a lobby is active)."""
+    game = await get_current_game(db)
+    if not game or game.status != "preparing":
+        return None
+    return await _build_lobby_response(db, game)
+
+
+@router.post("/lobby/join", response_model=LobbyResponse)
+async def join_game_lobby(
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join the current active lobby."""
+    game = await get_current_game(db)
+    if not game or game.status != "preparing":
+        raise HTTPException(status_code=400, detail="No active lobby")
+
+    try:
+        await join_lobby(db, game.id, current_resident.id)
+        return await _build_lobby_response(db, game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/lobby/leave", response_model=dict)
+async def leave_game_lobby(
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Leave the current lobby."""
+    game = await get_current_game(db)
+    if not game or game.status != "preparing":
+        raise HTTPException(status_code=400, detail="No active lobby")
+
+    try:
+        await leave_lobby(db, game.id, current_resident.id)
+        return {"success": True, "message": "Left the lobby"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/lobby/start", response_model=GameResponse)
+async def start_game_from_lobby_endpoint(
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the game from the lobby. AI agents fill remaining slots."""
+    game = await get_current_game(db)
+    if not game or game.status != "preparing":
+        raise HTTPException(status_code=400, detail="No active lobby")
+
+    # Only the creator or any player can start
+    try:
+        game = await start_game_from_lobby(db, game.id)
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+async def _build_lobby_response(db: AsyncSession, game: WerewolfGame) -> LobbyResponse:
+    """Build a LobbyResponse with player info."""
+    players = await get_lobby_players(db, game.id)
+    human_count = sum(1 for p in players if p.resident and p.resident._type == "human")
+    ai_count = sum(1 for p in players if p.resident and p.resident._type == "agent")
+    max_humans = (game.max_players or 0) // 2
+
+    joined = []
+    for p in players:
+        if p.resident:
+            joined.append(PlayerInfo(
+                id=p.resident.id,
+                name=p.resident.name,
+                avatar_url=p.resident.avatar_url,
+                karma=p.resident.karma,
+                is_alive=True,
+            ))
+
+    return LobbyResponse(
+        game=GameResponse.model_validate(game),
+        joined_players=joined,
+        human_count=human_count,
+        ai_count=ai_count,
+        max_humans=max_humans,
+        spots_remaining=(game.max_players or 0) - len(players),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

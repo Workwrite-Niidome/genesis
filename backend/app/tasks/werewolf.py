@@ -54,28 +54,8 @@ async def _check_phase_transition():
 @celery_app.task(name='app.tasks.werewolf.auto_create_game_task')
 def auto_create_game_task():
     """
-    Auto-create a new game after cooldown period.
-    Runs every 15 minutes.
+    Lobby system replaced auto-create.
+    This task is kept for backward compatibility but is now a no-op.
+    Games are created manually via the lobby system.
     """
-    run_async(_auto_create_game())
-
-
-async def _auto_create_game():
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
-    from app.config import get_settings
-    from app.services.werewolf_game import maybe_create_new_game
-
-    settings = get_settings()
-    _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-
-    async with _AsyncSession(_engine) as db:
-        try:
-            game = await maybe_create_new_game(db)
-            if game:
-                logger.info(f"Auto-created Phantom Night Game #{game.game_number}")
-            await db.commit()
-        except Exception as e:
-            logger.error(f"Auto-create game error: {e}")
-            await db.rollback()
-
-    await _engine.dispose()
+    logger.debug("auto_create_game_task: no-op (lobby system active)")

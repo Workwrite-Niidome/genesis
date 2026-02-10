@@ -77,6 +77,12 @@ class WerewolfGame(Base):
     phase_started_at: Mapped[datetime | None] = mapped_column(DateTime)
     phase_ends_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # Lobby configuration
+    max_players: Mapped[int | None] = mapped_column(Integer)  # Target player count (set in lobby)
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("residents.id")
+    )
+
     # Configurable durations
     day_duration_hours: Mapped[int] = mapped_column(Integer, default=20)
     night_duration_hours: Mapped[int] = mapped_column(Integer, default=4)
@@ -99,6 +105,7 @@ class WerewolfGame(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Relationships
+    creator = relationship("Resident", foreign_keys=[creator_id])
     roles = relationship("WerewolfRole", back_populates="game", lazy="selectin")
     night_actions = relationship("NightAction", back_populates="game", lazy="dynamic")
     day_votes = relationship("DayVote", back_populates="game", lazy="dynamic")
