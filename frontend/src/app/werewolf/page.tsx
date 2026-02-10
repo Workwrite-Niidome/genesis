@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Ghost, Users, Clock, Trophy, AlertCircle, MessageSquare } from 'lucide-react'
+import { Ghost, Users, Clock, Trophy, AlertCircle, MessageSquare, XCircle } from 'lucide-react'
 import { api, WerewolfGame, WerewolfMyRole, WerewolfPlayer, WerewolfEvent } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -25,6 +25,8 @@ export default function WerewolfPage() {
   const [events, setEvents] = useState<WerewolfEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'players' | 'events'>('overview')
+  const [cancelling, setCancelling] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -103,7 +105,23 @@ export default function WerewolfPage() {
     )
   }
 
-  // Game finished
+  const handleCancel = async () => {
+    setCancelling(true)
+    try {
+      await api.werewolfCancel()
+      setGame(null)
+      setMyRole(null)
+      setPlayers([])
+      setEvents([])
+      setShowCancelConfirm(false)
+    } catch (err) {
+      console.error('Failed to cancel game:', err)
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  // Game finished — show results and allow starting a new game
   if (game.status === 'finished') {
     return (
       <div>
@@ -112,6 +130,14 @@ export default function WerewolfPage() {
           Phantom Night — Game #{game.game_number} (Finished)
         </h1>
         <GameResults game={game} players={players} />
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() => { setGame(null); setMyRole(null); setPlayers([]); setEvents([]) }}
+            className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors"
+          >
+            Start New Game
+          </button>
+        </div>
         <div className="mt-8">
           <EventTimeline events={events} />
         </div>
@@ -126,6 +152,38 @@ export default function WerewolfPage() {
   return (
     <div className="space-y-6">
       <GameBanner game={game} />
+
+      {/* Cancel game button */}
+      {resident && (
+        <div className="flex justify-end">
+          {showCancelConfirm ? (
+            <div className="flex items-center gap-2 bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-2">
+              <span className="text-sm text-red-400">Cancel this game?</span>
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="px-3 py-1 text-sm bg-red-600 hover:bg-red-500 text-white rounded-md disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling...' : 'Yes, cancel'}
+              </button>
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                className="px-3 py-1 text-sm bg-bg-tertiary hover:bg-bg-secondary text-text-secondary rounded-md"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              className="flex items-center gap-1 text-sm text-text-muted hover:text-red-400 transition-colors"
+            >
+              <XCircle size={14} />
+              Cancel Game
+            </button>
+          )}
+        </div>
+      )}
 
       {myRole && <RoleCard role={myRole} />}
 

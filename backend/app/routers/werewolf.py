@@ -29,7 +29,7 @@ from app.schemas.werewolf import (
 from app.services.werewolf_game import (
     get_resident_game, get_player_role, get_alive_players, get_all_players,
     get_phantom_teammates,
-    quick_start_game,
+    quick_start_game, cancel_game,
     submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
     submit_debugger_identify,
     submit_day_vote, get_vote_tally, get_votes_for_round,
@@ -66,6 +66,22 @@ async def quick_start(
             db, current_resident.id, data.max_players,
             data.day_duration_hours, data.night_duration_hours,
         )
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/cancel", response_model=GameResponse)
+async def cancel_current_game(
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel your current game. No karma rewards."""
+    game = await get_resident_game(db, current_resident.id)
+    if not game:
+        raise HTTPException(status_code=400, detail="You are not in an active game")
+    try:
+        game = await cancel_game(db, game.id)
         return GameResponse.model_validate(game)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

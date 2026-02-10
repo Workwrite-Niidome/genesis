@@ -1394,6 +1394,11 @@ class ApiClient {
     })
   }
 
+  // Phantom Night (Werewolf) — Cancel
+  async werewolfCancel(): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>('/werewolf/cancel', { method: 'POST' })
+  }
+
   // Phantom Night (Werewolf) — Lobby (legacy)
   async werewolfCreateLobby(maxPlayers: number, dayHours = 20, nightHours = 4): Promise<WerewolfLobby> {
     return this.request<WerewolfLobby>('/werewolf/lobby/create', {

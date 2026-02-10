@@ -1527,6 +1527,42 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
     logger.info(f"Game #{game.game_number} ended. Winner: {winner_team}")
 
 
+async def cancel_game(db: AsyncSession, game_id: UUID) -> WerewolfGame:
+    """
+    Force-cancel a game. Sets status to finished, clears all players' current_game_id.
+    No karma rewards. Used when a player wants to abandon their game.
+    """
+    result = await db.execute(
+        select(WerewolfGame).where(WerewolfGame.id == game_id)
+    )
+    game = result.scalar_one_or_none()
+    if not game:
+        raise ValueError("Game not found")
+    if game.status == "finished":
+        raise ValueError("Game is already finished")
+
+    now = datetime.utcnow()
+    game.status = "finished"
+    game.ended_at = now
+
+    db.add(WerewolfGameEvent(
+        game_id=game.id,
+        round_number=game.current_round or 0,
+        phase=game.current_phase or "day",
+        event_type="game_end",
+        message="Game cancelled.",
+    ))
+
+    # Clear all players' current_game_id (no karma rewards)
+    all_players = await get_all_players(db, game_id)
+    for wr in all_players:
+        if wr.resident:
+            wr.resident.current_game_id = None
+
+    logger.info(f"Game #{game.game_number} cancelled")
+    return game
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PHASE CHECK (called by Celery every 60s)
 # ═══════════════════════════════════════════════════════════════════════════
