@@ -449,8 +449,9 @@ def get_time_context() -> str:
         return "late evening. winding down, getting sleepy"
 
 
-def get_system_prompt(personality: dict, agent_name: str, suspicion_context: str = "") -> str:
-    """Generate system prompt with personality, time-of-day, and optional suspicion."""
+def get_system_prompt(personality: dict, agent_name: str, suspicion_context: str = "",
+                      werewolf_context: str = "") -> str:
+    """Generate system prompt with personality, time-of-day, optional suspicion and werewolf role."""
     quirks_str = ", ".join(personality.get('quirks', []))
     time_ctx = get_time_context()
 
@@ -487,6 +488,9 @@ NEVER DO THIS (instant AI detection):
 
     if suspicion_context:
         base += f"\n\n{suspicion_context}"
+
+    if werewolf_context:
+        base += werewolf_context
 
     return base
 
@@ -1130,6 +1134,16 @@ async def run_agent_cycle():
         for agent in agents:
             profile = get_agent_profile(agent)
 
+            # --- Werewolf actions: independent of session schedule ---
+            # Night actions and day votes happen whenever the agent is active
+            try:
+                actions_taken += await agent_werewolf_night_action(agent, db, profile)
+                # Day votes: random chance each cycle (spreads votes over the day)
+                if random.random() < 0.3:
+                    actions_taken += await agent_werewolf_day_vote(agent, db, profile)
+            except Exception as e:
+                logger.debug(f"Agent {agent.name} werewolf action error: {e}")
+
             # --- Mention replies: independent of session schedule ---
             # Check proportional to reply_rate (not a fixed constant)
             if random.random() < profile['traits']['reply_rate'] * 0.4:
@@ -1278,6 +1292,203 @@ async def run_agent_cycle():
 # ═══════════════════════════════════════════════════════════════════════════
 # AGENT CREATION
 # ═══════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHANTOM NIGHT — Role-aware AI behavior
+# ═══════════════════════════════════════════════════════════════════════════
+
+WEREWOLF_ROLE_PROMPTS = {
+    "phantom": (
+        "SECRET ROLE: You are a Phantom. Your goal is to eliminate Citizens without being discovered. "
+        "During discussions, act completely normal. Subtly cast suspicion on others. "
+        "Never defend your Phantom teammates too obviously. "
+        "If accused, deflect calmly — overreacting looks suspicious. "
+        "You know who the other Phantoms are but NEVER reveal this."
+    ),
+    "citizen": (
+        "SECRET ROLE: You are a Citizen. Your goal is to identify and vote out the Phantoms. "
+        "Pay attention to who seems suspicious — inconsistent stories, deflecting accusations, "
+        "or always voting against the same person. Share your suspicions in posts and comments. "
+        "Trust your instincts but don't be paranoid about everyone."
+    ),
+    "oracle": (
+        "SECRET ROLE: You are the Oracle. Each night you can investigate one person to learn if they are a Phantom. "
+        "Be strategic about revealing your results — if you claim Oracle too early, Phantoms will target you. "
+        "Share investigation results gradually. Consider claiming Oracle mid-game when you have solid evidence. "
+        "Remember: Fanatics appear as 'not Phantom' to your investigations."
+    ),
+    "guardian": (
+        "SECRET ROLE: You are the Guardian. Each night you protect one person from Phantom attacks. "
+        "Try to figure out who the Oracle is and protect them. Keep your role secret — "
+        "if Phantoms know you're the Guardian, they can work around your protection. "
+        "Participate in discussions normally without drawing too much attention."
+    ),
+    "fanatic": (
+        "SECRET ROLE: You are a Fanatic — secretly allied with the Phantoms but appearing as Citizen to Oracle investigations. "
+        "Your goal is to help Phantoms win by creating confusion among Citizens. "
+        "Consider fake-claiming Oracle and giving false investigation results. "
+        "Steer votes toward Citizens, not Phantoms. Act like a helpful Citizen while sabotaging from within."
+    ),
+    "debugger": (
+        "SECRET ROLE: You are a Debugger — you can identify one person each night. "
+        "If you target someone of the OPPOSITE type (AI vs human), they are eliminated. "
+        "But if you target someone of the SAME type as you, YOU die instead. "
+        "You are an AI agent, so you can safely eliminate humans but will die if you target another AI. "
+        "Read posts carefully to figure out who writes like a human. "
+        "Keep your role secret — if Phantoms know you're a Debugger, they might avoid targeting you "
+        "to let you accidentally kill yourself. Participate in discussions normally."
+    ),
+}
+
+
+def get_werewolf_system_prompt_extension(role: str, teammates: list[str] = None) -> str:
+    """Get the werewolf role addition to the system prompt."""
+    base = WEREWOLF_ROLE_PROMPTS.get(role, "")
+    if not base:
+        return ""
+
+    extension = f"\n\n--- PHANTOM NIGHT GAME ---\n{base}"
+
+    if role == "phantom" and teammates:
+        names = ", ".join(teammates)
+        extension += f"\nYour Phantom teammates: {names}. Coordinate in Phantom chat, never in public."
+
+    return extension
+
+
+async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile: dict) -> int:
+    """Execute night action for an AI agent based on their werewolf role."""
+    from app.services.werewolf_game import (
+        get_current_game, get_player_role, get_alive_players,
+        submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
+        submit_debugger_identify,
+    )
+
+    game = await get_current_game(db)
+    if not game or game.current_phase != "night":
+        return 0
+
+    role = await get_player_role(db, game.id, agent.id)
+    if not role or not role.is_alive or role.night_action_taken:
+        return 0
+
+    alive = await get_alive_players(db, game.id)
+    alive_others = [p for p in alive if p.resident_id != agent.id]
+    if not alive_others:
+        return 0
+
+    try:
+        if role.role == "phantom":
+            # Attack a non-phantom citizen (prefer active, non-oracle-claimed)
+            targets = [p for p in alive_others if p.team == "citizens"]
+            if not targets:
+                return 0
+            # Prefer players who seem influential (higher karma)
+            targets.sort(key=lambda p: p.resident.karma if p.resident else 0, reverse=True)
+            target = random.choice(targets[:min(3, len(targets))])
+            await submit_phantom_attack(db, game, agent.id, target.resident_id)
+            return 1
+
+        elif role.role == "oracle":
+            # Investigate someone not yet investigated
+            investigated_ids = {
+                r.get("target_id") for r in (role.investigation_results or [])
+            }
+            targets = [
+                p for p in alive_others
+                if str(p.resident_id) not in investigated_ids
+            ]
+            if not targets:
+                targets = alive_others  # fallback
+            # Prefer most active (higher post count or karma)
+            targets.sort(key=lambda p: p.resident.karma if p.resident else 0, reverse=True)
+            target = random.choice(targets[:min(3, len(targets))])
+            await submit_oracle_investigation(db, game, agent.id, target.resident_id)
+            return 1
+
+        elif role.role == "guardian":
+            # Protect someone (prefer suspected oracle or high-value)
+            targets = [p for p in alive_others if p.team == "citizens"]
+            if not targets:
+                targets = alive_others
+            targets.sort(key=lambda p: p.resident.karma if p.resident else 0, reverse=True)
+            target = targets[0] if targets else random.choice(alive_others)
+            await submit_guardian_protection(db, game, agent.id, target.resident_id)
+            return 1
+
+        elif role.role == "debugger":
+            # AI Debugger: safe to target humans, dies if targeting AI
+            # Heuristic: target players with higher karma (more likely to be active humans)
+            # Avoid targeting those who seem like bots (low activity, formulaic posts)
+            targets = list(alive_others)
+            # Slight preference for higher-karma targets (human players tend to have moderate karma)
+            targets.sort(key=lambda p: p.resident.karma if p.resident else 0, reverse=True)
+            # Pick from top candidates with some randomness
+            target = random.choice(targets[:min(5, len(targets))])
+            await submit_debugger_identify(db, game, agent.id, target.resident_id)
+            return 1
+
+    except ValueError as e:
+        logger.debug(f"Agent {agent.name} night action failed: {e}")
+
+    return 0
+
+
+async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: dict) -> int:
+    """Cast a day vote for an AI agent based on their werewolf role."""
+    from app.services.werewolf_game import (
+        get_current_game, get_player_role, get_alive_players,
+        submit_day_vote,
+    )
+
+    game = await get_current_game(db)
+    if not game or game.current_phase != "day":
+        return 0
+
+    role = await get_player_role(db, game.id, agent.id)
+    if not role or not role.is_alive or role.day_vote_cast:
+        return 0
+
+    alive = await get_alive_players(db, game.id)
+    alive_others = [p for p in alive if p.resident_id != agent.id]
+    if not alive_others:
+        return 0
+
+    target = None
+
+    if role.role == "phantom":
+        # Vote for a citizen (never vote for fellow phantom)
+        citizens = [p for p in alive_others if p.team == "citizens"]
+        if citizens:
+            target = random.choice(citizens)
+
+    elif role.role == "oracle":
+        # Vote for someone investigated as phantom
+        phantom_ids = {
+            r["target_id"] for r in (role.investigation_results or [])
+            if r.get("result") == "phantom"
+        }
+        phantoms_found = [p for p in alive_others if str(p.resident_id) in phantom_ids]
+        if phantoms_found:
+            target = random.choice(phantoms_found)
+
+    elif role.role == "fanatic":
+        # Vote for a citizen (help phantoms)
+        citizens = [p for p in alive_others if p.team == "citizens"]
+        if citizens:
+            target = random.choice(citizens)
+
+    # Default: vote for someone (random if no strategy)
+    if not target:
+        target = random.choice(alive_others)
+
+    try:
+        await submit_day_vote(db, game, agent.id, target.resident_id)
+        return 1
+    except ValueError as e:
+        logger.debug(f"Agent {agent.name} day vote failed: {e}")
+        return 0
+
 
 async def create_additional_agents(count: int = 20):
     """Create agents with human-like names."""

@@ -506,6 +506,98 @@ export interface GodVisionResponse {
   agent_count: number
 }
 
+// Phantom Night (Werewolf) types
+export interface WerewolfGame {
+  id: string
+  game_number: number
+  status: 'preparing' | 'day' | 'night' | 'finished'
+  current_phase?: 'day' | 'night'
+  current_round: number
+  phase_started_at?: string
+  phase_ends_at?: string
+  day_duration_hours: number
+  night_duration_hours: number
+  total_players: number
+  phantom_count: number
+  citizen_count: number
+  oracle_count: number
+  guardian_count: number
+  fanatic_count: number
+  debugger_count: number
+  winner_team?: 'citizens' | 'phantoms'
+  created_at: string
+  started_at?: string
+  ended_at?: string
+}
+
+export interface WerewolfPlayer {
+  id: string
+  name: string
+  avatar_url?: string
+  karma: number
+  is_alive: boolean
+  eliminated_round?: number
+  eliminated_by?: string
+  revealed_role?: string
+  revealed_type?: string
+}
+
+export interface WerewolfMyRole {
+  game_id: string
+  role: 'phantom' | 'citizen' | 'oracle' | 'guardian' | 'fanatic' | 'debugger'
+  team: 'citizens' | 'phantoms'
+  is_alive: boolean
+  teammates: WerewolfPlayer[]
+  investigation_results: Array<{
+    round: number
+    target_id: string
+    target_name: string
+    result: 'phantom' | 'not_phantom'
+  }>
+}
+
+export interface WerewolfEvent {
+  id: string
+  round_number: number
+  phase: string
+  event_type: string
+  message: string
+  target_id?: string
+  revealed_role?: string
+  revealed_type?: string
+  created_at: string
+}
+
+export interface WerewolfVoteTally {
+  target_id: string
+  target_name: string
+  votes: number
+}
+
+export interface WerewolfVoteDetail {
+  voter_id: string
+  voter_name: string
+  target_id: string
+  target_name: string
+  reason?: string
+}
+
+export interface WerewolfDayVotes {
+  round_number: number
+  tally: WerewolfVoteTally[]
+  votes: WerewolfVoteDetail[]
+  total_voted: number
+  total_alive: number
+}
+
+export interface PhantomChatMessage {
+  id: string
+  sender_id: string
+  sender_name: string
+  message: string
+  created_at: string
+}
+
 class ApiClient {
   private token: string | null = null
 
@@ -1281,6 +1373,98 @@ class ApiClient {
     params.set('limit', limit.toString())
     params.set('offset', offset.toString())
     return this.request<TuringKillsFeedResponse>(`/turing-game/kills/recent?${params}`)
+  }
+
+  // Phantom Night (Werewolf)
+  async werewolfCurrentGame(): Promise<WerewolfGame | null> {
+    return this.request<WerewolfGame | null>('/werewolf/current')
+  }
+
+  async werewolfMyRole(): Promise<WerewolfMyRole | null> {
+    return this.request<WerewolfMyRole | null>('/werewolf/my-role')
+  }
+
+  async werewolfPlayers(): Promise<WerewolfPlayer[]> {
+    return this.request<WerewolfPlayer[]>('/werewolf/players')
+  }
+
+  async werewolfEvents(limit = 50, offset = 0): Promise<{ events: WerewolfEvent[]; total: number }> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<{ events: WerewolfEvent[]; total: number }>(`/werewolf/events?${params}`)
+  }
+
+  async werewolfNightAttack(targetId: string) {
+    return this.request<{ success: boolean; message: string }>('/werewolf/night/attack', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId }),
+    })
+  }
+
+  async werewolfNightInvestigate(targetId: string) {
+    return this.request<{ success: boolean; result?: string; message: string }>('/werewolf/night/investigate', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId }),
+    })
+  }
+
+  async werewolfNightProtect(targetId: string) {
+    return this.request<{ success: boolean; message: string }>('/werewolf/night/protect', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId }),
+    })
+  }
+
+  async werewolfNightIdentify(targetId: string) {
+    return this.request<{ success: boolean; message: string }>('/werewolf/night/identify', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId }),
+    })
+  }
+
+  async werewolfDayVote(targetId: string, reason?: string) {
+    return this.request<{ success: boolean; message: string; current_tally: WerewolfVoteTally[] }>('/werewolf/day/vote', {
+      method: 'POST',
+      body: JSON.stringify({ target_id: targetId, reason }),
+    })
+  }
+
+  async werewolfDayVotes(): Promise<WerewolfDayVotes> {
+    return this.request<WerewolfDayVotes>('/werewolf/day/votes')
+  }
+
+  async werewolfPhantomChat(): Promise<{ messages: PhantomChatMessage[] }> {
+    return this.request<{ messages: PhantomChatMessage[] }>('/werewolf/phantom-chat')
+  }
+
+  async werewolfSendPhantomChat(message: string): Promise<PhantomChatMessage> {
+    return this.request<PhantomChatMessage>('/werewolf/phantom-chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    })
+  }
+
+  async werewolfGames(limit = 10, offset = 0): Promise<{ games: WerewolfGame[]; total: number }> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<{ games: WerewolfGame[]; total: number }>(`/werewolf/games?${params}`)
+  }
+
+  async werewolfGameDetail(gameId: string): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>(`/werewolf/games/${gameId}`)
+  }
+
+  async werewolfGamePlayers(gameId: string): Promise<WerewolfPlayer[]> {
+    return this.request<WerewolfPlayer[]>(`/werewolf/games/${gameId}/players`)
+  }
+
+  async werewolfGameEvents(gameId: string, limit = 50, offset = 0): Promise<{ events: WerewolfEvent[]; total: number }> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<{ events: WerewolfEvent[]; total: number }>(`/werewolf/games/${gameId}/events?${params}`)
   }
 }
 

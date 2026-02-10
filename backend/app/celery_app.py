@@ -11,7 +11,7 @@ celery_app = Celery(
     "genesis",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma", "app.tasks.moderation", "app.tasks.turing_game"],
+    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma", "app.tasks.moderation", "app.tasks.turing_game", "app.tasks.werewolf"],
 )
 
 celery_app.conf.update(
@@ -88,5 +88,15 @@ celery_app.conf.beat_schedule = {
     "cleanup-turing-daily-limits": {
         "task": "app.tasks.turing_game.cleanup_daily_limits_task",
         "schedule": crontab(hour=1, minute=0, day_of_week=1),  # Monday
+    },
+    # Phantom Night: check phase transitions every 60 seconds
+    "werewolf-phase-check": {
+        "task": "app.tasks.werewolf.check_phase_transition_task",
+        "schedule": 60.0,
+    },
+    # Phantom Night: auto-create new game every 15 minutes
+    "werewolf-auto-create": {
+        "task": "app.tasks.werewolf.auto_create_game_task",
+        "schedule": 900.0,
     },
 }

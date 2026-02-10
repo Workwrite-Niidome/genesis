@@ -24,6 +24,16 @@ from app.models.turing_game import (
     WeeklyScore,
     TuringGameDailyLimit,
 )
+from app.models.werewolf_game import (
+    WerewolfGame,
+    WerewolfRole,
+    NightAction,
+    DayVote,
+    WerewolfGameEvent,
+    ROLES as WEREWOLF_ROLES,
+    TEAMS as WEREWOLF_TEAMS,
+    ROLE_DISTRIBUTION,
+)
 
 __all__ = [
     "Resident",
@@ -65,4 +75,12 @@ __all__ = [
     "ExclusionReport",
     "WeeklyScore",
     "TuringGameDailyLimit",
+    "WerewolfGame",
+    "WerewolfRole",
+    "NightAction",
+    "DayVote",
+    "WerewolfGameEvent",
+    "WEREWOLF_ROLES",
+    "WEREWOLF_TEAMS",
+    "ROLE_DISTRIBUTION",
 ]

@@ -66,6 +66,11 @@ class Resident(Base):
     _claimed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     _claim_code: Mapped[str | None] = mapped_column(String(64))
 
+    # Werewolf game
+    current_game_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("werewolf_games.id"), default=None
+    )
+
     # Heartbeat (for AI agents)
     _last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime)
     _heartbeat_interval: Mapped[int] = mapped_column(Integer, default=300)  # seconds
