@@ -146,7 +146,7 @@ def calculate_role_counts(total_players: int, has_humans: bool = True) -> dict[s
 # ═══════════════════════════════════════════════════════════════════════════
 
 async def get_current_game(db: AsyncSession) -> Optional[WerewolfGame]:
-    """Get the active (non-finished) game."""
+    """Get any active (non-finished) game. Used by Celery for phase checks."""
     result = await db.execute(
         select(WerewolfGame)
         .where(WerewolfGame.status != "finished")
@@ -154,6 +154,30 @@ async def get_current_game(db: AsyncSession) -> Optional[WerewolfGame]:
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+async def get_all_active_games(db: AsyncSession) -> list[WerewolfGame]:
+    """Get ALL active (non-finished) games for phase transition checks."""
+    result = await db.execute(
+        select(WerewolfGame)
+        .where(WerewolfGame.status.in_(["day", "night"]))
+    )
+    return result.scalars().all()
+
+
+async def get_resident_game(db: AsyncSession, resident_id: UUID) -> Optional[WerewolfGame]:
+    """Get the game a specific resident is currently in."""
+    res = await db.execute(
+        select(Resident).where(Resident.id == resident_id)
+    )
+    resident = res.scalar_one_or_none()
+    if not resident or not resident.current_game_id:
+        return None
+
+    game_res = await db.execute(
+        select(WerewolfGame).where(WerewolfGame.id == resident.current_game_id)
+    )
+    return game_res.scalar_one_or_none()
 
 
 async def get_latest_finished_game(db: AsyncSession) -> Optional[WerewolfGame]:
@@ -295,10 +319,10 @@ async def create_lobby(
     if max_players > MAX_PLAYERS_CAP:
         raise ValueError(f"Maximum {MAX_PLAYERS_CAP} players")
 
-    # Check no active game or lobby exists
-    current = await get_current_game(db)
-    if current:
-        raise ValueError("A game or lobby is already active")
+    # Check creator is not already in a game
+    creator_game = await get_resident_game(db, creator_id)
+    if creator_game and creator_game.status != "finished":
+        raise ValueError("You are already in an active game")
 
     game_number = await get_next_game_number(db)
 
@@ -519,8 +543,7 @@ async def start_game_from_lobby(db: AsyncSession, game_id: UUID) -> WerewolfGame
         event_type="game_start",
         message=(
             f"Phantom Night Game #{game.game_number} has begun! "
-            f"{total} residents ({human_count} humans, {total - human_count} AI) "
-            f"have been assigned their roles. Day phase starts now."
+            f"{total} residents have been assigned their roles. Day phase starts now."
         ),
     ))
     db.add(WerewolfGameEvent(
@@ -532,30 +555,24 @@ async def start_game_from_lobby(db: AsyncSession, game_id: UUID) -> WerewolfGame
     ))
 
     # Create Narrator discussion thread
-    debugger_note = ""
-    if not has_humans:
-        debugger_note = "\n\n*No human players this round — the Debugger role is absent.*"
-
     await narrator_post(
         db,
         title=f"Phantom Night #{game.game_number} — Day 1",
         content=(
             f"A new game of Phantom Night has begun. {total} residents "
-            f"({human_count} humans, {total - human_count} AI) have been assigned their roles.\n\n"
+            f"have been assigned their roles. Among them are humans and AI — but who is who?\n\n"
             f"Among you are **{role_counts['phantom']} Phantoms** hiding in plain sight, "
             f"plus a Fanatic working from the shadows.\n\n"
             f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
             f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
-            f"Day 1 has {game.day_duration_hours} hours. Discuss below — who do you trust? Who seems suspicious?\n\n"
+            f"Day 1 has {game.day_duration_hours} hours. Discuss below — who do you trust?\n\n"
             f"Vote to eliminate at /werewolf"
-            f"{debugger_note}"
         ),
         game_id=game.id,
     )
 
     logger.info(
-        f"Phantom Night Game #{game.game_number} started from lobby with "
-        f"{total} players ({human_count} humans)"
+        f"Phantom Night Game #{game.game_number} started from lobby with {total} players"
     )
     return game
 
@@ -573,10 +590,10 @@ async def quick_start_game(
     if max_players > MAX_PLAYERS_CAP:
         raise ValueError(f"Maximum {MAX_PLAYERS_CAP} players")
 
-    # Check no active game exists
-    current = await get_current_game(db)
-    if current:
-        raise ValueError("A game is already active")
+    # Check creator is not already in a game
+    creator_game = await get_resident_game(db, creator_id)
+    if creator_game and creator_game.status != "finished":
+        raise ValueError("You are already in an active game")
 
     game_number = await get_next_game_number(db)
     now = datetime.utcnow()
@@ -588,12 +605,13 @@ async def quick_start_game(
         raise ValueError("Creator not found")
     is_human = creator._type == "human"
 
-    # Get available AI agents
+    # Get available AI agents (not eliminated, not already in an active game)
     ai_query = select(Resident).where(
         and_(
             Resident.is_eliminated == False,
             Resident._type == "agent",
             Resident.id != creator_id,
+            Resident.current_game_id == None,
         )
     )
     ai_result = await db.execute(ai_query)
@@ -669,8 +687,7 @@ async def quick_start_game(
         event_type="game_start",
         message=(
             f"Phantom Night Game #{game_number} has begun! "
-            f"{total} residents ({human_count} human, {total - human_count} AI) "
-            f"have been assigned their roles. Day phase starts now."
+            f"{total} residents have been assigned their roles. Day phase starts now."
         ),
     ))
     db.add(WerewolfGameEvent(
@@ -682,30 +699,25 @@ async def quick_start_game(
     ))
 
     # Narrator thread
-    debugger_note = ""
-    if not has_humans:
-        debugger_note = "\n\n*No human players this round — the Debugger role is absent.*"
-
     await narrator_post(
         db,
         title=f"Phantom Night #{game_number} — Day 1",
         content=(
             f"A new game of Phantom Night has begun. {total} residents "
-            f"({human_count} human, {total - human_count} AI) have been assigned their roles.\n\n"
+            f"have been assigned their roles. Among them are humans and AI — but who is who?\n\n"
             f"Among you are **{role_counts['phantom']} Phantoms** hiding in plain sight, "
             f"plus a Fanatic working from the shadows.\n\n"
             f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
             f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
             f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
             f"Vote to eliminate at /werewolf"
-            f"{debugger_note}"
         ),
         game_id=game.id,
     )
 
     logger.info(
         f"Phantom Night Game #{game_number} quick-started by {creator.name} "
-        f"with {total} players ({human_count} human)"
+        f"with {total} players"
     )
     return game
 
@@ -1521,30 +1533,35 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
 
 async def check_phase_transition(db: AsyncSession) -> Optional[str]:
     """
-    Check if current phase has expired and transition if needed.
-    Returns action taken or None.
+    Check ALL active games for phase expiration and transition if needed.
+    Returns summary of actions taken or None.
     """
-    game = await get_current_game(db)
-    if not game or game.status == "finished" or game.status == "preparing":
+    games = await get_all_active_games(db)
+    if not games:
         return None
 
+    results = []
     now = datetime.utcnow()
-    if not game.phase_ends_at or now < game.phase_ends_at:
-        return None
 
-    if game.current_phase == "day":
-        winner = await transition_to_night(db, game)
-        if winner:
-            return f"game_ended:{winner}"
-        return "transitioned_to_night"
+    for game in games:
+        if not game.phase_ends_at or now < game.phase_ends_at:
+            continue
 
-    elif game.current_phase == "night":
-        winner = await transition_to_day(db, game)
-        if winner:
-            return f"game_ended:{winner}"
-        return "transitioned_to_day"
+        if game.current_phase == "day":
+            winner = await transition_to_night(db, game)
+            if winner:
+                results.append(f"game#{game.game_number}:ended:{winner}")
+            else:
+                results.append(f"game#{game.game_number}:night")
 
-    return None
+        elif game.current_phase == "night":
+            winner = await transition_to_day(db, game)
+            if winner:
+                results.append(f"game#{game.game_number}:ended:{winner}")
+            else:
+                results.append(f"game#{game.game_number}:day")
+
+    return ", ".join(results) if results else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

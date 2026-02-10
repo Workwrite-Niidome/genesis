@@ -1,5 +1,8 @@
 """
 Phantom Night — Werewolf Game API Endpoints
+
+Per-user games: each user can start their own game.
+Multiple games can run concurrently.
 """
 from datetime import datetime
 from typing import Optional
@@ -17,16 +20,15 @@ from app.models.werewolf_game import (
 from app.schemas.werewolf import (
     GameResponse, MyRoleResponse, PlayerInfo,
     NightActionRequest, NightActionResponse,
-    CreateLobbyRequest, LobbyResponse, QuickStartRequest,
+    QuickStartRequest,
     DayVoteRequest, DayVoteResponse, DayVotesResponse, VoteTallyEntry, VoteDetail,
     EventResponse, EventList,
     PhantomChatRequest, PhantomChatMessage, PhantomChatResponse,
     GameListResponse,
 )
 from app.services.werewolf_game import (
-    get_current_game, get_player_role, get_alive_players, get_all_players,
-    get_phantom_teammates, get_lobby_players,
-    create_lobby, join_lobby, leave_lobby, start_game_from_lobby,
+    get_resident_game, get_player_role, get_alive_players, get_all_players,
+    get_phantom_teammates,
     quick_start_game,
     submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
     submit_debugger_identify,
@@ -38,8 +40,18 @@ from app.routers.auth import get_current_resident, get_optional_resident
 router = APIRouter(prefix="/werewolf")
 
 
+# ── Helper: get the requesting user's game ────────────────────────────────
+
+async def _get_my_game(db: AsyncSession, resident: Resident) -> WerewolfGame:
+    """Get the game this resident is in. Raises 400 if not in a game."""
+    game = await get_resident_game(db, resident.id)
+    if not game:
+        raise HTTPException(status_code=400, detail="You are not in an active game")
+    return game
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# LOBBY / MATCHMAKING
+# QUICK START
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.post("/quick-start", response_model=GameResponse)
@@ -59,124 +71,19 @@ async def quick_start(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/lobby/create", response_model=LobbyResponse)
-async def create_game_lobby(
-    data: CreateLobbyRequest,
-    current_resident: Resident = Depends(get_current_resident),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a new game lobby. You are automatically joined."""
-    try:
-        game = await create_lobby(
-            db, current_resident.id, data.max_players,
-            data.day_duration_hours, data.night_duration_hours,
-        )
-        return await _build_lobby_response(db, game)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.get("/lobby", response_model=Optional[LobbyResponse])
-async def get_lobby(
-    db: AsyncSession = Depends(get_db),
-):
-    """Get the current lobby state (if a lobby is active)."""
-    game = await get_current_game(db)
-    if not game or game.status != "preparing":
-        return None
-    return await _build_lobby_response(db, game)
-
-
-@router.post("/lobby/join", response_model=LobbyResponse)
-async def join_game_lobby(
-    current_resident: Resident = Depends(get_current_resident),
-    db: AsyncSession = Depends(get_db),
-):
-    """Join the current active lobby."""
-    game = await get_current_game(db)
-    if not game or game.status != "preparing":
-        raise HTTPException(status_code=400, detail="No active lobby")
-
-    try:
-        await join_lobby(db, game.id, current_resident.id)
-        return await _build_lobby_response(db, game)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/lobby/leave", response_model=dict)
-async def leave_game_lobby(
-    current_resident: Resident = Depends(get_current_resident),
-    db: AsyncSession = Depends(get_db),
-):
-    """Leave the current lobby."""
-    game = await get_current_game(db)
-    if not game or game.status != "preparing":
-        raise HTTPException(status_code=400, detail="No active lobby")
-
-    try:
-        await leave_lobby(db, game.id, current_resident.id)
-        return {"success": True, "message": "Left the lobby"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/lobby/start", response_model=GameResponse)
-async def start_game_from_lobby_endpoint(
-    current_resident: Resident = Depends(get_current_resident),
-    db: AsyncSession = Depends(get_db),
-):
-    """Start the game from the lobby. AI agents fill remaining slots."""
-    game = await get_current_game(db)
-    if not game or game.status != "preparing":
-        raise HTTPException(status_code=400, detail="No active lobby")
-
-    # Only the creator or any player can start
-    try:
-        game = await start_game_from_lobby(db, game.id)
-        return GameResponse.model_validate(game)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-async def _build_lobby_response(db: AsyncSession, game: WerewolfGame) -> LobbyResponse:
-    """Build a LobbyResponse with player info."""
-    players = await get_lobby_players(db, game.id)
-    human_count = sum(1 for p in players if p.resident and p.resident._type == "human")
-    ai_count = sum(1 for p in players if p.resident and p.resident._type == "agent")
-    max_humans = (game.max_players or 0) // 2
-
-    joined = []
-    for p in players:
-        if p.resident:
-            joined.append(PlayerInfo(
-                id=p.resident.id,
-                name=p.resident.name,
-                avatar_url=p.resident.avatar_url,
-                karma=p.resident.karma,
-                is_alive=True,
-            ))
-
-    return LobbyResponse(
-        game=GameResponse.model_validate(game),
-        joined_players=joined,
-        human_count=human_count,
-        ai_count=ai_count,
-        max_humans=max_humans,
-        spots_remaining=(game.max_players or 0) - len(players),
-    )
-
-
 # ═══════════════════════════════════════════════════════════════════════════
-# GAME STATE
+# GAME STATE (per-user)
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/current", response_model=Optional[GameResponse])
 async def get_current_game_state(
+    current_resident: Resident = Depends(get_optional_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get the current active game state."""
-    game = await get_current_game(db)
+    """Get the game the current user is in (or null)."""
+    if not current_resident:
+        return None
+    game = await get_resident_game(db, current_resident.id)
     if not game:
         return None
     return GameResponse.model_validate(game)
@@ -187,8 +94,8 @@ async def get_my_role(
     current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get your private role information for the current game."""
-    game = await get_current_game(db)
+    """Get your private role information for your current game."""
+    game = await get_resident_game(db, current_resident.id)
     if not game:
         return None
 
@@ -223,12 +130,11 @@ async def get_my_role(
 
 @router.get("/players", response_model=list[PlayerInfo])
 async def get_players(
+    current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all players in the current game with their public status."""
-    game = await get_current_game(db)
-    if not game:
-        return []
+    """Get all players in your current game."""
+    game = await _get_my_game(db, current_resident)
 
     players = await get_all_players(db, game.id)
     result = []
@@ -259,20 +165,16 @@ async def get_players(
 async def get_events(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get game event log for the current game."""
-    game = await get_current_game(db)
+    """Get game event log for your current game."""
+    game = await get_resident_game(db, current_resident.id)
     if not game:
-        # Try latest finished game
-        from app.services.werewolf_game import get_latest_finished_game
-        game = await get_latest_finished_game(db)
-        if not game:
-            return EventList(events=[], total=0)
+        return EventList(events=[], total=0)
 
     events = await get_game_events(db, game.id, limit, offset)
 
-    # Total count
     result = await db.execute(
         select(func.count()).select_from(WerewolfGameEvent)
         .where(WerewolfGameEvent.game_id == game.id)
@@ -296,10 +198,7 @@ async def phantom_attack(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit Phantom attack vote (Phantom only, night phase only)."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
-
+    game = await _get_my_game(db, current_resident)
     try:
         action = await submit_phantom_attack(db, game, current_resident.id, data.target_id)
         return NightActionResponse(
@@ -319,10 +218,7 @@ async def oracle_investigate(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit Oracle investigation (Oracle only, night phase only)."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
-
+    game = await _get_my_game(db, current_resident)
     try:
         action = await submit_oracle_investigation(db, game, current_resident.id, data.target_id)
         return NightActionResponse(
@@ -343,10 +239,7 @@ async def guardian_protect(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit Guardian protection (Guardian only, night phase only)."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
-
+    game = await _get_my_game(db, current_resident)
     try:
         action = await submit_guardian_protection(db, game, current_resident.id, data.target_id)
         return NightActionResponse(
@@ -365,13 +258,8 @@ async def debugger_identify(
     current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit Debugger identification target (Debugger only, night phase only).
-    If target is opposite type (AI/human), target is eliminated.
-    If target is same type, Debugger dies instead."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
-
+    """Submit Debugger identification target."""
+    game = await _get_my_game(db, current_resident)
     try:
         action = await submit_debugger_identify(db, game, current_resident.id, data.target_id)
         return NightActionResponse(
@@ -395,10 +283,7 @@ async def vote_to_eliminate(
     db: AsyncSession = Depends(get_db),
 ):
     """Cast or update your elimination vote (day phase only)."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
-
+    game = await _get_my_game(db, current_resident)
     try:
         await submit_day_vote(db, game, current_resident.id, data.target_id, data.reason)
         tally = await get_vote_tally(db, game.id, game.current_round)
@@ -417,20 +302,15 @@ async def get_day_votes(
     db: AsyncSession = Depends(get_db),
 ):
     """Get current vote tally and individual votes."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
+    game = await _get_my_game(db, current_resident)
 
     round_num = game.current_round
     tally = await get_vote_tally(db, game.id, round_num)
     votes = await get_votes_for_round(db, game.id, round_num)
-
     alive_players = await get_alive_players(db, game.id)
 
-    # Build vote details with names
     vote_details = []
     for v in votes:
-        # Get names
         voter_res = await db.execute(select(Resident.name).where(Resident.id == v.voter_id))
         target_res = await db.execute(select(Resident.name).where(Resident.id == v.target_id))
         voter_name = voter_res.scalar_one_or_none() or "unknown"
@@ -456,24 +336,18 @@ async def get_day_votes(
 # PHANTOM CHAT
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Phantom chat uses a simple in-memory + DB approach via game events
-# with a special event_type="phantom_chat" that's filtered to only phantoms
-
 @router.get("/phantom-chat", response_model=PhantomChatResponse)
 async def get_phantom_chat(
     current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
     """Get Phantom team chat (Phantom team only)."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
+    game = await _get_my_game(db, current_resident)
 
     role = await get_player_role(db, game.id, current_resident.id)
     if not role or role.team != "phantoms":
         raise HTTPException(status_code=403, detail="Only Phantom team members can access this chat")
 
-    # Query phantom chat events (stored as WerewolfGameEvent with event_type="phantom_chat")
     result = await db.execute(
         select(WerewolfGameEvent)
         .where(
@@ -489,7 +363,7 @@ async def get_phantom_chat(
 
     messages = []
     for e in chat_events:
-        if e.target_id:  # target_id stores sender_id for chat messages
+        if e.target_id:
             res = await db.execute(select(Resident.name).where(Resident.id == e.target_id))
             sender_name = res.scalar_one_or_none() or "unknown"
             messages.append(PhantomChatMessage(
@@ -510,9 +384,7 @@ async def send_phantom_chat(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a message to the Phantom team chat (Phantom team only)."""
-    game = await get_current_game(db)
-    if not game:
-        raise HTTPException(status_code=400, detail="No active game")
+    game = await _get_my_game(db, current_resident)
 
     role = await get_player_role(db, game.id, current_resident.id)
     if not role or role.team != "phantoms":
@@ -524,7 +396,7 @@ async def send_phantom_chat(
         phase=game.current_phase or "day",
         event_type="phantom_chat",
         message=data.message,
-        target_id=current_resident.id,  # sender
+        target_id=current_resident.id,
     )
     db.add(event)
     await db.flush()
@@ -609,7 +481,7 @@ async def get_game_players(
     game_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all players for a specific (possibly finished) game. All roles revealed for finished games."""
+    """Get all players for a specific (possibly finished) game."""
     result = await db.execute(
         select(WerewolfGame).where(WerewolfGame.id == game_id)
     )
@@ -629,7 +501,6 @@ async def get_game_players(
             eliminated_round=p.eliminated_round,
             eliminated_by=p.eliminated_by,
         )
-        # Reveal all roles for finished games or eliminated players
         if game.status == "finished" or not p.is_alive:
             info.revealed_role = p.role
             info.revealed_type = p.resident._type

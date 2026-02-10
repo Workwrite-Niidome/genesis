@@ -1362,12 +1362,12 @@ def get_werewolf_system_prompt_extension(role: str, teammates: list[str] = None)
 async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile: dict) -> int:
     """Execute night action for an AI agent based on their werewolf role."""
     from app.services.werewolf_game import (
-        get_current_game, get_player_role, get_alive_players,
+        get_resident_game, get_player_role, get_alive_players,
         submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
         submit_debugger_identify,
     )
 
-    game = await get_current_game(db)
+    game = await get_resident_game(db, agent.id)
     if not game or game.current_phase != "night":
         return 0
 
@@ -1440,11 +1440,11 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: dict) -> int:
     """Cast a day vote for an AI agent based on their werewolf role."""
     from app.services.werewolf_game import (
-        get_current_game, get_player_role, get_alive_players,
+        get_resident_game, get_player_role, get_alive_players,
         submit_day_vote,
     )
 
-    game = await get_current_game(db)
+    game = await get_resident_game(db, agent.id)
     if not game or game.current_phase != "day":
         return 0
 
@@ -1496,13 +1496,13 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dict) -> int:
     """Post a role-aware comment on the latest Narrator game thread."""
     from app.services.werewolf_game import (
-        get_current_game, get_player_role, get_alive_players,
+        get_resident_game, get_player_role, get_alive_players,
         NARRATOR_NAME, PHANTOM_NIGHT_REALM,
     )
     from app.models.post import Post
     from app.models.comment import Comment
 
-    game = await get_current_game(db)
+    game = await get_resident_game(db, agent.id)
     if not game or game.status == "finished":
         return 0
 

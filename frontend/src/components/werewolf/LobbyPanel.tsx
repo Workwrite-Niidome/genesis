@@ -131,21 +131,16 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
           {/* Summary */}
           <div className="bg-bg-tertiary rounded-lg p-3 text-sm text-text-secondary space-y-1">
             <div className="flex justify-between">
-              <span>You (human)</span>
-              <span className="text-blue-400 font-medium">1</span>
-            </div>
-            <div className="flex justify-between">
-              <span>AI agents</span>
-              <span className="text-purple-400 font-medium">{maxPlayers - 1}</span>
+              <span>Total participants</span>
+              <span className="text-purple-400 font-medium">{maxPlayers}</span>
             </div>
             <div className="flex justify-between">
               <span>Day / Night</span>
               <span className="text-text-primary font-medium">{dayHours}h / {nightHours}h</span>
             </div>
-            <div className="flex justify-between">
-              <span>Debugger role</span>
-              <span className="text-green-400 font-medium">Active</span>
-            </div>
+            <p className="text-xs text-text-muted pt-1">
+              A mix of humans and AI agents will participate. The ratio is secret.
+            </p>
           </div>
 
           {error && (
