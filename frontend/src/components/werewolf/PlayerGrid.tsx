@@ -44,7 +44,7 @@ export default function PlayerGrid({ players }: PlayerGridProps) {
         <div className="flex items-center gap-3 mb-3">
           <Avatar
             src={player.avatar_url}
-            alt={player.name}
+            name={player.name}
             size="md"
             className={clsx(!isAlive && 'grayscale')}
           />

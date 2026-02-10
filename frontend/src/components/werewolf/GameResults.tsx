@@ -44,7 +44,7 @@ export default function GameResults({ game, players }: GameResultsProps) {
         )}
       >
         <div className="flex items-center gap-3 mb-2">
-          <Avatar src={player.avatar_url} alt={player.name} size="md" />
+          <Avatar src={player.avatar_url} name={player.name} size="md" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h4 className="font-semibold text-text-primary truncate">{player.name}</h4>
