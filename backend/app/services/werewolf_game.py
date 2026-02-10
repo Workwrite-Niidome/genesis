@@ -560,6 +560,156 @@ async def start_game_from_lobby(db: AsyncSession, game_id: UUID) -> WerewolfGame
     return game
 
 
+async def quick_start_game(
+    db: AsyncSession, creator_id: UUID, max_players: int,
+    day_hours: int = 20, night_hours: int = 4,
+) -> WerewolfGame:
+    """
+    Create and immediately start a game in one step.
+    The creator joins as the only human, AI fills remaining slots.
+    """
+    if max_players < MIN_PLAYERS:
+        raise ValueError(f"Need at least {MIN_PLAYERS} players")
+    if max_players > MAX_PLAYERS_CAP:
+        raise ValueError(f"Maximum {MAX_PLAYERS_CAP} players")
+
+    # Check no active game exists
+    current = await get_current_game(db)
+    if current:
+        raise ValueError("A game is already active")
+
+    game_number = await get_next_game_number(db)
+    now = datetime.utcnow()
+
+    # Get creator resident
+    res = await db.execute(select(Resident).where(Resident.id == creator_id))
+    creator = res.scalar_one_or_none()
+    if not creator:
+        raise ValueError("Creator not found")
+    is_human = creator._type == "human"
+
+    # Get available AI agents
+    ai_query = select(Resident).where(
+        and_(
+            Resident.is_eliminated == False,
+            Resident._type == "agent",
+            Resident.id != creator_id,
+        )
+    )
+    ai_result = await db.execute(ai_query)
+    available_ai = list(ai_result.scalars().all())
+    random.shuffle(available_ai)
+
+    ai_needed = max_players - 1  # creator takes 1 slot
+    ai_to_add = available_ai[:ai_needed]
+    total = 1 + len(ai_to_add)
+
+    if total < MIN_PLAYERS:
+        raise ValueError(
+            f"Not enough AI agents available ({len(ai_to_add)} found, "
+            f"need at least {MIN_PLAYERS - 1} for a {MIN_PLAYERS}-player game)"
+        )
+
+    # Calculate roles
+    has_humans = is_human
+    role_counts = calculate_role_counts(total, has_humans=has_humans)
+
+    # Build role pool
+    role_pool = []
+    for role_name, count in role_counts.items():
+        for _ in range(count):
+            role_pool.append(role_name)
+    random.shuffle(role_pool)
+
+    # Create game
+    game = WerewolfGame(
+        game_number=game_number,
+        status="day",
+        current_phase="day",
+        current_round=1,
+        phase_started_at=now,
+        phase_ends_at=now + timedelta(hours=day_hours),
+        day_duration_hours=day_hours,
+        night_duration_hours=night_hours,
+        max_players=max_players,
+        creator_id=creator_id,
+        total_players=total,
+        phantom_count=role_counts["phantom"],
+        citizen_count=role_counts["citizen"],
+        oracle_count=role_counts["oracle"],
+        guardian_count=role_counts["guardian"],
+        fanatic_count=role_counts["fanatic"],
+        debugger_count=role_counts.get("debugger", 0),
+        started_at=now,
+    )
+    db.add(game)
+    await db.flush()
+
+    # Build participant list and shuffle
+    all_participants = [creator] + ai_to_add
+    random.shuffle(all_participants)
+
+    human_count = 1 if is_human else 0
+    for participant, role_name in zip(all_participants, role_pool):
+        team = ROLES[role_name]["team"]
+        wr = WerewolfRole(
+            game_id=game.id,
+            resident_id=participant.id,
+            role=role_name,
+            team=team,
+        )
+        db.add(wr)
+        participant.current_game_id = game.id
+
+    # Game events
+    db.add(WerewolfGameEvent(
+        game_id=game.id,
+        round_number=1,
+        phase="day",
+        event_type="game_start",
+        message=(
+            f"Phantom Night Game #{game_number} has begun! "
+            f"{total} residents ({human_count} human, {total - human_count} AI) "
+            f"have been assigned their roles. Day phase starts now."
+        ),
+    ))
+    db.add(WerewolfGameEvent(
+        game_id=game.id,
+        round_number=1,
+        phase="day",
+        event_type="day_start",
+        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom. You have {day_hours} hours.",
+    ))
+
+    # Narrator thread
+    debugger_note = ""
+    if not has_humans:
+        debugger_note = "\n\n*No human players this round — the Debugger role is absent.*"
+
+    await narrator_post(
+        db,
+        title=f"Phantom Night #{game_number} — Day 1",
+        content=(
+            f"A new game of Phantom Night has begun. {total} residents "
+            f"({human_count} human, {total - human_count} AI) have been assigned their roles.\n\n"
+            f"Among you are **{role_counts['phantom']} Phantoms** hiding in plain sight, "
+            f"plus a Fanatic working from the shadows.\n\n"
+            f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
+            f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
+            f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
+            f"Vote to eliminate at /werewolf"
+            f"{debugger_note}"
+        ),
+        game_id=game.id,
+    )
+
+    logger.info(
+        f"Phantom Night Game #{game_number} quick-started by {creator.name} "
+        f"with {total} players ({human_count} human)"
+    )
+    return game
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ROLE QUERIES
 # ═══════════════════════════════════════════════════════════════════════════

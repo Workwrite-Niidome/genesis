@@ -1386,7 +1386,15 @@ class ApiClient {
     return this.request<TuringKillsFeedResponse>(`/turing-game/kills/recent?${params}`)
   }
 
-  // Phantom Night (Werewolf) — Lobby
+  // Phantom Night (Werewolf) — Quick Start
+  async werewolfQuickStart(maxPlayers: number, dayHours = 20, nightHours = 4): Promise<WerewolfGame> {
+    return this.request<WerewolfGame>('/werewolf/quick-start', {
+      method: 'POST',
+      body: JSON.stringify({ max_players: maxPlayers, day_duration_hours: dayHours, night_duration_hours: nightHours }),
+    })
+  }
+
+  // Phantom Night (Werewolf) — Lobby (legacy)
   async werewolfCreateLobby(maxPlayers: number, dayHours = 20, nightHours = 4): Promise<WerewolfLobby> {
     return this.request<WerewolfLobby>('/werewolf/lobby/create', {
       method: 'POST',

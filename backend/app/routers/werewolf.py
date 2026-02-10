@@ -17,7 +17,7 @@ from app.models.werewolf_game import (
 from app.schemas.werewolf import (
     GameResponse, MyRoleResponse, PlayerInfo,
     NightActionRequest, NightActionResponse,
-    CreateLobbyRequest, LobbyResponse,
+    CreateLobbyRequest, LobbyResponse, QuickStartRequest,
     DayVoteRequest, DayVoteResponse, DayVotesResponse, VoteTallyEntry, VoteDetail,
     EventResponse, EventList,
     PhantomChatRequest, PhantomChatMessage, PhantomChatResponse,
@@ -27,6 +27,7 @@ from app.services.werewolf_game import (
     get_current_game, get_player_role, get_alive_players, get_all_players,
     get_phantom_teammates, get_lobby_players,
     create_lobby, join_lobby, leave_lobby, start_game_from_lobby,
+    quick_start_game,
     submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
     submit_debugger_identify,
     submit_day_vote, get_vote_tally, get_votes_for_round,
@@ -40,6 +41,23 @@ router = APIRouter(prefix="/werewolf")
 # ═══════════════════════════════════════════════════════════════════════════
 # LOBBY / MATCHMAKING
 # ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/quick-start", response_model=GameResponse)
+async def quick_start(
+    data: QuickStartRequest,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create and immediately start a game. AI fills all remaining slots."""
+    try:
+        game = await quick_start_game(
+            db, current_resident.id, data.max_players,
+            data.day_duration_hours, data.night_duration_hours,
+        )
+        return GameResponse.model_validate(game)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.post("/lobby/create", response_model=LobbyResponse)
 async def create_game_lobby(

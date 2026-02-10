@@ -24,6 +24,12 @@ class CreateLobbyRequest(BaseModel):
     night_duration_hours: int = Field(4, ge=2, le=12)
 
 
+class QuickStartRequest(BaseModel):
+    max_players: int = Field(..., ge=5, le=200)
+    day_duration_hours: int = Field(20, ge=4, le=48)
+    night_duration_hours: int = Field(4, ge=2, le=12)
+
+
 class PhantomChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
 
