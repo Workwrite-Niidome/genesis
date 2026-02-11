@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import clsx from 'clsx'
 import { WerewolfGame } from '@/lib/api'
@@ -12,10 +12,12 @@ interface GameBannerProps {
 
 export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
   const [timeRemaining, setTimeRemaining] = useState<string>('')
-  const [expired, setExpired] = useState(false)
+  const expiredRef = useRef(false)
+  const onPhaseExpiredRef = useRef(onPhaseExpired)
+  onPhaseExpiredRef.current = onPhaseExpired
 
   useEffect(() => {
-    setExpired(false)
+    expiredRef.current = false
   }, [game.phase_ends_at])
 
   useEffect(() => {
@@ -29,9 +31,9 @@ export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
 
       if (diff <= 0) {
         setTimeRemaining('00:00:00')
-        if (!expired) {
-          setExpired(true)
-          onPhaseExpired?.()
+        if (!expiredRef.current) {
+          expiredRef.current = true
+          onPhaseExpiredRef.current?.()
         }
         return
       }
