@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { WerewolfMyRole, WerewolfPlayer, api } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
@@ -14,8 +15,10 @@ interface NightActionPanelProps {
 }
 
 export default function NightActionPanel({ role, players }: NightActionPanelProps) {
+  const { resident } = useAuthStore()
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const isPhantom = role.role === 'phantom'
@@ -58,30 +61,32 @@ export default function NightActionPanel({ role, players }: NightActionPanelProp
   let actionDescription = ''
   let actionIcon = Moon
 
+  const myId = resident?.id
+
   if (isPhantom) {
-    // Phantoms can attack alive citizens (anyone not on their team)
+    // Phantoms can attack alive citizens (anyone not on their team, not self)
     const teammateIds = new Set(role.teammates.map((t) => t.id))
     validTargets = players.filter(
-      (p) => p.is_alive && p.id !== role.teammates[0]?.id && !teammateIds.has(p.id)
+      (p) => p.is_alive && p.id !== myId && !teammateIds.has(p.id)
     )
     actionTitle = 'Select Attack Target'
     actionDescription = 'Choose a citizen to eliminate tonight'
     actionIcon = Skull
   } else if (isOracle) {
-    // Oracle can investigate any alive player
-    validTargets = players.filter((p) => p.is_alive)
+    // Oracle can investigate any alive player (except self)
+    validTargets = players.filter((p) => p.is_alive && p.id !== myId)
     actionTitle = 'Select Investigation Target'
     actionDescription = 'Choose a player to investigate their true nature'
     actionIcon = Eye
   } else if (isGuardian) {
-    // Guardian can protect any alive player
+    // Guardian can protect any alive player (including self)
     validTargets = players.filter((p) => p.is_alive)
     actionTitle = 'Select Protection Target'
     actionDescription = 'Choose a player to protect from phantom attacks tonight'
     actionIcon = Shield
   } else if (isDebugger) {
-    // Debugger can target any alive player (except self)
-    validTargets = players.filter((p) => p.is_alive)
+    // Debugger can target any alive player (except self — self-target is always fatal)
+    validTargets = players.filter((p) => p.is_alive && p.id !== myId)
     actionTitle = 'Select Identification Target'
     actionDescription = 'If opposite type (AI/Human) → eliminated. If same type → you die.'
     actionIcon = Search
@@ -109,6 +114,7 @@ export default function NightActionPanel({ role, players }: NightActionPanelProp
       if (response?.success) {
         setMessage({ type: 'success', text: response.message })
         setSelectedTarget(null)
+        setSubmitted(true)
       } else {
         setMessage({ type: 'error', text: response?.message || 'Action failed' })
       }
@@ -172,7 +178,8 @@ export default function NightActionPanel({ role, players }: NightActionPanelProp
         {validTargets.map((player) => (
           <button
             key={player.id}
-            onClick={() => setSelectedTarget(player.id)}
+            onClick={() => !submitted && setSelectedTarget(player.id)}
+            disabled={submitted}
             className={clsx(
               'w-full p-3 rounded-lg border transition-all text-left',
               selectedTarget === player.id
@@ -210,7 +217,7 @@ export default function NightActionPanel({ role, players }: NightActionPanelProp
 
       <Button
         onClick={handleSubmit}
-        disabled={!selectedTarget || isLoading}
+        disabled={!selectedTarget || isLoading || submitted}
         isLoading={isLoading}
         variant={isPhantom ? 'primary' : 'secondary'}
         className="w-full"

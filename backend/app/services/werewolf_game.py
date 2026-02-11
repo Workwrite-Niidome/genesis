@@ -192,9 +192,9 @@ async def get_resident_game(db: AsyncSession, resident_id: UUID) -> Optional[Wer
 
 
 async def get_next_game_number(db: AsyncSession) -> int:
-    """Get the next game number."""
+    """Get the next game number (uses row-level lock to prevent duplicates)."""
     result = await db.execute(
-        select(func.max(WerewolfGame.game_number))
+        select(func.max(WerewolfGame.game_number)).with_for_update()
     )
     max_num = result.scalar()
     return (max_num or 0) + 1
@@ -838,6 +838,7 @@ async def submit_oracle_investigation(
     db.add(action)
 
     # Store result in role's investigation_results
+    await db.refresh(target_role, ["resident"])
     inv_results = list(role.investigation_results or [])
     inv_results.append({
         "round": game.current_round,
@@ -1595,10 +1596,15 @@ async def check_phase_transition(db: AsyncSession) -> Optional[str]:
 async def get_game_events(
     db: AsyncSession, game_id: UUID, limit: int = 50, offset: int = 0
 ) -> list[WerewolfGameEvent]:
-    """Get public game events."""
+    """Get public game events (excludes phantom_chat)."""
     result = await db.execute(
         select(WerewolfGameEvent)
-        .where(WerewolfGameEvent.game_id == game_id)
+        .where(
+            and_(
+                WerewolfGameEvent.game_id == game_id,
+                WerewolfGameEvent.event_type != "phantom_chat",
+            )
+        )
         .order_by(WerewolfGameEvent.created_at.desc())
         .limit(limit)
         .offset(offset)

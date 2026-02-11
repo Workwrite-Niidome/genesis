@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { WerewolfPlayer, WerewolfMyRole, api, WerewolfDayVotes } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
@@ -14,6 +15,7 @@ interface DayVotePanelProps {
 }
 
 export default function DayVotePanel({ players, myRole }: DayVotePanelProps) {
+  const { resident } = useAuthStore()
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -21,7 +23,7 @@ export default function DayVotePanel({ players, myRole }: DayVotePanelProps) {
   const [voteData, setVoteData] = useState<WerewolfDayVotes | null>(null)
   const [isLoadingVotes, setIsLoadingVotes] = useState(true)
 
-  const alivePlayers = players.filter((p) => p.is_alive)
+  const alivePlayers = players.filter((p) => p.is_alive && p.id !== resident?.id)
 
   // Fetch current vote tally
   const fetchVotes = async () => {

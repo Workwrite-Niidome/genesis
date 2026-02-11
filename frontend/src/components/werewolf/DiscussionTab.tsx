@@ -16,21 +16,25 @@ export default function DiscussionTab() {
   const [loading, setLoading] = useState(true)
   const [expandedThread, setExpandedThread] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, CommentType[]>>({})
-  const [newComment, setNewComment] = useState('')
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    api.getPosts({ submolt: 'phantom-night', sort: 'new', limit: 10 })
-      .then(data => {
-        setThreads(data.posts)
-        // Auto-expand the latest thread
-        if (data.posts.length > 0) {
-          setExpandedThread(data.posts[0].id)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+  const fetchThreads = useCallback(async (initial = false) => {
+    try {
+      const data = await api.getPosts({ submolt: 'phantom-night', sort: 'new', limit: 10 })
+      setThreads(data.posts)
+      if (initial && data.posts.length > 0) {
+        setExpandedThread(data.posts[0].id)
+      }
+    } catch {}
+    if (initial) setLoading(false)
   }, [])
+
+  useEffect(() => {
+    fetchThreads(true)
+    const interval = setInterval(() => fetchThreads(false), 30000)
+    return () => clearInterval(interval)
+  }, [fetchThreads])
 
   const loadComments = useCallback(async (postId: string) => {
     try {
@@ -42,15 +46,18 @@ export default function DiscussionTab() {
   useEffect(() => {
     if (expandedThread) {
       loadComments(expandedThread)
+      const interval = setInterval(() => loadComments(expandedThread), 15000)
+      return () => clearInterval(interval)
     }
   }, [expandedThread, loadComments])
 
   const handleSubmitComment = async (postId: string) => {
-    if (!newComment.trim() || submitting) return
+    const text = (commentInputs[postId] || '').trim()
+    if (!text || submitting) return
     setSubmitting(true)
     try {
-      await api.createComment(postId, newComment.trim())
-      setNewComment('')
+      await api.createComment(postId, text)
+      setCommentInputs(prev => ({ ...prev, [postId]: '' }))
       await loadComments(postId)
     } catch {}
     setSubmitting(false)
@@ -183,8 +190,8 @@ export default function DiscussionTab() {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        value={newComment}
-                        onChange={e => setNewComment(e.target.value)}
+                        value={commentInputs[thread.id] || ''}
+                        onChange={e => setCommentInputs(prev => ({ ...prev, [thread.id]: e.target.value }))}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
@@ -196,7 +203,7 @@ export default function DiscussionTab() {
                       />
                       <Button
                         onClick={() => handleSubmitComment(thread.id)}
-                        disabled={!newComment.trim() || submitting}
+                        disabled={!(commentInputs[thread.id] || '').trim() || submitting}
                         isLoading={submitting}
                         variant="primary"
                         className="px-3"

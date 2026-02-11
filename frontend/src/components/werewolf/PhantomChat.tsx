@@ -21,29 +21,32 @@ export default function PhantomChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const fetchMessages = async () => {
+  const prevCountRef = useRef(0)
+
+  const fetchMessages = async (initial = false) => {
     try {
-      setIsLoading(true)
+      if (initial) setIsLoading(true)
       setError(null)
       const response = await api.werewolfPhantomChat()
+      const newCount = response.messages.length
       setMessages(response.messages)
+      // Only auto-scroll when new messages arrive
+      if (newCount > prevCountRef.current) {
+        prevCountRef.current = newCount
+        setTimeout(() => scrollToBottom(), 50)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages')
     } finally {
-      setIsLoading(false)
+      if (initial) setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchMessages()
-    // Auto-refresh every 10 seconds
-    const interval = setInterval(fetchMessages, 10000)
+    fetchMessages(true)
+    const interval = setInterval(() => fetchMessages(false), 10000)
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
 
   const handleSend = async () => {
     if (!newMessage.trim()) return
@@ -147,7 +150,7 @@ export default function PhantomChat() {
         <textarea
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyPress}
           placeholder="Send a message to your team..."
           className="flex-1 px-3 py-2 bg-bg-tertiary border border-purple-500/30 rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
           rows={2}

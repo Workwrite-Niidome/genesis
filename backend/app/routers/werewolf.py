@@ -293,7 +293,12 @@ async def get_events(
 
     result = await db.execute(
         select(func.count()).select_from(WerewolfGameEvent)
-        .where(WerewolfGameEvent.game_id == game.id)
+        .where(
+            and_(
+                WerewolfGameEvent.game_id == game.id,
+                WerewolfGameEvent.event_type != "phantom_chat",
+            )
+        )
     )
     total = result.scalar() or 0
 

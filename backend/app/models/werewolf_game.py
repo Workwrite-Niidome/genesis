@@ -110,9 +110,9 @@ class WerewolfGame(Base):
     # Relationships
     creator = relationship("Resident", foreign_keys=[creator_id])
     roles = relationship("WerewolfRole", back_populates="game", lazy="selectin")
-    night_actions = relationship("NightAction", back_populates="game", lazy="dynamic")
-    day_votes = relationship("DayVote", back_populates="game", lazy="dynamic")
-    events = relationship("WerewolfGameEvent", back_populates="game", lazy="dynamic",
+    night_actions = relationship("NightAction", back_populates="game", lazy="noload")
+    day_votes = relationship("DayVote", back_populates="game", lazy="noload")
+    events = relationship("WerewolfGameEvent", back_populates="game", lazy="noload",
                           order_by="WerewolfGameEvent.created_at")
 
     @property

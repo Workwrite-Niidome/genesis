@@ -1435,10 +1435,19 @@ def _werewolf_should_act_now(agent_id, round_num: int, action: str,
 
 
 def _get_phase_minutes(game) -> float:
-    """Get the duration of the current phase in minutes."""
+    """Get the duration of the current phase in minutes, respecting minute-level presets."""
+    from app.services.werewolf_game import SPEED_PRESETS
+    preset = SPEED_PRESETS.get(game.speed or "standard", {})
     if game.current_phase == "night":
+        mins = preset.get("night_minutes")
+        if mins:
+            return float(mins)
         return (game.night_duration_hours or 4) * 60.0
-    return (game.day_duration_hours or 20) * 60.0
+    else:
+        mins = preset.get("day_minutes")
+        if mins:
+            return float(mins)
+        return (game.day_duration_hours or 20) * 60.0
 
 
 async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile: dict) -> int:
@@ -1975,7 +1984,7 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     from app.models.werewolf_game import WerewolfGameEvent
 
     game = await get_resident_game(db, agent.id)
-    if not game or game.status != "active":
+    if not game or game.status not in ("day", "night"):
         return 0
 
     role = await get_player_role(db, game.id, agent.id)

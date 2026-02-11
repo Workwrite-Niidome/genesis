@@ -7,10 +7,16 @@ import { WerewolfGame } from '@/lib/api'
 
 interface GameBannerProps {
   game: WerewolfGame
+  onPhaseExpired?: () => void
 }
 
-export default function GameBanner({ game }: GameBannerProps) {
+export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
   const [timeRemaining, setTimeRemaining] = useState<string>('')
+  const [expired, setExpired] = useState(false)
+
+  useEffect(() => {
+    setExpired(false)
+  }, [game.phase_ends_at])
 
   useEffect(() => {
     if (!game.phase_ends_at) return
@@ -23,6 +29,10 @@ export default function GameBanner({ game }: GameBannerProps) {
 
       if (diff <= 0) {
         setTimeRemaining('00:00:00')
+        if (!expired) {
+          setExpired(true)
+          onPhaseExpired?.()
+        }
         return
       }
 

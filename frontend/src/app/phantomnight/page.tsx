@@ -151,7 +151,7 @@ export default function WerewolfPage() {
 
   return (
     <div className="space-y-6">
-      <GameBanner game={game} />
+      <GameBanner game={game} onPhaseExpired={fetchData} />
 
       {/* Cancel game button */}
       {resident && (
