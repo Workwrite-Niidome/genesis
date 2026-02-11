@@ -27,6 +27,7 @@ from app.models.comment import Comment
 from app.models.werewolf_game import (
     WerewolfGame, WerewolfRole, WerewolfGameEvent, NightAction, DayVote,
 )
+from app.models.ai_personality import AIRelationship, AIMemoryEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,12 @@ class GameContext:
     defense_counts: dict = field(default_factory=dict)  # player_name -> times defended
     vote_consistency: dict = field(default_factory=dict)  # player_name -> 0-1 score
     never_voted_names: list = field(default_factory=list)  # players never voted for
+
+    # SNS integration
+    sns_relationships: dict = field(default_factory=dict)
+    # {resident_id_str: {'trust': float, 'familiarity': float, 'interaction_count': int}}
+    past_game_memories: list = field(default_factory=list)
+    # [{'summary': str, 'sentiment': float, 'related_ids': list, 'importance': float}]
 
 
 async def build_game_context(
@@ -287,6 +294,43 @@ async def build_game_context(
     alive_names_lower = {p.resident.name.lower() for p in alive if p.resident}
     never_voted = [n for n in alive_names_lower if n not in voted_for_ever]
 
+    # ── SNS relationships ──
+    sns_relationships = {}
+    rels_res = await db.execute(
+        select(AIRelationship).where(AIRelationship.agent_id == agent.id)
+    )
+    for r in rels_res.scalars().all():
+        sns_relationships[str(r.target_id)] = {
+            'trust': r.trust or 0.0,
+            'familiarity': r.familiarity or 0.0,
+            'interaction_count': r.interaction_count or 0,
+        }
+
+    # ── Past werewolf game memories ──
+    alive_id_strs = [str(p.resident_id) for p in alive]
+    past_game_memories = []
+    mem_res = await db.execute(
+        select(AIMemoryEpisode).where(
+            and_(
+                AIMemoryEpisode.resident_id == agent.id,
+                AIMemoryEpisode.episode_type.like("werewolf_%"),
+            )
+        ).order_by(AIMemoryEpisode.importance.desc(),
+                   AIMemoryEpisode.created_at.desc())
+        .limit(15)
+    )
+    for m in mem_res.scalars().all():
+        related = m.related_resident_ids or []
+        if any(rid in alive_id_strs for rid in related) or not related:
+            past_game_memories.append({
+                'summary': m.summary,
+                'sentiment': m.sentiment,
+                'related_ids': related,
+                'importance': m.importance,
+            })
+            if len(past_game_memories) >= 8:
+                break
+
     return GameContext(
         game=game,
         my_role=role,
@@ -308,7 +352,203 @@ async def build_game_context(
         defense_counts=defense_counts,
         vote_consistency=consistency_scores,
         never_voted_names=never_voted,
+        sns_relationships=sns_relationships,
+        past_game_memories=past_game_memories,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EMOTIONAL STATE — computed per cycle from game events + agent traits
+# ═══════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class EmotionalState:
+    stress: float = 0.0        # 0-1 (accused/voted → high)
+    confidence: float = 0.5    # 0-1 (evidence held → high)
+    engagement: float = 0.7    # 0-1 (fatigue/attention → decreases)
+    frustration: float = 0.0   # 0-1 (ally died / grudge → high)
+    excitement: float = 0.0    # 0-1 (phantom found / critical moment → high)
+
+
+def compute_emotional_state(ctx: GameContext, traits: dict) -> EmotionalState:
+    """Compute emotional state from game events and agent traits. No LLM calls."""
+    stress = 0.0
+    confidence = 0.5
+    engagement = 0.7
+    frustration = 0.0
+    excitement = 0.0
+
+    skill = traits.get('skill_level', 0.5)
+    baseline = traits.get('emotional_baseline', 0.0)
+    attn = traits.get('attention_span', 0.6)
+    grudge = traits.get('grudge_tendency', 0.3)
+    fatigue_type = traits.get('fatigue_type', 'steady')
+
+    my_name_lower = ctx.agent_name.lower()
+
+    # --- Accused by multiple people ---
+    my_accusations = ctx.accusation_counts.get(my_name_lower, 0)
+    if my_accusations >= 3:
+        stress += 0.4
+        frustration += 0.3
+    elif my_accusations >= 1:
+        stress += my_accusations * 0.15
+        frustration += my_accusations * 0.1
+
+    # --- Voted against me ---
+    votes_against_me = 0
+    for tally in ctx.current_tally:
+        if tally["target_name"].lower() == my_name_lower:
+            votes_against_me = tally["votes"]
+            break
+    if votes_against_me >= 1:
+        stress += votes_against_me * 0.15
+        confidence -= votes_against_me * 0.1
+
+    # --- Ally died recently ---
+    if ctx.death_log:
+        last_death = ctx.death_log[-1]
+        if last_death["round"] == ctx.game.current_round or \
+           last_death["round"] == ctx.game.current_round - 1:
+            # If same team died
+            if ctx.my_role.team == "citizens" and last_death["role"] in ("citizen", "oracle", "guardian"):
+                stress += 0.2
+                frustration += 0.15
+            elif ctx.my_role.team == "phantoms" and last_death["role"] in ("phantom", "fanatic"):
+                stress += 0.2
+                frustration += 0.15
+
+    # --- Oracle found phantom (excitement for citizens team) ---
+    if ctx.investigation_results:
+        phantom_found = any(r.get("result") == "phantom" for r in ctx.investigation_results)
+        if phantom_found:
+            excitement += 0.3
+            confidence += 0.2
+
+    # --- Round progression × fatigue type ---
+    round_frac = min(ctx.game.current_round / 6.0, 1.0)
+    if fatigue_type == 'fader':
+        engagement = 1.0 - round_frac * 0.5   # starts 1.0, drops to 0.5
+    elif fatigue_type == 'grower':
+        engagement = 0.7 + round_frac * 0.3    # starts 0.7, grows to 1.0
+    else:  # steady
+        engagement = 0.8
+
+    # --- Attention span scales engagement ---
+    engagement *= attn
+
+    # --- Emotional baseline adjusts stress/frustration amplitude ---
+    # baseline -0.5 (nervous) amplifies stress by +25%
+    # baseline +0.5 (calm) dampens stress by -25%
+    baseline_mult = 1.0 - baseline * 0.5  # -0.5→1.25, +0.5→0.75
+    stress *= baseline_mult
+    frustration *= baseline_mult
+
+    # --- Grudge: if accused and grudge tendency is high ---
+    if my_accusations >= 1 and grudge > 0.5:
+        frustration += grudge * 0.2
+
+    # --- Betrayal shock: accused by SNS-trusted player ---
+    for c in ctx.recent_comments:
+        if ctx.agent_name.lower() in c["content"].lower():
+            accuser_id = c.get("author_id", "")
+            rel = ctx.sns_relationships.get(accuser_id)
+            if rel and rel['trust'] > 0.3:
+                stress += 0.2
+                frustration += 0.15
+                break  # one betrayal shock per cycle
+
+    # --- Playing with familiar faces → slight excitement ---
+    familiar_count = sum(1 for p in ctx.alive_players
+                         if ctx.sns_relationships.get(str(p.resident_id), {}).get('familiarity', 0) > 0.4)
+    if familiar_count >= 2:
+        excitement += 0.1
+
+    # --- Late game excitement ---
+    alive_count = len(ctx.alive_players)
+    if alive_count <= 4:
+        excitement += 0.2
+
+    # Clamp all values to [0, 1]
+    return EmotionalState(
+        stress=max(0.0, min(1.0, stress)),
+        confidence=max(0.0, min(1.0, confidence)),
+        engagement=max(0.0, min(1.0, engagement)),
+        frustration=max(0.0, min(1.0, frustration)),
+        excitement=max(0.0, min(1.0, excitement)),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL GATE — strategy signal visibility based on skill level
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _skill_gate(skill: float, threshold: float) -> bool:
+    """Check if agent's skill is high enough to notice a strategic signal.
+
+    skill >> threshold → always notices
+    skill << threshold → never notices
+    intermediate → probabilistic
+    """
+    if skill >= threshold + 0.3:
+        return True
+    if skill < threshold - 0.2:
+        return False
+    # Probabilistic zone: linear interpolation
+    prob = (skill - (threshold - 0.2)) / 0.5
+    return random.random() < prob
+
+
+# Signal thresholds for _skill_gate
+_SIGNAL_THRESHOLDS = {
+    'accusation_count': 0.1,         # almost everyone notices
+    'phantom_chat_coordination': 0.2, # beginners can read chat
+    'bandwagon_detection': 0.2,       # vote counts are visible
+    'oracle_hint_detection': 0.3,     # needs keyword analysis
+    'guardian_hint_detection': 0.4,   # more advanced inference
+    'heavy_vote_avoidance': 0.4,      # tactical judgment
+    'vote_consistency_analysis': 0.6, # pattern analysis
+    'dead_phantom_defender': 0.7,     # compound reasoning
+    'phantom_vote_correlation': 0.8,  # advanced meta-analysis
+    'oracle_confirmed_evidence': 0.0, # everyone can use this
+}
+
+
+def _volatility_noise(skill: float, emotion: EmotionalState,
+                      base_range: float = 10.0) -> float:
+    """Generate noise scaled by skill level and emotional state.
+
+    Low skill + high stress = very noisy (near-random choices).
+    High skill + calm = precise (small noise).
+    """
+    skill_mult = 0.5 + (1.0 - skill) * 2.5    # skill 1.0→0.5x, skill 0.0→3.0x
+    stress_mult = 1.0 + emotion.stress * 0.8    # stress 1.0→1.8x
+    conf_mult = 1.0 - emotion.confidence * 0.2  # confidence 1.0→0.8x
+    total = base_range * skill_mult * stress_mult * conf_mult
+    return random.uniform(-total, total)
+
+
+def maybe_inject_mistake(ranked: list, ctx: GameContext,
+                         traits: dict, emotion: EmotionalState) -> list:
+    """Low-skill/high-stress agents may choose a suboptimal target.
+
+    Swaps top pick with 2nd-4th pick. Never swaps -999 entries (safety).
+    """
+    if len(ranked) < 2:
+        return ranked
+
+    chance = traits.get('mistake_proneness', 0.3) + \
+             emotion.stress * 0.15 + emotion.frustration * 0.1
+    chance = min(chance, 0.6)  # cap at 60%
+
+    if random.random() < chance:
+        # Find safe swap candidates (score > -900, not self/teammate)
+        safe = [i for i, (_, s) in enumerate(ranked[:4]) if s > -900]
+        if len(safe) >= 2:
+            idx = random.choice(safe[1:])  # pick non-top
+            ranked[0], ranked[idx] = ranked[idx], ranked[0]
+
+    return ranked
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -327,11 +567,15 @@ _GUARDIAN_HINT_KEYWORDS = [
 ]
 
 
-def score_phantom_targets(ctx: GameContext) -> list[tuple]:
+def score_phantom_targets(ctx: GameContext, skill: float = 0.5,
+                          emotion: Optional[EmotionalState] = None) -> list[tuple]:
     """Score each alive citizen for phantom night attack.
 
     Returns sorted list of (WerewolfRole, score) highest-first.
     """
+    if emotion is None:
+        emotion = EmotionalState()
+
     scores = []
     for p in ctx.alive_citizens:
         s = 0.0
@@ -340,30 +584,31 @@ def score_phantom_targets(ctx: GameContext) -> list[tuple]:
 
         # Oracle detection: check if this player hinted at investigation results
         oracle_hinted = False
-        for comment in ctx.recent_comments:
-            if comment["author_name"].lower() == name_lower:
-                content_lower = comment["content"].lower()
-                if any(kw in content_lower for kw in _ORACLE_HINT_KEYWORDS):
-                    oracle_hinted = True
-                    break
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['oracle_hint_detection']):
+            for comment in ctx.recent_comments:
+                if comment["author_name"].lower() == name_lower:
+                    content_lower = comment["content"].lower()
+                    if any(kw in content_lower for kw in _ORACLE_HINT_KEYWORDS):
+                        oracle_hinted = True
+                        break
         if oracle_hinted:
             s += 50
 
         # Guardian detection: check for guardian-like language
         guardian_hinted = False
-        for comment in ctx.recent_comments:
-            if comment["author_name"].lower() == name_lower:
-                content_lower = comment["content"].lower()
-                if any(kw in content_lower for kw in _GUARDIAN_HINT_KEYWORDS):
-                    guardian_hinted = True
-                    break
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['guardian_hint_detection']):
+            for comment in ctx.recent_comments:
+                if comment["author_name"].lower() == name_lower:
+                    content_lower = comment["content"].lower()
+                    if any(kw in content_lower for kw in _GUARDIAN_HINT_KEYWORDS):
+                        guardian_hinted = True
+                        break
         if guardian_hinted:
             s += 30
 
         # Check if a protection event occurred (someone is guarding)
         for ev in ctx.all_events:
             if ev.event_type == "protected":
-                # If this player is a high-activity commenter, more likely guardian
                 comment_count = sum(
                     1 for c in ctx.recent_comments if c["author_name"].lower() == name_lower
                 )
@@ -371,26 +616,39 @@ def score_phantom_targets(ctx: GameContext) -> list[tuple]:
                     s += 10
 
         # Accusation threat: they accuse phantom teammates by name
-        accuse_score = ctx.accusation_counts.get(name_lower, 0)
-        if accuse_score > 0:
-            s += min(accuse_score * 8, 25)
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['accusation_count']):
+            accuse_score = ctx.accusation_counts.get(name_lower, 0)
+            if accuse_score > 0:
+                s += min(accuse_score * 8, 25)
+        else:
+            accuse_score = 0
 
         # Already heavily voted = might die via vote anyway, don't waste attack
-        for tally in ctx.current_tally:
-            if tally["target_name"].lower() == name_lower and tally["votes"] >= 3:
-                s -= 20
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['heavy_vote_avoidance']):
+            for tally in ctx.current_tally:
+                if tally["target_name"].lower() == name_lower and tally["votes"] >= 3:
+                    s -= 20
 
         # Phantom chat coordination: if teammates mentioned this target
-        for msg in ctx.phantom_chat_msgs:
-            if name_lower in msg["message"].lower():
-                s += 15
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['phantom_chat_coordination']):
+            for msg in ctx.phantom_chat_msgs:
+                if name_lower in msg["message"].lower():
+                    s += 15
 
         # Low accusation count = quiet player, eliminate silently
         if accuse_score == 0 and not oracle_hinted and not guardian_hinted:
             s += 10
 
-        # Random noise to prevent perfectly predictable play
-        s += random.uniform(-10, 10)
+        # SNS: low-trust citizens are easier targets
+        pid_str = str(p.resident_id)
+        rel = ctx.sns_relationships.get(pid_str)
+        if rel:
+            if rel['trust'] < -0.3:
+                s += 5  # prioritize enemies
+            s -= rel['familiarity'] * 5  # avoid killing friends
+
+        # Skill- and emotion-scaled noise
+        s += _volatility_noise(skill, emotion)
 
         scores.append((p, s))
 
@@ -398,11 +656,15 @@ def score_phantom_targets(ctx: GameContext) -> list[tuple]:
     return scores
 
 
-def score_oracle_targets(ctx: GameContext) -> list[tuple]:
+def score_oracle_targets(ctx: GameContext, skill: float = 0.5,
+                         emotion: Optional[EmotionalState] = None) -> list[tuple]:
     """Score each uninvestigated alive player for oracle investigation.
 
     Returns sorted list of (WerewolfRole, score) highest-first.
     """
+    if emotion is None:
+        emotion = EmotionalState()
+
     investigated_ids = {
         r.get("target_id") for r in (ctx.investigation_results or [])
     }
@@ -428,21 +690,22 @@ def score_oracle_targets(ctx: GameContext) -> list[tuple]:
             continue
 
         # Accused by multiple people = worth checking
-        accuse_count = ctx.accusation_counts.get(name_lower, 0)
-        s += min(accuse_count * 10, 20)
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['accusation_count']):
+            accuse_count = ctx.accusation_counts.get(name_lower, 0)
+            s += min(accuse_count * 10, 20)
 
         # Defended eliminated players who turned out to be phantoms
-        for death in ctx.death_log:
-            if death["role"] in ("phantom", "fanatic"):
-                dead_name = death["name"].lower()
-                defense = ctx.defense_counts.get(name_lower, 0)
-                if defense > 0:
-                    # Check if they defended this specific phantom
-                    for c in ctx.recent_comments:
-                        if c["author_name"].lower() == name_lower:
-                            if dead_name in c["content"].lower():
-                                s += 25
-                                break
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['dead_phantom_defender']):
+            for death in ctx.death_log:
+                if death["role"] in ("phantom", "fanatic"):
+                    dead_name = death["name"].lower()
+                    defense = ctx.defense_counts.get(name_lower, 0)
+                    if defense > 0:
+                        for c in ctx.recent_comments:
+                            if c["author_name"].lower() == name_lower:
+                                if dead_name in c["content"].lower():
+                                    s += 25
+                                    break
 
         # Never accused anyone = phantoms often stay quiet
         has_accused = any(
@@ -454,7 +717,7 @@ def score_oracle_targets(ctx: GameContext) -> list[tuple]:
             s += 15
 
         # Vote consistency with known phantoms
-        if known_phantom_names:
+        if known_phantom_names and _skill_gate(skill, _SIGNAL_THRESHOLDS['phantom_vote_correlation']):
             for rnd, votes in ctx.vote_history.items():
                 phantom_targets = set()
                 player_targets = set()
@@ -470,22 +733,33 @@ def score_oracle_targets(ctx: GameContext) -> list[tuple]:
                         break
 
         # Inconsistent voting (low consistency with majority)
-        consistency = ctx.vote_consistency.get(name_lower)
-        if consistency is not None and consistency < 0.4:
-            s += 20
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['vote_consistency_analysis']):
+            consistency = ctx.vote_consistency.get(name_lower)
+            if consistency is not None and consistency < 0.4:
+                s += 20
 
-        s += random.uniform(-10, 10)
+        # SNS: investigate low-trust players first
+        pid_str = str(p.resident_id)
+        rel = ctx.sns_relationships.get(pid_str)
+        if rel and rel['trust'] < 0:
+            s += abs(rel['trust']) * 10  # max +10 for trust=-1
+
+        s += _volatility_noise(skill, emotion)
         scores.append((p, s))
 
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores
 
 
-def score_guardian_targets(ctx: GameContext) -> list[tuple]:
+def score_guardian_targets(ctx: GameContext, skill: float = 0.5,
+                           emotion: Optional[EmotionalState] = None) -> list[tuple]:
     """Score each alive citizen for guardian protection.
 
     Returns sorted list of (WerewolfRole, score) highest-first.
     """
+    if emotion is None:
+        emotion = EmotionalState()
+
     scores = []
     for p in ctx.alive_players:
         if p.resident_id == ctx.agent_id:
@@ -498,19 +772,18 @@ def score_guardian_targets(ctx: GameContext) -> list[tuple]:
         name_lower = name.lower()
 
         # Likely oracle — highest priority protection
-        for comment in ctx.recent_comments:
-            if comment["author_name"].lower() == name_lower:
-                content_lower = comment["content"].lower()
-                if any(kw in content_lower for kw in _ORACLE_HINT_KEYWORDS):
-                    s += 60
-                    break
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['oracle_hint_detection']):
+            for comment in ctx.recent_comments:
+                if comment["author_name"].lower() == name_lower:
+                    content_lower = comment["content"].lower()
+                    if any(kw in content_lower for kw in _ORACLE_HINT_KEYWORDS):
+                        s += 60
+                        break
 
         # Was attacked last night (survived/protected) — phantoms may retry
         for ev in ctx.all_events:
             if (ev.event_type == "protected" and
                     ev.round_number == ctx.game.current_round - 1):
-                # We don't know exactly who was targeted, but protection means
-                # someone valuable was attacked. If this player was vocal, protect.
                 comment_count = sum(
                     1 for c in ctx.recent_comments
                     if c["author_name"].lower() == name_lower
@@ -519,14 +792,16 @@ def score_guardian_targets(ctx: GameContext) -> list[tuple]:
                     s += 30
 
         # Active accusers of phantoms are phantom targets
-        accuse_count = ctx.accusation_counts.get(name_lower, 0)
-        if accuse_count >= 2:
-            s += 25
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['accusation_count']):
+            accuse_count = ctx.accusation_counts.get(name_lower, 0)
+            if accuse_count >= 2:
+                s += 25
 
         # Top voted in current tally — might be eliminated by vote, wasted protection
-        for tally in ctx.current_tally:
-            if tally["target_name"].lower() == name_lower and tally["votes"] >= 3:
-                s -= 10
+        if _skill_gate(skill, _SIGNAL_THRESHOLDS['heavy_vote_avoidance']):
+            for tally in ctx.current_tally:
+                if tally["target_name"].lower() == name_lower and tally["votes"] >= 3:
+                    s -= 10
 
         # Favor protecting players who haven't been attacked recently
         was_attacked = False
@@ -537,7 +812,14 @@ def score_guardian_targets(ctx: GameContext) -> list[tuple]:
         if not was_attacked:
             s += 5
 
-        s += random.uniform(-5, 5)
+        # SNS: protect friends
+        pid_str = str(p.resident_id)
+        rel = ctx.sns_relationships.get(pid_str)
+        if rel:
+            s += rel['familiarity'] * 10  # max +10 for familiarity=1
+            s += max(0, rel['trust']) * 5  # max +5 for trust=1
+
+        s += _volatility_noise(skill, emotion, base_range=5.0)
         scores.append((p, s))
 
     scores.sort(key=lambda x: x[1], reverse=True)
@@ -547,6 +829,8 @@ def score_guardian_targets(ctx: GameContext) -> list[tuple]:
 def score_debugger_targets(
     ctx: GameContext,
     post_stats: Optional[dict] = None,
+    skill: float = 0.5,
+    emotion: Optional[EmotionalState] = None,
 ) -> list[tuple]:
     """Score each alive player for debugger identification.
 
@@ -555,6 +839,9 @@ def score_debugger_targets(
 
     post_stats: optional {resident_id_str: {count: int, avg_len: float}} from SNS posts.
     """
+    if emotion is None:
+        emotion = EmotionalState()
+
     # Build set of already-targeted IDs from my night actions
     already_targeted = {
         str(a.target_id) for a in ctx.night_actions_mine
@@ -594,24 +881,18 @@ def score_debugger_targets(
         ]
         if player_comments:
             lengths = [len(c["content"]) for c in player_comments]
-            # Human writing patterns: more variable length, shorter average
             if len(lengths) >= 2:
                 avg_len = sum(lengths) / len(lengths)
                 variance = sum((l - avg_len) ** 2 for l in lengths) / len(lengths)
-                # High variance suggests human
                 if variance > 500:
                     s += 10
 
-            # Check for human-like indicators: emoji, typos, very short msgs
             for c in player_comments:
                 content = c["content"]
-                # Emoji presence
                 if any(ord(ch) > 0x1F600 for ch in content):
                     s += 5
-                # Very short message (human tends to write "lol", "same", etc.)
                 if len(content) < 30:
                     s += 5
-                # Lowercase, no punctuation = human-like
                 if content == content.lower() and not content.endswith('.'):
                     s += 3
 
@@ -620,19 +901,16 @@ def score_debugger_targets(
             stats = post_stats[pid]
             if stats["count"] > 0:
                 s += 15
-            # Varied post lengths = more human
             if stats.get("avg_len", 0) > 0:
                 s += 5
 
         # Calibrate from known deaths
-        # If mostly humans have died, surviving players are more likely AI
-        # This is a subtle signal
         if known_humans and not known_agents:
-            s -= 5  # Fewer humans left
+            s -= 5
         elif known_agents and not known_humans:
-            s += 5  # More humans likely still alive
+            s += 5
 
-        s += random.uniform(-10, 10)
+        s += _volatility_noise(skill, emotion)
         scores.append((p, s))
 
     scores.sort(key=lambda x: x[1], reverse=True)
@@ -665,12 +943,17 @@ async def get_post_stats(db: AsyncSession, player_ids: list) -> dict:
     return stats
 
 
-def score_vote_targets(ctx: GameContext) -> list[tuple]:
+def score_vote_targets(ctx: GameContext, skill: float = 0.5,
+                       emotion: Optional[EmotionalState] = None,
+                       grudge: float = 0.3) -> list[tuple]:
     """Score each alive player for day vote elimination.
 
     Scoring differs by team (citizen vs phantom).
     Returns sorted list of (WerewolfRole, score) highest-first.
     """
+    if emotion is None:
+        emotion = EmotionalState()
+
     is_phantom_team = ctx.my_role.team == "phantoms"
 
     # Known phantoms from oracle investigation
@@ -703,38 +986,43 @@ def score_vote_targets(ctx: GameContext) -> list[tuple]:
                 continue
 
             # Active accuser of phantom teammates = remove threats
-            accuse_count = ctx.accusation_counts.get(name_lower, 0)
-            s += min(accuse_count * 10, 30)
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['accusation_count']):
+                accuse_count = ctx.accusation_counts.get(name_lower, 0)
+                s += min(accuse_count * 10, 30)
 
             # Likely oracle = high-value target for elimination
-            for comment in ctx.recent_comments:
-                if comment["author_name"].lower() == name_lower:
-                    if any(kw in comment["content"].lower() for kw in _ORACLE_HINT_KEYWORDS):
-                        s += 25
-                        break
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['oracle_hint_detection']):
+                for comment in ctx.recent_comments:
+                    if comment["author_name"].lower() == name_lower:
+                        if any(kw in comment["content"].lower() for kw in _ORACLE_HINT_KEYWORDS):
+                            s += 25
+                            break
 
             # Current tally leader (if citizen) = pile on
-            for tally in ctx.current_tally:
-                if (tally["target_name"].lower() == name_lower and
-                        tally["votes"] >= 2):
-                    s += 15
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['bandwagon_detection']):
+                for tally in ctx.current_tally:
+                    if (tally["target_name"].lower() == name_lower and
+                            tally["votes"] >= 2):
+                        s += 15
 
         else:
             # ── CITIZEN/ORACLE/GUARDIAN/DEBUGGER VOTING ──
-            # Oracle found phantom = hard evidence
-            if str(p.resident_id) in known_phantom_ids:
-                s += 100
+            # Oracle found phantom = hard evidence (everyone can use)
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['oracle_confirmed_evidence']):
+                if str(p.resident_id) in known_phantom_ids:
+                    s += 100
 
             # Defended an eliminated phantom = suspicious
-            for death_name in dead_phantom_names:
-                for c in ctx.recent_comments:
-                    if c["author_name"].lower() == name_lower:
-                        if death_name in c["content"].lower():
-                            if any(kw in c["content"].lower() for kw in [
-                                "trust", "innocent", "defend", "not suspicious", "agree",
-                            ]):
-                                s += 30
-                                break
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['dead_phantom_defender']):
+                for death_name in dead_phantom_names:
+                    for c in ctx.recent_comments:
+                        if c["author_name"].lower() == name_lower:
+                            if death_name in c["content"].lower():
+                                if any(kw in c["content"].lower() for kw in [
+                                    "trust", "innocent", "defend", "not suspicious", "agree",
+                                ]):
+                                    s += 30
+                                    break
 
             # Never accused anyone (phantoms hide)
             has_accused = any(
@@ -746,30 +1034,60 @@ def score_vote_targets(ctx: GameContext) -> list[tuple]:
                 s += 15
 
             # Inconsistent voting
-            consistency = ctx.vote_consistency.get(name_lower)
-            if consistency is not None and consistency < 0.4:
-                s += 20
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['vote_consistency_analysis']):
+                consistency = ctx.vote_consistency.get(name_lower)
+                if consistency is not None and consistency < 0.4:
+                    s += 20
 
             # Current tally leader = bandwagon effect (weighted by personality)
-            bandwagon_weights = {
-                'lurker': 0.70, 'enthusiast': 0.60, 'casual': 0.50,
-                'helper': 0.40, 'creative': 0.35, 'debater': 0.30,
-                'thinker': 0.20, 'skeptic': 0.15,
-            }
-            bw = bandwagon_weights.get(ctx.personality_key, 0.35)
-            for tally in ctx.current_tally[:1]:  # top entry only
-                if (tally["target_name"].lower() == name_lower and
-                        tally["votes"] >= 2):
-                    s += 10 * bw
+            if _skill_gate(skill, _SIGNAL_THRESHOLDS['bandwagon_detection']):
+                bandwagon_weights = {
+                    'lurker': 0.70, 'enthusiast': 0.60, 'casual': 0.50,
+                    'helper': 0.40, 'creative': 0.35, 'debater': 0.30,
+                    'thinker': 0.20, 'skeptic': 0.15,
+                }
+                bw = bandwagon_weights.get(ctx.personality_key, 0.35)
+                for tally in ctx.current_tally[:1]:  # top entry only
+                    if (tally["target_name"].lower() == name_lower and
+                            tally["votes"] >= 2):
+                        s += 10 * bw
 
-            # Slight bias: accused me
+            # Grudge bias: accused me → want to vote them out
+            # grudge=0 → +5, grudge=1 → +25
             for c in ctx.recent_comments:
                 if (c["author_name"].lower() == name_lower and
                         ctx.agent_name.lower() in c["content"].lower()):
                     if any(kw in c["content"].lower() for kw in ["suspicious", "suspect", "vote"]):
-                        s += 5
+                        s += 5 + grudge * 20
+                        break
 
-        s += random.uniform(-10, 10)
+            # Trust bias: defended me → reluctant to vote them
+            # grudge=0 → -10 (trusting), grudge=1 → 0 (grudge holders don't trust)
+            for c in ctx.recent_comments:
+                if (c["author_name"].lower() == name_lower and
+                        ctx.agent_name.lower() in c["content"].lower()):
+                    if any(kw in c["content"].lower() for kw in ["trust", "innocent", "agree", "defend"]):
+                        s -= 10 * (1.0 - grudge)
+                        break
+
+        # SNS relationship bias
+        pid_str = str(p.resident_id)
+        rel = ctx.sns_relationships.get(pid_str)
+        if rel:
+            # High trust → reluctant to vote (-10 max)
+            s -= rel['trust'] * 10
+            # Familiar → slight protection (-3 max)
+            s -= rel['familiarity'] * 3
+
+        # Past game memory: "X was phantom" → suspicion boost
+        for mem in ctx.past_game_memories:
+            if pid_str in mem.get('related_ids', []):
+                if 'phantom' in mem['summary'].lower() and mem['sentiment'] < -0.1:
+                    if _skill_gate(skill, 0.4):
+                        s += 15 * mem['importance']
+                        break
+
+        s += _volatility_noise(skill, emotion)
         scores.append((p, s))
 
     scores.sort(key=lambda x: x[1], reverse=True)
@@ -941,7 +1259,64 @@ def _get_strategic_goal(ctx: GameContext) -> str:
         return "Share your suspicions. Analyze voting patterns and who's being too quiet."
 
 
-def build_discussion_prompt(ctx: GameContext) -> str:
+def _get_emotional_prompt_modifier(emotion: EmotionalState, skill: float = 0.5,
+                                    role: str = "citizen") -> tuple[str, str]:
+    """Generate mood section and length instruction based on emotional state.
+
+    Returns (mood_section, length_instruction).
+    """
+    mood_lines = []
+
+    if emotion.stress > 0.7:
+        mood_lines.append("You're stressed. Write short, choppy sentences. Maybe a typo or two. Slightly defensive tone.")
+    elif emotion.stress > 0.4:
+        mood_lines.append("You're a bit nervous. Slightly shorter sentences than usual.")
+
+    if emotion.frustration > 0.6:
+        mood_lines.append("You're frustrated. Sharper tone than usual. More direct, less diplomatic.")
+
+    if emotion.excitement > 0.6:
+        mood_lines.append("You feel like you figured something out. Energetic and eager to share.")
+
+    if emotion.confidence < 0.3:
+        mood_lines.append("You're unsure. Use hedge words: 'maybe', 'not sure but', 'could be wrong'.")
+    elif emotion.confidence > 0.7:
+        mood_lines.append("You're confident. State opinions as near-facts. Assertive tone.")
+
+    if emotion.engagement < 0.3:
+        mood_lines.append("You're bored and barely paying attention. Minimal effort.")
+
+    # Low-skill role leaks (small chance of accidentally hinting at role)
+    if skill < 0.3:
+        if role in ("phantom", "fanatic") and random.random() < 0.15:
+            mood_lines.append(
+                "You might accidentally hint that you know something others don't, "
+                "like who's safe or who will be targeted. Be subtle but imperfect."
+            )
+        elif role == "oracle" and random.random() < 0.20:
+            mood_lines.append(
+                "You might accidentally be vague about your investigation — "
+                "say something like 'I have a feeling about them' without explaining why."
+            )
+
+    mood_section = ""
+    if mood_lines:
+        mood_section = "=== YOUR CURRENT MOOD ===\n" + "\n".join(mood_lines) + "\n\n"
+
+    # Dynamic length instruction
+    if emotion.engagement < 0.3:
+        length_instr = "Write 1 sentence max."
+    elif emotion.stress > 0.6:
+        length_instr = "Write 1-2 defensive sentences."
+    else:
+        length_instr = "Write 1-3 sentences."
+
+    return mood_section, length_instr
+
+
+def build_discussion_prompt(ctx: GameContext,
+                            emotion: Optional[EmotionalState] = None,
+                            skill: float = 0.5) -> str:
     """Build a rich, structured discussion prompt for LLM text generation.
 
     Replaces the inline prompt building in agent_werewolf_discuss().
@@ -1001,14 +1376,53 @@ def build_discussion_prompt(ctx: GameContext) -> str:
 
     prompt += f"=== YOUR STRATEGIC GOAL ===\n{strategic_goal}\n\n"
 
-    prompt += (
-        "Write a SHORT comment (1-3 sentences). Reference specific events or players. "
-        "Don't say 'as a citizen' or reveal your role directly."
-    )
+    # SNS relationship context
+    relationship_lines = []
+    for p in ctx.alive_players:
+        if p.resident_id == ctx.agent_id:
+            continue
+        pid_str = str(p.resident_id)
+        rel = ctx.sns_relationships.get(pid_str)
+        if rel and (rel['familiarity'] > 0.4 or abs(rel['trust']) > 0.3):
+            pname = p.resident.name if p.resident else "someone"
+            if rel['trust'] > 0.3:
+                relationship_lines.append(f"You know {pname} from Genesis and generally trust them.")
+            elif rel['trust'] < -0.3:
+                relationship_lines.append(f"You've had friction with {pname} on Genesis before.")
+            elif rel['familiarity'] > 0.4:
+                relationship_lines.append(f"You've seen {pname} around Genesis a lot.")
+    if relationship_lines:
+        prompt += "=== PEOPLE YOU KNOW ===\n"
+        prompt += "\n".join(relationship_lines[:5]) + "\n\n"
+
+    # Past game memories
+    memory_lines = []
+    for mem in ctx.past_game_memories[:4]:
+        memory_lines.append(f"- {mem['summary']}")
+    if memory_lines:
+        prompt += "=== YOUR PAST GAME MEMORIES ===\n"
+        prompt += "\n".join(memory_lines) + "\n\n"
+
+    # Inject emotional modifier
+    if emotion is not None:
+        mood_section, length_instr = _get_emotional_prompt_modifier(
+            emotion, skill, ctx.my_role.role)
+        prompt += mood_section
+        prompt += (
+            f"{length_instr} Reference specific events or players. "
+            "Don't say 'as a citizen' or reveal your role directly."
+        )
+    else:
+        prompt += (
+            "Write a SHORT comment (1-3 sentences). Reference specific events or players. "
+            "Don't say 'as a citizen' or reveal your role directly."
+        )
     return prompt
 
 
-def build_discussion_accused_prompt(ctx: GameContext) -> str:
+def build_discussion_accused_prompt(ctx: GameContext,
+                                    emotion: Optional[EmotionalState] = None,
+                                    skill: float = 0.5) -> str:
     """Build prompt for when the agent has been accused in discussion."""
     alive_names = [p.resident.name for p in ctx.alive_players
                    if p.resident and p.resident_id != ctx.agent_id]
@@ -1026,6 +1440,29 @@ def build_discussion_accused_prompt(ctx: GameContext) -> str:
         prompt += f"{tally_text}\n\n"
 
     prompt += f"Recent discussion:\n{comments_text}\n\n"
+
+    # Brief relationship context for accused prompt (max 2 lines)
+    rel_lines = []
+    for p in ctx.alive_players:
+        if p.resident_id == ctx.agent_id:
+            continue
+        pid_str = str(p.resident_id)
+        rel = ctx.sns_relationships.get(pid_str)
+        if rel and (rel['trust'] > 0.3 or rel['trust'] < -0.3):
+            pname = p.resident.name if p.resident else "someone"
+            if rel['trust'] > 0.3:
+                rel_lines.append(f"You generally trust {pname} from Genesis.")
+            elif rel['trust'] < -0.3:
+                rel_lines.append(f"You've had friction with {pname} on Genesis.")
+    if rel_lines:
+        prompt += "\n".join(rel_lines[:2]) + "\n\n"
+
+    # Emotional modifier for accused prompt
+    mood_section = ""
+    if emotion is not None:
+        mood_section, _ = _get_emotional_prompt_modifier(
+            emotion, skill, ctx.my_role.role)
+        prompt += mood_section
 
     # Role-specific defense strategy
     if ctx.my_role.role in ("phantom", "fanatic"):

@@ -26,6 +26,7 @@ from app.models.werewolf_game import (
     WerewolfGame, WerewolfRole, NightAction, DayVote, WerewolfGameEvent,
     ROLES, ROLE_DISTRIBUTION,
 )
+from app.models.ai_personality import AIRelationship, AIMemoryEpisode
 from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
@@ -1509,6 +1510,64 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
             f"*GG! Discuss the game below.*"
         ),
     )
+
+    # ── Post-game memory & relationship updates (AI agents only) ──
+    for wr in all_players:
+        if not wr.resident or wr.resident._type != 'agent':
+            continue
+
+        agent_id = wr.resident_id
+        won = (wr.team == winner_team)
+        role_name = wr.role
+
+        # Create game result memory
+        teammate_names = [
+            p.resident.name for p in all_players
+            if p.team == wr.team and p.resident_id != agent_id and p.resident
+        ]
+        team_str = f" Teammates: {', '.join(teammate_names[:3])}." if teammate_names else ""
+        outcome = "Won" if won else "Lost"
+
+        episode = AIMemoryEpisode(
+            resident_id=agent_id,
+            summary=f"{outcome} Phantom Night #{game.game_number} as {role_name}.{team_str}",
+            episode_type='werewolf_result',
+            importance=0.8,
+            sentiment=0.3 if won else -0.3,
+            related_resident_ids=[str(p.resident_id) for p in all_players
+                                  if p.resident_id != agent_id][:10],
+        )
+        db.add(episode)
+
+        # Team relationship updates
+        for other in all_players:
+            if other.resident_id == agent_id or not other.resident:
+                continue
+            if other.resident._type != 'agent':
+                continue
+
+            rel_res = await db.execute(
+                select(AIRelationship).where(
+                    and_(
+                        AIRelationship.agent_id == agent_id,
+                        AIRelationship.target_id == other.resident_id,
+                    )
+                )
+            )
+            rel = rel_res.scalar_one_or_none()
+            if not rel:
+                rel = AIRelationship(agent_id=agent_id, target_id=other.resident_id)
+                db.add(rel)
+
+            if other.team == wr.team:
+                rel.trust = min(1.0, (rel.trust or 0.0) + 0.1)
+                rel.familiarity = min(1.0, (rel.familiarity or 0.0) + 0.1)
+            else:
+                rel.trust = max(-1.0, (rel.trust or 0.0) - 0.05)
+                rel.familiarity = min(1.0, (rel.familiarity or 0.0) + 0.03)
+
+            rel.interaction_count = (rel.interaction_count or 0) + 1
+            rel.last_interaction = now
 
     logger.info(f"Game #{game.game_number} ended. Winner: {winner_team}")
 

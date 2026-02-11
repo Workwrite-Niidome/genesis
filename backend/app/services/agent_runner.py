@@ -416,6 +416,33 @@ def get_agent_profile(agent: Resident) -> dict:
     elif bk == 'lurker_voter':
         mention_base *= 0.2
 
+    # --- Volatility traits (deterministic from UUID) ---
+    h3 = _stable_hash(aid, "volatility")
+
+    # Skill level: 0.10-0.95 (center-heavy distribution)
+    skill_pools = [0.10, 0.15, 0.20, 0.25, 0.30,   # beginner (28%)
+                   0.35, 0.40, 0.45, 0.50, 0.55,   # intermediate (44%)
+                   0.60, 0.65, 0.70, 0.75, 0.80,
+                   0.85, 0.90, 0.95]                  # advanced (28%)
+    skill_level = skill_pools[h3 % len(skill_pools)]
+
+    # Emotional baseline: -0.5 (nervous) to +0.5 (calm)
+    emotional_baseline = -0.5 + (_stable_hash(aid, "emo_base") % 100) / 100.0
+
+    # Attention span: 0.2 (easily bored) to 1.0 (high focus)
+    attention_span = 0.2 + (_stable_hash(aid, "attn") % 80) / 100.0
+
+    # Grudge tendency: 0.0 (forgiving) to 1.0 (holds grudges)
+    grudge_tendency = (_stable_hash(aid, "grudge") % 100) / 100.0
+
+    # Mistake proneness: inversely correlated with skill + individual variance
+    mistake_proneness = max(0.0, min(1.0,
+        (1.0 - skill_level) * 0.8 + (_stable_hash(aid, "mistake") % 20) / 100.0))
+
+    # Fatigue curve: fader(50%) / grower(20%) / steady(30%)
+    fatigue_types = ['fader'] * 5 + ['grower'] * 2 + ['steady'] * 3
+    fatigue_type = fatigue_types[_stable_hash(aid, "fatigue") % len(fatigue_types)]
+
     traits = {
         # Session: how many actions when active (1 = brief check, 5 = binge)
         'session_actions': [1, 1, 1, 2, 2, 2, 3, 3, 4, 5][h2 % 10],
@@ -431,6 +458,14 @@ def get_agent_profile(agent: Resident) -> dict:
 
         # Comment engagement: how often they skip a post they considered
         'comment_skip_rate': 0.3 + ((_stable_hash(aid, "skip") % 40) / 100),  # 0.3-0.7
+
+        # Volatility traits
+        'skill_level': skill_level,
+        'emotional_baseline': emotional_baseline,
+        'attention_span': attention_span,
+        'grudge_tendency': grudge_tendency,
+        'mistake_proneness': mistake_proneness,
+        'fatigue_type': fatigue_type,
     }
 
     return {
@@ -1409,12 +1444,26 @@ _BANDWAGON_CHANCE = {
 }
 
 
+def _estimate_engagement(agent_id, round_num: int, traits: dict) -> float:
+    """Estimate engagement level from traits and round number (no GameContext needed)."""
+    attn = traits.get('attention_span', 0.6)
+    fatigue_type = traits.get('fatigue_type', 'steady')
+    round_frac = min(round_num / 6.0, 1.0)
+    if fatigue_type == 'fader':
+        return attn * (1.0 - round_frac * 0.5)
+    elif fatigue_type == 'grower':
+        return attn * (0.7 + round_frac * 0.3)
+    return attn
+
+
 def _werewolf_action_delay(agent_id, round_num: int, action: str,
-                           phase_minutes: float, personality_key: str) -> float:
+                           phase_minutes: float, personality_key: str,
+                           engagement: float = 0.7) -> float:
     """Deterministic delay (minutes from phase start) for a werewolf action.
 
     Same agent + round + action always resolves at the same minute,
     but different agents are spread across the phase window.
+    Engagement shifts timing: low engagement → slower, high → faster.
     """
     h = _stable_hash(f"{agent_id}:{round_num}:{action}")
     lo, hi = _PERSONALITY_WINDOWS.get(personality_key, (0.10, 0.80))
@@ -1423,18 +1472,23 @@ def _werewolf_action_delay(agent_id, round_num: int, action: str,
         lo = min(lo, 0.05)
         hi = min(hi, 0.50)
     frac = lo + (h % 10000) / 10000.0 * (hi - lo)
+    # Engagement shift: 0.0 → +0.15 (slow, distracted), 1.0 → -0.10 (fast, focused)
+    engagement_shift = 0.15 - engagement * 0.25
+    frac = max(lo, min(hi, frac + engagement_shift))
     return frac * phase_minutes
 
 
 def _werewolf_should_act_now(agent_id, round_num: int, action: str,
                              phase_started_at, phase_minutes: float,
-                             personality_key: str) -> bool:
+                             personality_key: str,
+                             engagement: float = 0.7) -> bool:
     """Check if enough time has elapsed for this agent's action slot."""
     if not phase_started_at:
         return True  # No timing info — allow action
     elapsed = (datetime.utcnow() - phase_started_at).total_seconds() / 60.0
     delay = _werewolf_action_delay(agent_id, round_num, action,
-                                   phase_minutes, personality_key)
+                                   phase_minutes, personality_key,
+                                   engagement=engagement)
     return elapsed >= delay
 
 
@@ -1468,6 +1522,7 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
     from app.services.werewolf_strategy import (
         build_game_context, score_phantom_targets, score_oracle_targets,
         score_guardian_targets, score_debugger_targets, get_post_stats,
+        compute_emotional_state, maybe_inject_mistake,
     )
 
     game = await get_resident_game(db, agent.id)
@@ -1480,9 +1535,12 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 
     # Timing gate — stagger night actions across the phase
     pk = profile.get('personality_key', 'casual')
+    traits = profile.get('traits', {})
     phase_mins = _get_phase_minutes(game)
+    engagement = _estimate_engagement(agent.id, game.current_round, traits)
     if not _werewolf_should_act_now(agent.id, game.current_round, "night_action",
-                                    game.phase_started_at, phase_mins, pk):
+                                    game.phase_started_at, phase_mins, pk,
+                                    engagement=engagement):
         return 0
 
     alive = await get_alive_players(db, game.id)
@@ -1492,43 +1550,72 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 
     try:
         ctx = await build_game_context(db, agent, game, role, profile)
+        emotion = compute_emotional_state(ctx, traits)
+        skill = traits.get('skill_level', 0.5)
 
         if role.role == "phantom":
-            ranked = score_phantom_targets(ctx)
+            ranked = score_phantom_targets(ctx, skill=skill, emotion=emotion)
             if not ranked:
                 return 0
+            ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
             target = ranked[0][0]
             await submit_phantom_attack(db, game, agent.id, target.resident_id)
+            target_name = target.resident.name if target.resident else "someone"
+            _add_memory(db, agent.id,
+                f"Attacked {target_name} as Phantom in game #{game.game_number}",
+                'werewolf_action', importance=0.7, sentiment=-0.1,
+                related_resident_ids=[target.resident_id])
             return 1
 
         elif role.role == "oracle":
-            ranked = score_oracle_targets(ctx)
+            ranked = score_oracle_targets(ctx, skill=skill, emotion=emotion)
             if not ranked:
                 target = random.choice(alive_others)
             else:
+                ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
                 target = ranked[0][0]
             await submit_oracle_investigation(db, game, agent.id, target.resident_id)
+            target_name = target.resident.name if target.resident else "someone"
+            _add_memory(db, agent.id,
+                f"Investigated {target_name} as Oracle in game #{game.game_number}",
+                'werewolf_action', importance=0.7, sentiment=0.0,
+                related_resident_ids=[target.resident_id])
             return 1
 
         elif role.role == "guardian":
-            ranked = score_guardian_targets(ctx)
+            ranked = score_guardian_targets(ctx, skill=skill, emotion=emotion)
             if not ranked:
                 target = random.choice(alive_others)
             else:
+                ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
                 target = ranked[0][0]
             await submit_guardian_protection(db, game, agent.id, target.resident_id)
+            target_name = target.resident.name if target.resident else "someone"
+            _add_memory(db, agent.id,
+                f"Protected {target_name} as Guardian in game #{game.game_number}",
+                'werewolf_action', importance=0.5, sentiment=0.2,
+                related_resident_ids=[target.resident_id])
+            await _update_rel(db, agent.id, target.resident_id,
+                              trust_change=0.03, familiarity_change=0.05)
             return 1
 
         elif role.role == "debugger":
             # Get SNS post stats for human detection
             player_ids = [p.resident_id for p in alive_others]
             post_stats = await get_post_stats(db, player_ids)
-            ranked = score_debugger_targets(ctx, post_stats=post_stats)
+            ranked = score_debugger_targets(ctx, post_stats=post_stats,
+                                            skill=skill, emotion=emotion)
             if not ranked:
                 target = random.choice(alive_others)
             else:
+                ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
                 target = ranked[0][0]
             await submit_debugger_identify(db, game, agent.id, target.resident_id)
+            target_name = target.resident.name if target.resident else "someone"
+            _add_memory(db, agent.id,
+                f"Identified {target_name} as Debugger in game #{game.game_number}",
+                'werewolf_action', importance=0.7, sentiment=0.0,
+                related_resident_ids=[target.resident_id])
             return 1
 
     except ValueError as e:
@@ -1549,6 +1636,7 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
     )
     from app.services.werewolf_strategy import (
         build_game_context, score_vote_targets, build_vote_reason_prompt,
+        compute_emotional_state, maybe_inject_mistake,
     )
 
     game = await get_resident_game(db, agent.id)
@@ -1560,7 +1648,9 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
         return 0
 
     pk = profile.get('personality_key', 'casual')
+    traits = profile.get('traits', {})
     phase_mins = _get_phase_minutes(game)
+    engagement = _estimate_engagement(agent.id, game.current_round, traits)
 
     alive = await get_alive_players(db, game.id)
     alive_others = [p for p in alive if p.resident_id != agent.id]
@@ -1574,7 +1664,8 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
             return 0
         # Separate timing slot for reconsideration
         if not _werewolf_should_act_now(agent.id, game.current_round, "vote_reconsider",
-                                        game.phase_started_at, phase_mins, pk):
+                                        game.phase_started_at, phase_mins, pk,
+                                        engagement=engagement):
             return 0
         # Only reconsider if tally leader has 3+ vote lead over agent's current target
         try:
@@ -1627,12 +1718,22 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 
     # ── A) Initial vote (not yet voted) ──
     if not _werewolf_should_act_now(agent.id, game.current_round, "vote",
-                                    game.phase_started_at, phase_mins, pk):
+                                    game.phase_started_at, phase_mins, pk,
+                                    engagement=engagement):
+        return 0
+
+    # Discussion skip: very low engagement agents may not vote at all
+    if engagement < 0.3 and random.random() > engagement * 2:
         return 0
 
     ctx = await build_game_context(db, agent, game, role, profile)
-    ranked = score_vote_targets(ctx)
+    emotion = compute_emotional_state(ctx, traits)
+    skill = traits.get('skill_level', 0.5)
+    grudge = traits.get('grudge_tendency', 0.3)
+
+    ranked = score_vote_targets(ctx, skill=skill, emotion=emotion, grudge=grudge)
     if ranked:
+        ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
         target = ranked[0][0]
     else:
         target = random.choice(alive_others)
@@ -1652,6 +1753,13 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 
     try:
         await submit_day_vote(db, game, agent.id, target.resident_id, reason=reason)
+        target_name = target.resident.name if target.resident else "someone"
+        _add_memory(db, agent.id,
+            f"Voted to eliminate {target_name} in Phantom Night #{game.game_number}",
+            'werewolf_vote', importance=0.6, sentiment=-0.2,
+            related_resident_ids=[target.resident_id])
+        await _update_rel(db, agent.id, target.resident_id,
+                          trust_change=-0.05, familiarity_change=0.05)
         return 1
     except ValueError as e:
         logger.debug(f"Agent {agent.name} day vote failed: {e}")
@@ -1670,6 +1778,7 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     from app.models.comment import Comment
     from app.services.werewolf_strategy import (
         build_game_context, build_discussion_prompt, build_discussion_accused_prompt,
+        compute_emotional_state,
     )
 
     game = await get_resident_game(db, agent.id)
@@ -1684,7 +1793,13 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
         return 0
 
     pk = profile.get('personality_key', 'casual')
+    traits = profile.get('traits', {})
     phase_mins = _get_phase_minutes(game)
+    engagement = _estimate_engagement(agent.id, game.current_round, traits)
+
+    # Engagement-based discussion skip
+    if engagement < 0.3 and random.random() > engagement * 2:
+        return 0
 
     # Find the latest Narrator post for this game
     narrator_res = await db.execute(
@@ -1721,11 +1836,19 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     comment_count = existing.scalar() or 0
     max_slots = _DISCUSS_SLOTS.get(pk, 2)
 
+    # Dynamic slot adjustment based on engagement/excitement
+    # (computed without full ctx, using engagement estimate)
+    if engagement < 0.3:
+        max_slots = max(1, max_slots - 2)    # nearly silent
+    elif engagement < 0.5:
+        max_slots = max(1, max_slots - 1)    # quieter
+
     if comment_count >= max_slots:
         return 0
 
     # ── Reactive accusation response (highest priority, bypasses timing) ──
     accused = False
+    accuser_id = None
     recent_accuse_check = await db.execute(
         select(Comment)
         .where(Comment.post_id == thread.id)
@@ -1735,21 +1858,31 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     for c in recent_accuse_check.scalars().all():
         if c.author_id != agent.id and agent.name.lower() in c.content.lower():
             accused = True
+            accuser_id = c.author_id
             break
 
     if not accused:
         slot_action = f"discuss_{comment_count}"
         if not _werewolf_should_act_now(agent.id, game.current_round, slot_action,
-                                        game.phase_started_at, phase_mins, pk):
+                                        game.phase_started_at, phase_mins, pk,
+                                        engagement=engagement):
             return 0
 
     # ── Build strategic prompt via werewolf_strategy ──
     ctx = await build_game_context(db, agent, game, role, profile)
+    emotion = compute_emotional_state(ctx, traits)
+    skill = traits.get('skill_level', 0.5)
+
+    # Excitement-based slot boost (after full emotion computed)
+    if engagement > 0.8 and emotion.excitement > 0.5:
+        max_slots_boosted = min(_DISCUSS_SLOTS.get(pk, 2) + 1, 5)
+        if comment_count >= max_slots_boosted:
+            return 0
 
     if accused:
-        prompt = build_discussion_accused_prompt(ctx)
+        prompt = build_discussion_accused_prompt(ctx, emotion=emotion, skill=skill)
     else:
-        prompt = build_discussion_prompt(ctx)
+        prompt = build_discussion_prompt(ctx, emotion=emotion, skill=skill)
 
     personality = profile.get('personality', {})
     # Include teammate names for phantoms
@@ -1774,6 +1907,18 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     )
     db.add(comment)
     thread.comment_count += 1
+
+    # First discussion memory
+    if comment_count == 0:
+        _add_memory(db, agent.id,
+            f"Discussed in Phantom Night #{game.game_number}",
+            'werewolf_discuss', importance=0.3, sentiment=0.0)
+
+    # Accused → update relationship with accuser
+    if accused and accuser_id:
+        await _update_rel(db, agent.id, accuser_id,
+                          trust_change=-0.08, familiarity_change=0.05)
+
     return 1
 
 
@@ -1808,8 +1953,14 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
         return 0
 
     pk = profile.get('personality_key', 'casual')
+    traits = profile.get('traits', {})
     phase_mins = _get_phase_minutes(game)
+    engagement = _estimate_engagement(agent.id, game.current_round, traits)
     max_msgs = _PHANTOM_CHAT_SLOTS.get(pk, 1)
+
+    # Engagement-based chat skip
+    if engagement < 0.3 and random.random() > engagement * 2:
+        return 0
 
     # Check how many chat messages this agent already sent this round+phase
     existing_res = await db.execute(
@@ -1830,7 +1981,8 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     # Timing gate for this chat slot
     slot_action = f"phantom_chat_{sent_count}"
     if not _werewolf_should_act_now(agent.id, game.current_round, slot_action,
-                                    game.phase_started_at, phase_mins, pk):
+                                    game.phase_started_at, phase_mins, pk,
+                                    engagement=engagement):
         return 0
 
     # Build strategic prompt via werewolf_strategy
