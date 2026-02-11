@@ -39,7 +39,7 @@ from app.services.werewolf_game import (
 )
 from app.routers.auth import get_current_resident, get_optional_resident
 
-router = APIRouter(prefix="/werewolf")
+router = APIRouter(prefix="/phantomnight")
 
 
 # ── Helper: get the requesting user's game ────────────────────────────────
@@ -424,17 +424,25 @@ async def get_day_votes(
     votes = await get_votes_for_round(db, game.id, round_num)
     alive_players = await get_alive_players(db, game.id)
 
+    # Batch-load all resident names to avoid N+1 queries
+    all_ids = set()
+    for v in votes:
+        all_ids.add(v.voter_id)
+        all_ids.add(v.target_id)
+    name_map = {}
+    if all_ids:
+        name_res = await db.execute(
+            select(Resident.id, Resident.name).where(Resident.id.in_(all_ids))
+        )
+        name_map = {row.id: row.name for row in name_res.all()}
+
     vote_details = []
     for v in votes:
-        voter_res = await db.execute(select(Resident.name).where(Resident.id == v.voter_id))
-        target_res = await db.execute(select(Resident.name).where(Resident.id == v.target_id))
-        voter_name = voter_res.scalar_one_or_none() or "unknown"
-        target_name = target_res.scalar_one_or_none() or "unknown"
         vote_details.append(VoteDetail(
             voter_id=v.voter_id,
-            voter_name=voter_name,
+            voter_name=name_map.get(v.voter_id, "unknown"),
             target_id=v.target_id,
-            target_name=target_name,
+            target_name=name_map.get(v.target_id, "unknown"),
             reason=v.reason,
         ))
 
@@ -472,19 +480,26 @@ async def get_phantom_chat(
             )
         )
         .order_by(WerewolfGameEvent.created_at.asc())
-        .limit(200)
+        .limit(50)
     )
     chat_events = result.scalars().all()
+
+    # Batch-load sender names to avoid N+1 queries
+    sender_ids = {e.target_id for e in chat_events if e.target_id}
+    sender_map = {}
+    if sender_ids:
+        name_res = await db.execute(
+            select(Resident.id, Resident.name).where(Resident.id.in_(sender_ids))
+        )
+        sender_map = {row.id: row.name for row in name_res.all()}
 
     messages = []
     for e in chat_events:
         if e.target_id:
-            res = await db.execute(select(Resident.name).where(Resident.id == e.target_id))
-            sender_name = res.scalar_one_or_none() or "unknown"
             messages.append(PhantomChatMessage(
                 id=e.id,
                 sender_id=e.target_id,
-                sender_name=sender_name,
+                sender_name=sender_map.get(e.target_id, "unknown"),
                 message=e.message,
                 created_at=e.created_at,
             ))

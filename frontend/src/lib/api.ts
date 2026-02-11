@@ -1400,7 +1400,7 @@ class ApiClient {
 
   // Phantom Night (Werewolf) — Quick Start
   async werewolfQuickStart(maxPlayers: number, dayHours = 20, nightHours = 4): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>('/werewolf/quick-start', {
+    return this.request<WerewolfGame>('/phantomnight/quick-start', {
       method: 'POST',
       body: JSON.stringify({ max_players: maxPlayers, day_duration_hours: dayHours, night_duration_hours: nightHours }),
     })
@@ -1408,98 +1408,98 @@ class ApiClient {
 
   // Phantom Night (Werewolf) — Lobby Matchmaking
   async werewolfCreateGame(maxPlayers: number, speed: string = 'standard'): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>('/werewolf/create', {
+    return this.request<WerewolfGame>('/phantomnight/create', {
       method: 'POST',
       body: JSON.stringify({ max_players: maxPlayers, speed }),
     })
   }
 
   async werewolfJoinGame(gameId: string): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>(`/werewolf/${gameId}/join`, { method: 'POST' })
+    return this.request<WerewolfGame>(`/phantomnight/${gameId}/join`, { method: 'POST' })
   }
 
   async werewolfLeaveGame(gameId: string): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>(`/werewolf/${gameId}/leave`, { method: 'POST' })
+    return this.request<WerewolfGame>(`/phantomnight/${gameId}/leave`, { method: 'POST' })
   }
 
   async werewolfStartGame(gameId: string): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>(`/werewolf/${gameId}/start`, { method: 'POST' })
+    return this.request<WerewolfGame>(`/phantomnight/${gameId}/start`, { method: 'POST' })
   }
 
   async werewolfGetLobbies(): Promise<WerewolfLobby[]> {
-    return this.request<WerewolfLobby[]>('/werewolf/lobbies')
+    return this.request<WerewolfLobby[]>('/phantomnight/lobbies')
   }
 
   // Phantom Night (Werewolf) — Cancel
   async werewolfCancel(): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>('/werewolf/cancel', { method: 'POST' })
+    return this.request<WerewolfGame>('/phantomnight/cancel', { method: 'POST' })
   }
 
   // Phantom Night (Werewolf) — Game State
   async werewolfCurrentGame(): Promise<WerewolfGame | null> {
-    return this.request<WerewolfGame | null>('/werewolf/current')
+    return this.request<WerewolfGame | null>('/phantomnight/current')
   }
 
   async werewolfMyRole(): Promise<WerewolfMyRole | null> {
-    return this.request<WerewolfMyRole | null>('/werewolf/my-role')
+    return this.request<WerewolfMyRole | null>('/phantomnight/my-role')
   }
 
   async werewolfPlayers(): Promise<WerewolfPlayer[]> {
-    return this.request<WerewolfPlayer[]>('/werewolf/players')
+    return this.request<WerewolfPlayer[]>('/phantomnight/players')
   }
 
   async werewolfEvents(limit = 50, offset = 0): Promise<{ events: WerewolfEvent[]; total: number }> {
     const params = new URLSearchParams()
     params.set('limit', limit.toString())
     params.set('offset', offset.toString())
-    return this.request<{ events: WerewolfEvent[]; total: number }>(`/werewolf/events?${params}`)
+    return this.request<{ events: WerewolfEvent[]; total: number }>(`/phantomnight/events?${params}`)
   }
 
   async werewolfNightAttack(targetId: string) {
-    return this.request<{ success: boolean; message: string }>('/werewolf/night/attack', {
+    return this.request<{ success: boolean; message: string }>('/phantomnight/night/attack', {
       method: 'POST',
       body: JSON.stringify({ target_id: targetId }),
     })
   }
 
   async werewolfNightInvestigate(targetId: string) {
-    return this.request<{ success: boolean; result?: string; message: string }>('/werewolf/night/investigate', {
+    return this.request<{ success: boolean; result?: string; message: string }>('/phantomnight/night/investigate', {
       method: 'POST',
       body: JSON.stringify({ target_id: targetId }),
     })
   }
 
   async werewolfNightProtect(targetId: string) {
-    return this.request<{ success: boolean; message: string }>('/werewolf/night/protect', {
+    return this.request<{ success: boolean; message: string }>('/phantomnight/night/protect', {
       method: 'POST',
       body: JSON.stringify({ target_id: targetId }),
     })
   }
 
   async werewolfNightIdentify(targetId: string) {
-    return this.request<{ success: boolean; message: string }>('/werewolf/night/identify', {
+    return this.request<{ success: boolean; message: string }>('/phantomnight/night/identify', {
       method: 'POST',
       body: JSON.stringify({ target_id: targetId }),
     })
   }
 
   async werewolfDayVote(targetId: string, reason?: string) {
-    return this.request<{ success: boolean; message: string; current_tally: WerewolfVoteTally[] }>('/werewolf/day/vote', {
+    return this.request<{ success: boolean; message: string; current_tally: WerewolfVoteTally[] }>('/phantomnight/day/vote', {
       method: 'POST',
       body: JSON.stringify({ target_id: targetId, reason }),
     })
   }
 
   async werewolfDayVotes(): Promise<WerewolfDayVotes> {
-    return this.request<WerewolfDayVotes>('/werewolf/day/votes')
+    return this.request<WerewolfDayVotes>('/phantomnight/day/votes')
   }
 
   async werewolfPhantomChat(): Promise<{ messages: PhantomChatMessage[] }> {
-    return this.request<{ messages: PhantomChatMessage[] }>('/werewolf/phantom-chat')
+    return this.request<{ messages: PhantomChatMessage[] }>('/phantomnight/phantom-chat')
   }
 
   async werewolfSendPhantomChat(message: string): Promise<PhantomChatMessage> {
-    return this.request<PhantomChatMessage>('/werewolf/phantom-chat', {
+    return this.request<PhantomChatMessage>('/phantomnight/phantom-chat', {
       method: 'POST',
       body: JSON.stringify({ message }),
     })
@@ -1509,22 +1509,22 @@ class ApiClient {
     const params = new URLSearchParams()
     params.set('limit', limit.toString())
     params.set('offset', offset.toString())
-    return this.request<{ games: WerewolfGame[]; total: number }>(`/werewolf/games?${params}`)
+    return this.request<{ games: WerewolfGame[]; total: number }>(`/phantomnight/games?${params}`)
   }
 
   async werewolfGameDetail(gameId: string): Promise<WerewolfGame> {
-    return this.request<WerewolfGame>(`/werewolf/games/${gameId}`)
+    return this.request<WerewolfGame>(`/phantomnight/games/${gameId}`)
   }
 
   async werewolfGamePlayers(gameId: string): Promise<WerewolfPlayer[]> {
-    return this.request<WerewolfPlayer[]>(`/werewolf/games/${gameId}/players`)
+    return this.request<WerewolfPlayer[]>(`/phantomnight/games/${gameId}/players`)
   }
 
   async werewolfGameEvents(gameId: string, limit = 50, offset = 0): Promise<{ events: WerewolfEvent[]; total: number }> {
     const params = new URLSearchParams()
     params.set('limit', limit.toString())
     params.set('offset', offset.toString())
-    return this.request<{ events: WerewolfEvent[]; total: number }>(`/werewolf/games/${gameId}/events?${params}`)
+    return this.request<{ events: WerewolfEvent[]; total: number }>(`/phantomnight/games/${gameId}/events?${params}`)
   }
 }
 

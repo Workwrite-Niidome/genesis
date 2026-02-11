@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 function CallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { setToken } = useAuthStore()
+  const { setToken, fetchMe } = useAuthStore()
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -21,12 +21,18 @@ function CallbackContent() {
     }
 
     if (token) {
+      // Set the token first, then wait for fetchMe to complete before navigating
       setToken(token)
-      router.replace('/')
+      fetchMe().then(() => {
+        router.replace('/')
+      }).catch(() => {
+        // fetchMe handles its own error state, just navigate
+        router.replace('/')
+      })
     } else {
       setError('No authentication token received')
     }
-  }, [searchParams, setToken, router])
+  }, [searchParams, setToken, fetchMe, router])
 
   if (error) {
     return (

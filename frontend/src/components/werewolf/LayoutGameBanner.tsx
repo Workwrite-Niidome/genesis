@@ -49,7 +49,7 @@ export default function LayoutGameBanner() {
 
   return (
     <Link
-      href="/werewolf"
+      href="/phantomnight"
       className={`block px-4 py-2 text-sm font-medium border-b transition-colors ${
         isNight
           ? 'bg-purple-950/50 border-purple-800/30 text-purple-200 hover:bg-purple-950/70'

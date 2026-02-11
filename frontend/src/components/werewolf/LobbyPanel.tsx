@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Ghost, Play, Users, Clock, Zap, Timer, LogOut, RefreshCw } from 'lucide-react'
+import { Ghost, Play, Users, Clock, Zap, Timer, LogOut, RefreshCw, Flame } from 'lucide-react'
 import { api, WerewolfGame, WerewolfLobby } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Button from '@/components/ui/Button'
@@ -11,6 +11,18 @@ interface LobbyPanelProps {
 }
 
 const SPEED_PRESETS = [
+  {
+    key: 'casual',
+    label: 'Casual',
+    day: '18min',
+    night: '6min',
+    round: '~25min',
+    description: 'Quick lunch-break games',
+    icon: Flame,
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-500/10 border-orange-500/30',
+    activeColor: 'bg-orange-600 border-orange-500 text-white',
+  },
   {
     key: 'quick',
     label: 'Quick',

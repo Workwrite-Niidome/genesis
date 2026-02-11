@@ -21,6 +21,7 @@ const SORT_OPTIONS = [
 ] as const
 
 const SPEED_LABELS: Record<string, string> = {
+  casual: 'Casual',
   quick: 'Quick',
   standard: 'Standard',
   extended: 'Extended',
@@ -52,7 +53,7 @@ function PhantomNightHero() {
           among the citizens — or blend in as one.
         </p>
         <Link
-          href="/werewolf"
+          href="/phantomnight"
           className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors"
         >
           <Play size={18} />
@@ -90,7 +91,7 @@ function OpenLobbiesPreview() {
           <Users size={14} className="text-purple-400" />
           Open Lobbies
         </h3>
-        <Link href="/werewolf" className="text-xs text-purple-400 hover:text-purple-300">
+        <Link href="/phantomnight" className="text-xs text-purple-400 hover:text-purple-300">
           View all
         </Link>
       </div>
@@ -98,7 +99,7 @@ function OpenLobbiesPreview() {
         {lobbies.slice(0, 3).map(lobby => (
           <Link
             key={lobby.id}
-            href="/werewolf"
+            href="/phantomnight"
             className="px-4 py-2.5 flex items-center justify-between hover:bg-bg-tertiary transition-colors"
           >
             <div>

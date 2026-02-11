@@ -31,10 +31,26 @@ from app.services.notification import create_notification
 logger = logging.getLogger(__name__)
 
 SPEED_PRESETS = {
-    "quick": {"day_hours": 3, "night_hours": 1},
+    "casual":   {"day_hours": 1, "night_hours": 1, "day_minutes": 18, "night_minutes": 6},
+    "quick":    {"day_hours": 3, "night_hours": 1},
     "standard": {"day_hours": 8, "night_hours": 2},
     "extended": {"day_hours": 20, "night_hours": 4},
 }
+
+def _phase_timedelta(game, phase: str) -> timedelta:
+    """Get the actual timedelta for a phase, respecting minute-level presets."""
+    preset = SPEED_PRESETS.get(game.speed or "standard", {})
+    if phase == "day":
+        mins = preset.get("day_minutes")
+        if mins:
+            return timedelta(minutes=mins)
+        return timedelta(hours=game.day_duration_hours or 20)
+    else:
+        mins = preset.get("night_minutes")
+        if mins:
+            return timedelta(minutes=mins)
+        return timedelta(hours=game.night_duration_hours or 4)
+
 
 NARRATOR_NAME = "The Narrator"
 NARRATOR_DESCRIPTION = "The voice of Phantom Night. I announce events, set the scene, and keep the game moving."
@@ -324,7 +340,7 @@ async def quick_start_game(
             f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
             f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
             f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
-            f"Vote to eliminate at /werewolf"
+            f"Vote to eliminate at /phantomnight"
         ),
         game_id=game.id,
     )
@@ -390,6 +406,9 @@ async def create_game_lobby(
     db.add(wr)
     creator.current_game_id = game.id
 
+    await db.flush()
+    await db.refresh(game, ["roles"])
+
     logger.info(
         f"Lobby #{game_number} created by {creator.name} "
         f"({max_players} players, {speed} speed)"
@@ -439,6 +458,8 @@ async def join_game_lobby(
     )
     db.add(wr)
     resident.current_game_id = game.id
+    await db.flush()
+    await db.refresh(game, ["roles"])
 
     logger.info(f"{resident.name} joined lobby #{game.game_number}")
     return game
@@ -489,6 +510,8 @@ async def leave_game_lobby(
     if resident:
         resident.current_game_id = None
 
+    await db.flush()
+    await db.refresh(game, ["roles"])
     logger.info(f"Player left lobby #{game.game_number}")
     return game
 
@@ -574,7 +597,7 @@ async def start_game(
     game.current_phase = "day"
     game.current_round = 1
     game.phase_started_at = now
-    game.phase_ends_at = now + timedelta(hours=day_hours)
+    game.phase_ends_at = now + _phase_timedelta(game, "day")
     game.total_players = total
     game.phantom_count = role_counts["phantom"]
     game.citizen_count = role_counts["citizen"]
@@ -626,7 +649,7 @@ async def start_game(
             f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
             f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
             f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
-            f"Vote to eliminate at /werewolf"
+            f"Vote to eliminate at /phantomnight"
         ),
         game_id=game.id,
     )
@@ -973,13 +996,18 @@ async def get_vote_tally(db: AsyncSession, game_id: UUID, round_number: int) -> 
     )
     rows = result.all()
 
+    # Batch-load all target names
+    target_ids = [target_id for target_id, _ in rows]
+    name_map = {}
+    if target_ids:
+        name_res = await db.execute(
+            select(Resident.id, Resident.name).where(Resident.id.in_(target_ids))
+        )
+        name_map = {r.id: r.name for r in name_res.all()}
+
     tally = []
     for target_id, count in rows:
-        # Get resident name
-        res = await db.execute(
-            select(Resident.name).where(Resident.id == target_id)
-        )
-        name = res.scalar_one_or_none() or "unknown"
+        name = name_map.get(target_id, "unknown")
         tally.append({"target_id": str(target_id), "target_name": name, "votes": count})
 
     return tally
@@ -1070,7 +1098,7 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
     game.current_phase = "night"
     game.status = "night"
     game.phase_started_at = now
-    game.phase_ends_at = now + timedelta(hours=game.night_duration_hours)
+    game.phase_ends_at = now + _phase_timedelta(game, "night")
 
     # Reset night action flags
     alive_players = await get_alive_players(db, game.id)
@@ -1181,7 +1209,7 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
     game.current_phase = "day"
     game.status = "day"
     game.phase_started_at = now
-    game.phase_ends_at = now + timedelta(hours=game.day_duration_hours)
+    game.phase_ends_at = now + _phase_timedelta(game, "day")
 
     # Reset day vote flags
     alive_players = await get_alive_players(db, game.id)
@@ -1229,7 +1257,7 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
             f"The Phantoms still lurk among you.\n\n"
             f"Discuss below. Who do you suspect? Who is defending too hard? "
             f"Who has been suspiciously quiet?\n\n"
-            f"You have {game.day_duration_hours} hours to vote at /werewolf"
+            f"You have {game.day_duration_hours} hours to vote at /phantomnight"
         ),
     )
 
