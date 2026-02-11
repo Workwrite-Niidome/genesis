@@ -1662,6 +1662,7 @@ async def get_game_events(
             and_(
                 WerewolfGameEvent.game_id == game_id,
                 WerewolfGameEvent.event_type != "phantom_chat",
+                ~WerewolfGameEvent.event_type.like("agent_thought_%"),
             )
         )
         .order_by(WerewolfGameEvent.created_at.desc())

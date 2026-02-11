@@ -1509,21 +1509,14 @@ def _get_phase_minutes(game) -> float:
 
 
 async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """Execute night action for an AI agent based on their werewolf role.
-
-    Uses timing gate so agents act at staggered times throughout the night phase.
-    Strategic target selection via werewolf_strategy scoring functions.
-    """
+    """Execute night action via LLM thinking engine with timing gates."""
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
         submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
         submit_debugger_identify,
     )
-    from app.services.werewolf_strategy import (
-        build_game_context, score_phantom_targets, score_oracle_targets,
-        score_guardian_targets, score_debugger_targets, get_post_stats,
-        compute_emotional_state, maybe_inject_mistake,
-    )
+    from app.services.werewolf_strategy import build_game_context, compute_emotional_state
+    from app.services.werewolf_llm_brain import think_and_act, find_player_by_name
 
     game = await get_resident_game(db, agent.id)
     if not game or game.current_phase != "night":
@@ -1533,7 +1526,11 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
     if not role or not role.is_alive or role.night_action_taken:
         return 0
 
-    # Timing gate — stagger night actions across the phase
+    # Only roles with night actions
+    if role.role in ("citizen", "fanatic"):
+        return 0
+
+    # Timing gate
     pk = profile.get('personality_key', 'casual')
     traits = profile.get('traits', {})
     phase_mins = _get_phase_minutes(game)
@@ -1551,72 +1548,62 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
     try:
         ctx = await build_game_context(db, agent, game, role, profile)
         emotion = compute_emotional_state(ctx, traits)
-        skill = traits.get('skill_level', 0.5)
+
+        # Build system prompt
+        personality = profile.get('personality', {})
+        teammates = None
+        if role.team == "phantoms":
+            teammates = [p.resident.name for p in alive
+                         if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
+        werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+        system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
+
+        # LLM thinking engine
+        result = await think_and_act(
+            db, agent, game, role, profile, "night",
+            ctx=ctx, emotion=emotion, system_prompt=system,
+        )
+
+        if result and 'target' in result:
+            target = find_player_by_name(ctx, result['target'])
+        else:
+            target = None
+        if not target:
+            target = random.choice(alive_others)
+
+        target_name = target.resident.name if target.resident else "someone"
 
         if role.role == "phantom":
-            ranked = score_phantom_targets(ctx, skill=skill, emotion=emotion)
-            if not ranked:
-                return 0
-            ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
-            target = ranked[0][0]
             await submit_phantom_attack(db, game, agent.id, target.resident_id)
-            target_name = target.resident.name if target.resident else "someone"
             _add_memory(db, agent.id,
                 f"Attacked {target_name} as Phantom in game #{game.game_number}",
                 'werewolf_action', importance=0.7, sentiment=-0.1,
                 related_resident_ids=[target.resident_id])
-            return 1
 
         elif role.role == "oracle":
-            ranked = score_oracle_targets(ctx, skill=skill, emotion=emotion)
-            if not ranked:
-                target = random.choice(alive_others)
-            else:
-                ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
-                target = ranked[0][0]
             await submit_oracle_investigation(db, game, agent.id, target.resident_id)
-            target_name = target.resident.name if target.resident else "someone"
             _add_memory(db, agent.id,
                 f"Investigated {target_name} as Oracle in game #{game.game_number}",
                 'werewolf_action', importance=0.7, sentiment=0.0,
                 related_resident_ids=[target.resident_id])
-            return 1
 
         elif role.role == "guardian":
-            ranked = score_guardian_targets(ctx, skill=skill, emotion=emotion)
-            if not ranked:
-                target = random.choice(alive_others)
-            else:
-                ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
-                target = ranked[0][0]
             await submit_guardian_protection(db, game, agent.id, target.resident_id)
-            target_name = target.resident.name if target.resident else "someone"
             _add_memory(db, agent.id,
                 f"Protected {target_name} as Guardian in game #{game.game_number}",
                 'werewolf_action', importance=0.5, sentiment=0.2,
                 related_resident_ids=[target.resident_id])
             await _update_rel(db, agent.id, target.resident_id,
                               trust_change=0.03, familiarity_change=0.05)
-            return 1
 
         elif role.role == "debugger":
-            # Get SNS post stats for human detection
-            player_ids = [p.resident_id for p in alive_others]
-            post_stats = await get_post_stats(db, player_ids)
-            ranked = score_debugger_targets(ctx, post_stats=post_stats,
-                                            skill=skill, emotion=emotion)
-            if not ranked:
-                target = random.choice(alive_others)
-            else:
-                ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
-                target = ranked[0][0]
             await submit_debugger_identify(db, game, agent.id, target.resident_id)
-            target_name = target.resident.name if target.resident else "someone"
             _add_memory(db, agent.id,
                 f"Identified {target_name} as Debugger in game #{game.game_number}",
                 'werewolf_action', importance=0.7, sentiment=0.0,
                 related_resident_ids=[target.resident_id])
-            return 1
+
+        return 1
 
     except ValueError as e:
         logger.debug(f"Agent {agent.name} night action failed: {e}")
@@ -1625,19 +1612,13 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 
 
 async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """Cast or reconsider a day vote with timing gates and strategic scoring.
-
-    A) Initial vote — timing-gated, strategy-driven target selection, always generates reason.
-    B) Vote reconsideration — only thinker/debater/skeptic, only if tally leader pulls ahead.
-    """
+    """Cast or reconsider a day vote with timing gates and LLM-driven target selection."""
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
         submit_day_vote, get_vote_tally,
     )
-    from app.services.werewolf_strategy import (
-        build_game_context, score_vote_targets, build_vote_reason_prompt,
-        compute_emotional_state, maybe_inject_mistake,
-    )
+    from app.services.werewolf_strategy import build_game_context, compute_emotional_state
+    from app.services.werewolf_llm_brain import think_and_act, find_player_by_name
 
     game = await get_resident_game(db, agent.id)
     if not game or game.current_phase != "day":
@@ -1700,17 +1681,39 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
             if leader["votes"] - cur_target_votes < 3:
                 return 0
 
-            # Validate target by role (phantoms shouldn't vote for phantoms)
-            new_target_id = leader["target_id"]
-            new_target_role = next(
-                (p for p in alive_others if str(p.resident_id) == new_target_id), None
+            # Use LLM to decide whether to reconsider
+            ctx = await build_game_context(db, agent, game, role, profile)
+            emotion = compute_emotional_state(ctx, traits)
+            personality = profile.get('personality', {})
+            teammates = None
+            if role.team == "phantoms":
+                teammates = [p.resident.name for p in alive_others
+                             if p.team == "phantoms" and p.resident]
+            werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+            system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
+
+            cur_target_name = next(
+                (t["target_name"] for t in tally if t["target_id"] == str(cur_vote.target_id)), "?"
             )
-            if new_target_role and role.team == "phantoms" and new_target_role.team == "phantoms":
+            result = await think_and_act(
+                db, agent, game, role, profile, "reconsider",
+                ctx=ctx, emotion=emotion, system_prompt=system,
+                leader_name=leader["target_name"],
+                leader_votes=leader["votes"],
+                current_target=cur_target_name,
+            )
+            if not result or result.get('keep'):
                 return 0
 
-            from uuid import UUID as _UUID
-            await submit_day_vote(db, game, agent.id, _UUID(new_target_id),
-                                  reason=f"changed my mind, {leader['target_name']} seems more suspicious now")
+            new_target = find_player_by_name(ctx, result.get('target', ''))
+            if not new_target:
+                return 0
+            # Phantoms shouldn't vote for phantoms
+            if role.team == "phantoms" and new_target.team == "phantoms":
+                return 0
+
+            reason = result.get('reason', 'changed my mind')[:200]
+            await submit_day_vote(db, game, agent.id, new_target.resident_id, reason=reason)
             return 1
         except Exception as e:
             logger.debug(f"Agent {agent.name} vote reconsider failed: {e}")
@@ -1722,34 +1725,35 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
                                     engagement=engagement):
         return 0
 
-    # Discussion skip: very low engagement agents may not vote at all
     if engagement < 0.3 and random.random() > engagement * 2:
         return 0
 
     ctx = await build_game_context(db, agent, game, role, profile)
     emotion = compute_emotional_state(ctx, traits)
-    skill = traits.get('skill_level', 0.5)
-    grudge = traits.get('grudge_tendency', 0.3)
 
-    ranked = score_vote_targets(ctx, skill=skill, emotion=emotion, grudge=grudge)
-    if ranked:
-        ranked = maybe_inject_mistake(ranked, ctx, traits, emotion)
-        target = ranked[0][0]
+    # Build system prompt
+    personality = profile.get('personality', {})
+    teammates = None
+    if role.team == "phantoms":
+        teammates = [p.resident.name for p in alive_others
+                     if p.team == "phantoms" and p.resident]
+    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+    system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
+
+    # LLM thinking engine
+    result = await think_and_act(
+        db, agent, game, role, profile, "vote",
+        ctx=ctx, emotion=emotion, system_prompt=system,
+    )
+
+    if result and 'target' in result:
+        target = find_player_by_name(ctx, result['target'])
+        reason = result.get('reason', '')[:200] or None
     else:
+        target = None
+        reason = None
+    if not target:
         target = random.choice(alive_others)
-
-    # Always generate a vote reason (previously only 40% chance)
-    reason = None
-    try:
-        reason_prompt = build_vote_reason_prompt(ctx, target)
-        personality = profile.get('personality', {})
-        werewolf_ext = get_werewolf_system_prompt_extension(role.role)
-        system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
-        reason = await _throttled_generate(reason_prompt, system)
-        if reason:
-            reason = reason[:200]
-    except Exception:
-        pass
 
     try:
         await submit_day_vote(db, game, agent.id, target.resident_id, reason=reason)
@@ -1767,19 +1771,15 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 
 
 async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """Post role-aware comments with personality-driven slot count, timing gates,
-    reactive accusation responses, and strategic game-state reasoning.
-    """
+    """Post role-aware comments via LLM thinking engine with timing gates."""
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
         NARRATOR_NAME, PHANTOM_NIGHT_REALM,
     )
     from app.models.post import Post
     from app.models.comment import Comment
-    from app.services.werewolf_strategy import (
-        build_game_context, build_discussion_prompt, build_discussion_accused_prompt,
-        compute_emotional_state,
-    )
+    from app.services.werewolf_strategy import build_game_context, compute_emotional_state
+    from app.services.werewolf_llm_brain import think_and_act
 
     game = await get_resident_game(db, agent.id)
     if not game or game.status == "finished":
@@ -1797,7 +1797,6 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     phase_mins = _get_phase_minutes(game)
     engagement = _estimate_engagement(agent.id, game.current_round, traits)
 
-    # Engagement-based discussion skip
     if engagement < 0.3 and random.random() > engagement * 2:
         return 0
 
@@ -1811,12 +1810,7 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
 
     post_res = await db.execute(
         select(Post)
-        .where(
-            and_(
-                Post.author_id == narrator_id,
-                Post.submolt == PHANTOM_NIGHT_REALM,
-            )
-        )
+        .where(and_(Post.author_id == narrator_id, Post.submolt == PHANTOM_NIGHT_REALM))
         .order_by(Post.created_at.desc())
         .limit(1)
     )
@@ -1824,29 +1818,23 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     if not thread:
         return 0
 
-    # Check existing comment count for this agent on this thread
     existing = await db.execute(
         select(func.count()).select_from(Comment).where(
-            and_(
-                Comment.post_id == thread.id,
-                Comment.author_id == agent.id,
-            )
+            and_(Comment.post_id == thread.id, Comment.author_id == agent.id)
         )
     )
     comment_count = existing.scalar() or 0
     max_slots = _DISCUSS_SLOTS.get(pk, 2)
 
-    # Dynamic slot adjustment based on engagement/excitement
-    # (computed without full ctx, using engagement estimate)
     if engagement < 0.3:
-        max_slots = max(1, max_slots - 2)    # nearly silent
+        max_slots = max(1, max_slots - 2)
     elif engagement < 0.5:
-        max_slots = max(1, max_slots - 1)    # quieter
+        max_slots = max(1, max_slots - 1)
 
     if comment_count >= max_slots:
         return 0
 
-    # ── Reactive accusation response (highest priority, bypasses timing) ──
+    # Reactive accusation check
     accused = False
     accuser_id = None
     recent_accuse_check = await db.execute(
@@ -1868,24 +1856,17 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
                                         engagement=engagement):
             return 0
 
-    # ── Build strategic prompt via werewolf_strategy ──
     ctx = await build_game_context(db, agent, game, role, profile)
     emotion = compute_emotional_state(ctx, traits)
-    skill = traits.get('skill_level', 0.5)
 
-    # Excitement-based slot boost (after full emotion computed)
+    # Excitement-based slot boost
     if engagement > 0.8 and emotion.excitement > 0.5:
         max_slots_boosted = min(_DISCUSS_SLOTS.get(pk, 2) + 1, 5)
         if comment_count >= max_slots_boosted:
             return 0
 
-    if accused:
-        prompt = build_discussion_accused_prompt(ctx, emotion=emotion, skill=skill)
-    else:
-        prompt = build_discussion_prompt(ctx, emotion=emotion, skill=skill)
-
+    # Build system prompt
     personality = profile.get('personality', {})
-    # Include teammate names for phantoms
     teammates = None
     if role.team == "phantoms":
         alive = await get_alive_players(db, game.id)
@@ -1894,11 +1875,19 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
     system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
-    text = await _throttled_generate(prompt, system, critical=accused)
-    if not text or len(text) < 5:
+    # LLM thinking engine
+    action = "discuss_accused" if accused else "discuss"
+    result = await think_and_act(
+        db, agent, game, role, profile, action,
+        ctx=ctx, emotion=emotion, system_prompt=system,
+    )
+
+    if not result or 'text' not in result:
         return 0
 
-    text = text[:500]
+    text = result['text'][:500]
+    if len(text) < 5:
+        return 0
 
     comment = Comment(
         post_id=thread.id,
@@ -1908,13 +1897,11 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     db.add(comment)
     thread.comment_count += 1
 
-    # First discussion memory
     if comment_count == 0:
         _add_memory(db, agent.id,
             f"Discussed in Phantom Night #{game.game_number}",
             'werewolf_discuss', importance=0.3, sentiment=0.0)
 
-    # Accused → update relationship with accuser
     if accused and accuser_id:
         await _update_rel(db, agent.id, accuser_id,
                           trust_change=-0.08, familiarity_change=0.05)
@@ -1931,18 +1918,13 @@ _PHANTOM_CHAT_SLOTS = {
 
 
 async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """AI phantoms/fanatics coordinate in the secret team chat.
-
-    Uses strategic context from werewolf_strategy for situation-aware prompts.
-    Creates WerewolfGameEvent with event_type="phantom_chat".
-    """
+    """AI phantoms/fanatics coordinate in secret team chat via LLM thinking engine."""
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
     )
     from app.models.werewolf_game import WerewolfGameEvent
-    from app.services.werewolf_strategy import (
-        build_game_context, build_phantom_chat_prompt,
-    )
+    from app.services.werewolf_strategy import build_game_context, compute_emotional_state
+    from app.services.werewolf_llm_brain import think_and_act
 
     game = await get_resident_game(db, agent.id)
     if not game or game.status not in ("day", "night"):
@@ -1958,11 +1940,9 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     engagement = _estimate_engagement(agent.id, game.current_round, traits)
     max_msgs = _PHANTOM_CHAT_SLOTS.get(pk, 1)
 
-    # Engagement-based chat skip
     if engagement < 0.3 and random.random() > engagement * 2:
         return 0
 
-    # Check how many chat messages this agent already sent this round+phase
     existing_res = await db.execute(
         select(func.count()).select_from(WerewolfGameEvent).where(
             and_(
@@ -1970,7 +1950,7 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
                 WerewolfGameEvent.round_number == game.current_round,
                 WerewolfGameEvent.phase == (game.current_phase or "day"),
                 WerewolfGameEvent.event_type == "phantom_chat",
-                WerewolfGameEvent.target_id == agent.id,  # target_id = sender for chat
+                WerewolfGameEvent.target_id == agent.id,
             )
         )
     )
@@ -1978,30 +1958,33 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     if sent_count >= max_msgs:
         return 0
 
-    # Timing gate for this chat slot
     slot_action = f"phantom_chat_{sent_count}"
     if not _werewolf_should_act_now(agent.id, game.current_round, slot_action,
                                     game.phase_started_at, phase_mins, pk,
                                     engagement=engagement):
         return 0
 
-    # Build strategic prompt via werewolf_strategy
     ctx = await build_game_context(db, agent, game, role, profile)
-    action_prompt = build_phantom_chat_prompt(ctx)
+    emotion = compute_emotional_state(ctx, traits)
 
     alive = await get_alive_players(db, game.id)
     teammates = [p.resident.name for p in alive
                  if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
-
     personality = profile.get('personality', {})
     werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
     system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
-    text = await _throttled_generate(action_prompt, system)
-    if not text or len(text) < 3:
+    result = await think_and_act(
+        db, agent, game, role, profile, "phantom_chat",
+        ctx=ctx, emotion=emotion, system_prompt=system,
+    )
+
+    if not result or 'text' not in result:
         return 0
 
-    text = text[:300]
+    text = result['text'][:300]
+    if len(text) < 3:
+        return 0
 
     event = WerewolfGameEvent(
         game_id=game.id,
@@ -2009,7 +1992,7 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
         phase=game.current_phase or "day",
         event_type="phantom_chat",
         message=text,
-        target_id=agent.id,  # target_id = sender for phantom_chat
+        target_id=agent.id,
     )
     db.add(event)
     return 1
