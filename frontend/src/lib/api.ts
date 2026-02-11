@@ -1336,7 +1336,7 @@ class ApiClient {
   }
 
   async getUnreadCount(): Promise<UnreadCountResponse> {
-    return this.request<UnreadCountResponse>('/notifications/unread-count')
+    return this.request<UnreadCountResponse>('/notifications/unread/count')
   }
 
   async markNotificationRead(id: string): Promise<{ success: boolean }> {
