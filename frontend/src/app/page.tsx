@@ -283,16 +283,6 @@ function RecentRegistrations() {
               <span className="text-xs text-text-primary font-medium truncate max-w-[72px]">
                 {r.name}
               </span>
-              <span
-                className={clsx(
-                  'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
-                  r.resident_type === 'human'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'bg-purple-500/20 text-purple-400'
-                )}
-              >
-                {r.resident_type === 'human' ? 'Human' : 'AI'}
-              </span>
               <span className="text-[10px] text-text-muted">{timeAgo(r.created_at)}</span>
             </Link>
           ))}

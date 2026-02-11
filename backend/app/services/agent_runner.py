@@ -1458,14 +1458,17 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
     """Execute night action for an AI agent based on their werewolf role.
 
     Uses timing gate so agents act at staggered times throughout the night phase.
-    Phantoms coordinate via phantom_chat messages to pick targets.
+    Strategic target selection via werewolf_strategy scoring functions.
     """
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
         submit_phantom_attack, submit_oracle_investigation, submit_guardian_protection,
-        submit_debugger_identify, get_vote_tally,
+        submit_debugger_identify,
     )
-    from app.models.werewolf_game import WerewolfGameEvent
+    from app.services.werewolf_strategy import (
+        build_game_context, score_phantom_targets, score_oracle_targets,
+        score_guardian_targets, score_debugger_targets, get_post_stats,
+    )
 
     game = await get_resident_game(db, agent.id)
     if not game or game.current_phase != "night":
@@ -1488,114 +1491,43 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
         return 0
 
     try:
+        ctx = await build_game_context(db, agent, game, role, profile)
+
         if role.role == "phantom":
-            # Target citizens only
-            targets = [p for p in alive_others if p.team == "citizens"]
-            if not targets:
+            ranked = score_phantom_targets(ctx)
+            if not ranked:
                 return 0
-
-            # Check phantom_chat for coordinated targeting (name mentions)
-            chat_res = await db.execute(
-                select(WerewolfGameEvent).where(
-                    and_(
-                        WerewolfGameEvent.game_id == game.id,
-                        WerewolfGameEvent.round_number == game.current_round,
-                        WerewolfGameEvent.event_type == "phantom_chat",
-                    )
-                )
-            )
-            chat_msgs = chat_res.scalars().all()
-
-            # Count name mentions in chat to find coordinated target
-            mention_counts = {}
-            for t in targets:
-                name = t.resident.name if t.resident else ""
-                if name:
-                    count = sum(1 for m in chat_msgs if name.lower() in m.message.lower())
-                    if count > 0:
-                        mention_counts[t.resident_id] = count
-
-            if mention_counts:
-                # Prefer most-mentioned citizen target
-                best_id = max(mention_counts, key=mention_counts.get)
-                target = next((t for t in targets if t.resident_id == best_id), None)
-                if target:
-                    await submit_phantom_attack(db, game, agent.id, target.resident_id)
-                    return 1
-
-            # Fallback: multi-factor scoring (karma + randomness)
-            def _phantom_score(p):
-                karma = p.resident.karma if p.resident else 0
-                return karma + random.uniform(-30, 30)
-            targets.sort(key=_phantom_score, reverse=True)
-            target = targets[0]
+            target = ranked[0][0]
             await submit_phantom_attack(db, game, agent.id, target.resident_id)
             return 1
 
         elif role.role == "oracle":
-            # Investigate someone not yet investigated
-            investigated_ids = {
-                r.get("target_id") for r in (role.investigation_results or [])
-            }
-            targets = [
-                p for p in alive_others
-                if str(p.resident_id) not in investigated_ids
-            ]
-            if not targets:
-                targets = alive_others
-
-            # Prefer mid-karma targets (phantoms blend in, don't stand out)
-            if targets:
-                karmas = [p.resident.karma if p.resident else 0 for p in targets]
-                median_karma = sorted(karmas)[len(karmas) // 2] if karmas else 0
-
-                def _oracle_score(p):
-                    karma = p.resident.karma if p.resident else 0
-                    # Closer to median = higher score (phantoms hide in the middle)
-                    distance = abs(karma - median_karma)
-                    return -distance + random.uniform(-20, 20)
-                targets.sort(key=_oracle_score, reverse=True)
-
-            target = targets[0]
+            ranked = score_oracle_targets(ctx)
+            if not ranked:
+                target = random.choice(alive_others)
+            else:
+                target = ranked[0][0]
             await submit_oracle_investigation(db, game, agent.id, target.resident_id)
             return 1
 
         elif role.role == "guardian":
-            targets = [p for p in alive_others if p.team == "citizens"]
-            if not targets:
-                targets = alive_others
-
-            if random.random() < 0.60:
-                # 60%: protect highest-value citizen
-                targets.sort(key=lambda p: p.resident.karma if p.resident else 0, reverse=True)
-                target = targets[0]
+            ranked = score_guardian_targets(ctx)
+            if not ranked:
+                target = random.choice(alive_others)
             else:
-                # 40%: random protection (unpredictable to phantoms)
-                # In round 2+, consider protecting whoever received most day votes
-                # (phantom target candidate — they might be attacked next)
-                if game.current_round >= 2:
-                    try:
-                        tally = await get_vote_tally(db, game.id, game.current_round - 1)
-                        if tally:
-                            top_voted_id = tally[0]["target_id"]
-                            voted_target = next(
-                                (p for p in targets if str(p.resident_id) == top_voted_id), None
-                            )
-                            if voted_target and random.random() < 0.5:
-                                target = voted_target
-                                await submit_guardian_protection(db, game, agent.id, target.resident_id)
-                                return 1
-                    except Exception:
-                        pass
-                target = random.choice(targets)
-
+                target = ranked[0][0]
             await submit_guardian_protection(db, game, agent.id, target.resident_id)
             return 1
 
         elif role.role == "debugger":
-            targets = list(alive_others)
-            targets.sort(key=lambda p: p.resident.karma if p.resident else 0, reverse=True)
-            target = random.choice(targets[:min(5, len(targets))])
+            # Get SNS post stats for human detection
+            player_ids = [p.resident_id for p in alive_others]
+            post_stats = await get_post_stats(db, player_ids)
+            ranked = score_debugger_targets(ctx, post_stats=post_stats)
+            if not ranked:
+                target = random.choice(alive_others)
+            else:
+                target = ranked[0][0]
             await submit_debugger_identify(db, game, agent.id, target.resident_id)
             return 1
 
@@ -1606,14 +1538,17 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 
 
 async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """Cast or reconsider a day vote with timing gates and bandwagon influence.
+    """Cast or reconsider a day vote with timing gates and strategic scoring.
 
-    A) Initial vote — timing-gated, personality-driven bandwagon chance, LLM reasoning.
+    A) Initial vote — timing-gated, strategy-driven target selection, always generates reason.
     B) Vote reconsideration — only thinker/debater/skeptic, only if tally leader pulls ahead.
     """
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
         submit_day_vote, get_vote_tally,
+    )
+    from app.services.werewolf_strategy import (
+        build_game_context, score_vote_targets, build_vote_reason_prompt,
     )
 
     game = await get_resident_game(db, agent.id)
@@ -1695,66 +1630,25 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
                                     game.phase_started_at, phase_mins, pk):
         return 0
 
-    target = None
-    reason = None
-
-    # Check bandwagon influence first
-    bandwagon_prob = _BANDWAGON_CHANCE.get(pk, 0.35)
-    if random.random() < bandwagon_prob:
-        try:
-            tally = await get_vote_tally(db, game.id, game.current_round)
-            if tally and tally[0]["votes"] >= 2:
-                leader_id = tally[0]["target_id"]
-                leader_target = next(
-                    (p for p in alive_others if str(p.resident_id) == leader_id), None
-                )
-                # Validate: phantoms shouldn't bandwagon onto fellow phantoms
-                if leader_target:
-                    if not (role.team == "phantoms" and leader_target.team == "phantoms"):
-                        target = leader_target
-        except Exception:
-            pass
-
-    # Role-specific targeting if no bandwagon
-    if not target:
-        if role.role == "phantom":
-            citizens = [p for p in alive_others if p.team == "citizens"]
-            if citizens:
-                target = random.choice(citizens)
-
-        elif role.role == "oracle":
-            phantom_ids = {
-                r["target_id"] for r in (role.investigation_results or [])
-                if r.get("result") == "phantom"
-            }
-            phantoms_found = [p for p in alive_others if str(p.resident_id) in phantom_ids]
-            if phantoms_found:
-                target = random.choice(phantoms_found)
-
-        elif role.role == "fanatic":
-            citizens = [p for p in alive_others if p.team == "citizens"]
-            if citizens:
-                target = random.choice(citizens)
-
-    if not target:
+    ctx = await build_game_context(db, agent, game, role, profile)
+    ranked = score_vote_targets(ctx)
+    if ranked:
+        target = ranked[0][0]
+    else:
         target = random.choice(alive_others)
 
-    # LLM vote reasoning (~40% chance)
-    if random.random() < 0.40:
-        try:
-            target_name = target.resident.name if target.resident else "someone"
-            reason_prompt = (
-                f"You're voting to eliminate {target_name} in a Phantom Night game. "
-                f"Give a SHORT reason (1 sentence) why they seem suspicious. Be specific."
-            )
-            personality = profile.get('personality', {})
-            werewolf_ext = get_werewolf_system_prompt_extension(role.role)
-            system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
-            reason = await _throttled_generate(reason_prompt, system)
-            if reason:
-                reason = reason[:200]
-        except Exception:
-            pass
+    # Always generate a vote reason (previously only 40% chance)
+    reason = None
+    try:
+        reason_prompt = build_vote_reason_prompt(ctx, target)
+        personality = profile.get('personality', {})
+        werewolf_ext = get_werewolf_system_prompt_extension(role.role)
+        system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
+        reason = await _throttled_generate(reason_prompt, system)
+        if reason:
+            reason = reason[:200]
+    except Exception:
+        pass
 
     try:
         await submit_day_vote(db, game, agent.id, target.resident_id, reason=reason)
@@ -1766,15 +1660,17 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 
 async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dict) -> int:
     """Post role-aware comments with personality-driven slot count, timing gates,
-    reactive accusation responses, and enhanced game-event context.
+    reactive accusation responses, and strategic game-state reasoning.
     """
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
-        NARRATOR_NAME, PHANTOM_NIGHT_REALM, get_vote_tally,
+        NARRATOR_NAME, PHANTOM_NIGHT_REALM,
     )
     from app.models.post import Post
     from app.models.comment import Comment
-    from app.models.werewolf_game import WerewolfGameEvent
+    from app.services.werewolf_strategy import (
+        build_game_context, build_discussion_prompt, build_discussion_accused_prompt,
+    )
 
     game = await get_resident_game(db, agent.id)
     if not game or game.status == "finished":
@@ -1829,7 +1725,6 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
         return 0
 
     # ── Reactive accusation response (highest priority, bypasses timing) ──
-    # Scan recent comments for agent's name
     accused = False
     recent_accuse_check = await db.execute(
         select(Comment)
@@ -1843,113 +1738,27 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
             break
 
     if not accused:
-        # Normal timing gate — check which slot we're on
         slot_action = f"discuss_{comment_count}"
         if not _werewolf_should_act_now(agent.id, game.current_round, slot_action,
                                         game.phase_started_at, phase_mins, pk):
             return 0
 
-    # ── Build enhanced context ──
+    # ── Build strategic prompt via werewolf_strategy ──
+    ctx = await build_game_context(db, agent, game, role, profile)
 
-    # Recent comments (expanded to 8)
-    recent_comments = await db.execute(
-        select(Comment)
-        .where(Comment.post_id == thread.id)
-        .order_by(Comment.created_at.desc())
-        .limit(8)
-    )
-    thread_context = []
-    for c in recent_comments.scalars().all():
-        author_res = await db.execute(select(Resident.name).where(Resident.id == c.author_id))
-        author_name = author_res.scalar_one_or_none() or "someone"
-        thread_context.append(f"{author_name}: {c.content[:200]}")
-
-    context_text = "\n".join(reversed(thread_context)) if thread_context else "(No comments yet)"
-
-    # Game events — recent eliminations, attacks, protections
-    events_res = await db.execute(
-        select(WerewolfGameEvent).where(
-            and_(
-                WerewolfGameEvent.game_id == game.id,
-                WerewolfGameEvent.event_type != "phantom_chat",
-            )
-        )
-        .order_by(WerewolfGameEvent.created_at.desc())
-        .limit(5)
-    )
-    event_lines = []
-    for ev in events_res.scalars().all():
-        event_lines.append(f"- {ev.message}")
-    events_text = "\n".join(reversed(event_lines)) if event_lines else ""
-
-    # Vote tally
-    tally_text = ""
-    try:
-        tally = await get_vote_tally(db, game.id, game.current_round)
-        if tally:
-            parts = [f"{t['target_name']}={t['votes']}" for t in tally[:5]]
-            tally_text = f"Current votes: {', '.join(parts)}"
-    except Exception:
-        pass
-
-    # Alive players
-    alive = await get_alive_players(db, game.id)
-    alive_names = [p.resident.name for p in alive if p.resident and p.resident_id != agent.id]
-
-    game_state = (
-        f"Game #{game.game_number}, Day {game.current_round}. "
-        f"{len(alive)} players alive."
-    )
-
-    # Role-specific hints
-    discussion_hints = {
-        "phantom": "Deflect suspicion. Point fingers at someone else. Act like a concerned citizen.",
-        "citizen": "Share your suspicions. Who has been acting weird? Push for answers.",
-        "oracle": (
-            "Hint at your knowledge without revealing your role too early."
-            + (f" You know: {', '.join(r['target_name'] + '=' + r['result'] for r in (role.investigation_results or []))}" if role.investigation_results else "")
-        ),
-        "guardian": "Participate in discussion normally. Don't reveal your role. Support logical arguments.",
-        "fanatic": "Create confusion. Accuse citizens. Maybe fake-claim Oracle.",
-        "debugger": "Discuss who seems like AI vs human. Read the posts carefully. Share behavioral observations.",
-    }
-    hint = discussion_hints.get(role.role, "Share your thoughts on who the Phantoms might be.")
-
-    # Build prompt
     if accused:
-        prompt = (
-            f"You are in a Phantom Night game discussion. {game_state}\n"
-            f"Alive players: {', '.join(alive_names[:15])}\n\n"
-        )
-        if events_text:
-            prompt += f"Recent events:\n{events_text}\n\n"
-        if tally_text:
-            prompt += f"{tally_text}\n\n"
-        prompt += (
-            f"Recent discussion:\n{context_text}\n\n"
-            f"Someone just accused or mentioned YOU ({agent.name}) in the discussion. "
-            f"Respond naturally — be defensive, confused, or redirect suspicion to someone else. "
-            f"Write a SHORT response (1-2 sentences). Don't reveal your role."
-        )
+        prompt = build_discussion_accused_prompt(ctx)
     else:
-        prompt = (
-            f"You are in a Phantom Night game discussion thread. {game_state}\n"
-        )
-        if events_text:
-            prompt += f"Recent events:\n{events_text}\n\n"
-        if tally_text:
-            prompt += f"{tally_text}\n\n"
-        prompt += (
-            f"Alive players: {', '.join(alive_names[:15])}\n\n"
-            f"Recent discussion:\n{context_text}\n\n"
-            f"Your strategy: {hint}\n\n"
-            f"Write a SHORT comment (1-3 sentences) for the discussion thread. "
-            f"Be natural. Don't say 'as a citizen' or reveal your role directly. "
-            f"Reference specific events or players when possible."
-        )
+        prompt = build_discussion_prompt(ctx)
 
     personality = profile.get('personality', {})
-    werewolf_ext = get_werewolf_system_prompt_extension(role.role)
+    # Include teammate names for phantoms
+    teammates = None
+    if role.team == "phantoms":
+        alive = await get_alive_players(db, game.id)
+        teammates = [p.resident.name for p in alive
+                     if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
+    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
     system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
     text = await _throttled_generate(prompt, system, critical=accused)
@@ -1979,13 +1788,16 @@ _PHANTOM_CHAT_SLOTS = {
 async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile: dict) -> int:
     """AI phantoms/fanatics coordinate in the secret team chat.
 
-    Phase-specific prompts for night (attack coordination) and day (framing strategy).
+    Uses strategic context from werewolf_strategy for situation-aware prompts.
     Creates WerewolfGameEvent with event_type="phantom_chat".
     """
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
     )
     from app.models.werewolf_game import WerewolfGameEvent
+    from app.services.werewolf_strategy import (
+        build_game_context, build_phantom_chat_prompt,
+    )
 
     game = await get_resident_game(db, agent.id)
     if not game or game.status not in ("day", "night"):
@@ -2021,55 +1833,13 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
                                     game.phase_started_at, phase_mins, pk):
         return 0
 
-    # Get existing chat messages for context
-    chat_res = await db.execute(
-        select(WerewolfGameEvent).where(
-            and_(
-                WerewolfGameEvent.game_id == game.id,
-                WerewolfGameEvent.event_type == "phantom_chat",
-            )
-        )
-        .order_by(WerewolfGameEvent.created_at.desc())
-        .limit(10)
-    )
-    chat_context = []
-    for msg in chat_res.scalars().all():
-        if msg.target_id:
-            sender_res = await db.execute(
-                select(Resident.name).where(Resident.id == msg.target_id)
-            )
-            sender_name = sender_res.scalar_one_or_none() or "teammate"
-        else:
-            sender_name = "teammate"
-        chat_context.append(f"{sender_name}: {msg.message[:200]}")
-    chat_text = "\n".join(reversed(chat_context)) if chat_context else "(No messages yet)"
+    # Build strategic prompt via werewolf_strategy
+    ctx = await build_game_context(db, agent, game, role, profile)
+    action_prompt = build_phantom_chat_prompt(ctx)
 
-    # Get teammate names and alive citizens
     alive = await get_alive_players(db, game.id)
     teammates = [p.resident.name for p in alive
                  if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
-    citizens = [p.resident.name for p in alive
-                if p.team == "citizens" and p.resident]
-
-    # Phase-specific prompt
-    if game.current_phase == "night":
-        action_prompt = (
-            f"You're in the Phantom team secret chat (night phase, round {game.current_round}).\n"
-            f"Teammates: {', '.join(teammates) if teammates else 'none visible'}\n"
-            f"Alive citizens: {', '.join(citizens[:10])}\n\n"
-            f"Recent team chat:\n{chat_text}\n\n"
-            f"Suggest who to attack tonight, or respond to your teammates. "
-            f"1-2 sentences max. Be strategic."
-        )
-    else:
-        action_prompt = (
-            f"You're in the Phantom team secret chat (day phase, round {game.current_round}).\n"
-            f"Teammates: {', '.join(teammates) if teammates else 'none visible'}\n"
-            f"Alive citizens: {', '.join(citizens[:10])}\n\n"
-            f"Recent team chat:\n{chat_text}\n\n"
-            f"Discuss who to frame, who suspects you, or voting strategy. "
-            f"1-2 sentences max. Be strategic."
-        )
 
     personality = profile.get('personality', {})
     werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
