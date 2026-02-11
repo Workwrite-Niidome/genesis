@@ -201,6 +201,7 @@ async def get_current_game_state(
     game = await get_resident_game(db, current_resident.id)
     if not game:
         return None
+    await db.refresh(game, ["roles"])
     return GameResponse.model_validate(game)
 
 
@@ -558,6 +559,10 @@ async def list_games(
     )
     total = result.scalar() or 0
 
+    # Ensure roles are loaded for current_player_count property
+    for g in games:
+        await db.refresh(g, ["roles"])
+
     return GameListResponse(
         games=[GameResponse.model_validate(g) for g in games],
         total=total,
@@ -576,6 +581,7 @@ async def get_game_detail(
     game = result.scalar_one_or_none()
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
+    await db.refresh(game, ["roles"])
     return GameResponse.model_validate(game)
 
 

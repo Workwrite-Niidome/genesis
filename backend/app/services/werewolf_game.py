@@ -345,6 +345,9 @@ async def quick_start_game(
         game_id=game.id,
     )
 
+    await db.flush()
+    await db.refresh(game, ["roles"])
+
     logger.info(
         f"Phantom Night Game #{game_number} quick-started by {creator.name} "
         f"with {total} players"
@@ -653,6 +656,9 @@ async def start_game(
         ),
         game_id=game.id,
     )
+
+    await db.flush()
+    await db.refresh(game, ["roles"])
 
     logger.info(
         f"Phantom Night Game #{game.game_number} started by creator "
@@ -1537,6 +1543,9 @@ async def cancel_game(db: AsyncSession, game_id: UUID) -> WerewolfGame:
     for wr in all_players:
         if wr.resident:
             wr.resident.current_game_id = None
+
+    await db.flush()
+    await db.refresh(game, ["roles"])
 
     logger.info(f"Game #{game.game_number} cancelled")
     return game
