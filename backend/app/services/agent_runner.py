@@ -1566,8 +1566,11 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 
         if result and 'target' in result:
             target = find_player_by_name(ctx, result['target'])
+            if not target:
+                logger.warning(f"LLM Brain: {agent.name} night target '{result['target']}' not found, random fallback")
         else:
             target = None
+            logger.debug(f"LLM Brain: {agent.name} night action returned no target, random fallback")
         if not target:
             target = random.choice(alive_others)
 
@@ -1749,9 +1752,12 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
     if result and 'target' in result:
         target = find_player_by_name(ctx, result['target'])
         reason = result.get('reason', '')[:200] or None
+        if not target:
+            logger.warning(f"LLM Brain: {agent.name} vote target '{result['target']}' not found, random fallback")
     else:
         target = None
         reason = None
+        logger.debug(f"LLM Brain: {agent.name} vote returned no target, random fallback")
     if not target:
         target = random.choice(alive_others)
 

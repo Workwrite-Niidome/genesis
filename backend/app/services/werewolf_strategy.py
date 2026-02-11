@@ -95,12 +95,13 @@ async def build_game_context(
     alive_citizens = [p for p in alive if p.team == "citizens"]
     alive_phantoms = [p for p in alive if p.team == "phantoms"]
 
-    # ── All public events ──
+    # ── All public events (exclude phantom_chat and agent thoughts) ──
     events_res = await db.execute(
         select(WerewolfGameEvent).where(
             and_(
                 WerewolfGameEvent.game_id == game.id,
                 WerewolfGameEvent.event_type != "phantom_chat",
+                ~WerewolfGameEvent.event_type.like("agent_thought_%"),
             )
         ).order_by(WerewolfGameEvent.created_at.asc())
     )
