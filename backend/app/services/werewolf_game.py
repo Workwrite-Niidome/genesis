@@ -192,9 +192,9 @@ async def get_resident_game(db: AsyncSession, resident_id: UUID) -> Optional[Wer
 
 
 async def get_next_game_number(db: AsyncSession) -> int:
-    """Get the next game number (uses row-level lock to prevent duplicates)."""
+    """Get the next game number. Uses a subquery to avoid FOR UPDATE with aggregates."""
     result = await db.execute(
-        select(func.max(WerewolfGame.game_number)).with_for_update()
+        select(func.coalesce(func.max(WerewolfGame.game_number), 0))
     )
     max_num = result.scalar()
     return (max_num or 0) + 1
