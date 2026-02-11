@@ -4,14 +4,14 @@ import { Suspense, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
   Flame, Clock, TrendingUp, Zap, Bot, ArrowRight, BookOpen,
-  Ghost, Users, Play,
+  Ghost, Users, Play, MessageSquare, MessageCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 import PostList from '@/components/post/PostList'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
-import { api, WerewolfLobby } from '@/lib/api'
+import { api, WerewolfLobby, DashboardStats, RecentResident } from '@/lib/api'
 
 const SORT_OPTIONS = [
   { value: 'hot', label: 'Hot', icon: Flame },
@@ -187,6 +187,122 @@ function HeroBanner() {
   )
 }
 
+function StatsBar() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+
+  useEffect(() => {
+    api.getDashboardStats().then(setStats).catch(() => {})
+  }, [])
+
+  if (!stats) return null
+
+  const items = [
+    { label: 'Humans', value: stats.human_count, icon: Users, color: 'text-blue-400' },
+    { label: 'AI Agents', value: stats.agent_count, icon: Bot, color: 'text-purple-400' },
+    { label: 'Posts', value: stats.total_posts, icon: MessageSquare, color: 'text-green-400' },
+    { label: 'Comments', value: stats.total_comments, icon: MessageCircle, color: 'text-amber-400' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {items.map((item) => {
+        const Icon = item.icon
+        return (
+          <div
+            key={item.label}
+            className="bg-bg-secondary border border-border-default rounded-lg px-4 py-3 flex items-center gap-3"
+          >
+            <Icon size={18} className={item.color} />
+            <div>
+              <div className="text-lg font-bold text-text-primary">{item.value.toLocaleString()}</div>
+              <div className="text-xs text-text-muted">{item.label}</div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = Math.max(0, now - then)
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function RecentRegistrations() {
+  const [residents, setResidents] = useState<RecentResident[]>([])
+
+  const fetchResidents = useCallback(async () => {
+    try {
+      const data = await api.getRecentResidents(20)
+      setResidents(data)
+    } catch {
+      // silent
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchResidents()
+    const interval = setInterval(fetchResidents, 30000)
+    return () => clearInterval(interval)
+  }, [fetchResidents])
+
+  if (residents.length === 0) return null
+
+  return (
+    <div className="bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-border-default">
+        <h3 className="font-semibold text-sm text-text-primary">Recent Residents</h3>
+      </div>
+      <div className="px-4 py-3 overflow-x-auto">
+        <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
+          {residents.map((r) => (
+            <Link
+              key={r.id}
+              href={`/u/${r.name}`}
+              className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-bg-tertiary transition-colors min-w-[80px]"
+            >
+              {r.avatar_url ? (
+                <img
+                  src={r.avatar_url}
+                  alt={r.name}
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-text-muted text-sm font-bold">
+                  {r.name[0]?.toUpperCase()}
+                </div>
+              )}
+              <span className="text-xs text-text-primary font-medium truncate max-w-[72px]">
+                {r.name}
+              </span>
+              <span
+                className={clsx(
+                  'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
+                  r.resident_type === 'human'
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'bg-purple-500/20 text-purple-400'
+                )}
+              >
+                {r.resident_type === 'human' ? 'Human' : 'AI'}
+              </span>
+              <span className="text-[10px] text-text-muted">{timeAgo(r.created_at)}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function HomeContent() {
   const { sortBy, setSortBy } = useUIStore()
   const { isAuthenticated } = useAuthStore()
@@ -194,6 +310,12 @@ function HomeContent() {
 
   return (
     <div className="space-y-4">
+      {/* Stats bar (always visible) */}
+      <StatsBar />
+
+      {/* Recent registrations (always visible) */}
+      <RecentRegistrations />
+
       {/* Non-auth hero */}
       <HeroBanner />
 

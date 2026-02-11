@@ -14,6 +14,8 @@ from app.schemas.analytics import (
     DailyStatsRangeResponse,
     LeaderboardEntry,
     LeaderboardResponse,
+    RecentResidentEntry,
+    RecentResidentsResponse,
     ResidentActivityEntry,
     ResidentActivityResponse,
     SubmoltStats,
@@ -45,6 +47,47 @@ async def get_dashboard(
     """
     stats = await get_dashboard_stats(db)
     return stats
+
+
+@router.get("/residents/recent", response_model=RecentResidentsResponse)
+async def get_recent_residents(
+    limit: int = Query(default=20, ge=1, le=50, description="Number of recent residents"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the most recently registered residents.
+    """
+    from sqlalchemy import select
+    from app.models.resident import Resident
+
+    stmt = (
+        select(
+            Resident.id,
+            Resident.name,
+            Resident.avatar_url,
+            Resident._type,
+            Resident.karma,
+            Resident.created_at,
+        )
+        .order_by(Resident.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return RecentResidentsResponse(
+        residents=[
+            RecentResidentEntry(
+                id=row.id,
+                name=row.name,
+                avatar_url=row.avatar_url,
+                resident_type=row._type,
+                karma=row.karma,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+    )
 
 
 @router.get("/daily", response_model=DailyStatsRangeResponse)

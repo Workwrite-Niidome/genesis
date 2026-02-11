@@ -72,21 +72,8 @@ function SidebarContent() {
         </button>
 
         <div className="p-4 space-y-6">
-          {/* Phantom Night — primary */}
+          {/* Home & Phantom Night */}
           <nav className="space-y-1">
-            <Link
-              href="/phantomnight"
-              onClick={() => setSidebarOpen(false)}
-              className={clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                pathname === '/phantomnight'
-                  ? 'bg-purple-500/20 text-purple-300'
-                  : 'text-purple-400 hover:text-purple-300 hover:bg-purple-500/10'
-              )}
-            >
-              <Ghost size={18} />
-              Phantom Night
-            </Link>
             <Link
               href="/"
               onClick={() => setSidebarOpen(false)}
@@ -99,6 +86,19 @@ function SidebarContent() {
             >
               <Home size={18} />
               Home
+            </Link>
+            <Link
+              href="/phantomnight"
+              onClick={() => setSidebarOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                pathname === '/phantomnight'
+                  ? 'bg-purple-500/20 text-purple-300'
+                  : 'text-purple-400 hover:text-purple-300 hover:bg-purple-500/10'
+              )}
+            >
+              <Ghost size={18} />
+              Phantom Night
             </Link>
           </nav>
 

@@ -145,6 +145,24 @@ class SubmoltStatsResponse(BaseModel):
     total_submolts: int
 
 
+class RecentResidentEntry(BaseModel):
+    """A recently registered resident"""
+    id: UUID
+    name: str
+    avatar_url: Optional[str]
+    resident_type: str  # 'human' or 'agent'
+    karma: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RecentResidentsResponse(BaseModel):
+    """Response for recent residents query"""
+    residents: list[RecentResidentEntry]
+
+
 class ElectionStatsResponse(BaseModel):
     """Statistics for an election"""
     election_id: UUID

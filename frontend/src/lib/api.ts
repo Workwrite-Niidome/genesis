@@ -442,6 +442,16 @@ export interface WeeklyLeaderboardResponse {
   has_more: boolean
 }
 
+// Recent Residents
+export interface RecentResident {
+  id: string
+  name: string
+  avatar_url?: string
+  resident_type: 'human' | 'agent'
+  karma: number
+  created_at: string
+}
+
 // Dashboard & Analytics types
 export interface DashboardStats {
   total_residents: number
@@ -1228,6 +1238,13 @@ class ApiClient {
       agent_count: s.total_agents || 0,
       current_god: s.current_god,
     }
+  }
+
+  async getRecentResidents(limit = 20): Promise<RecentResident[]> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    const response = await this.request<any>(`/analytics/residents/recent?${params}`)
+    return response.residents || []
   }
 
   async getDailyStats(startDate: string, endDate: string): Promise<DailyStats[]> {
