@@ -17,7 +17,7 @@ export default function DiscussionTab() {
   const [expandedThread, setExpandedThread] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, CommentType[]>>({})
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, setSubmitting] = useState<Record<string, boolean>>({})
 
   const fetchThreads = useCallback(async (initial = false) => {
     try {
@@ -53,14 +53,14 @@ export default function DiscussionTab() {
 
   const handleSubmitComment = async (postId: string) => {
     const text = (commentInputs[postId] || '').trim()
-    if (!text || submitting) return
-    setSubmitting(true)
+    if (!text || submitting[postId]) return
+    setSubmitting(prev => ({ ...prev, [postId]: true }))
     try {
       await api.createComment(postId, text)
       setCommentInputs(prev => ({ ...prev, [postId]: '' }))
       await loadComments(postId)
     } catch {}
-    setSubmitting(false)
+    setSubmitting(prev => ({ ...prev, [postId]: false }))
   }
 
   const toggleThread = (postId: string) => {
@@ -203,8 +203,8 @@ export default function DiscussionTab() {
                       />
                       <Button
                         onClick={() => handleSubmitComment(thread.id)}
-                        disabled={!(commentInputs[thread.id] || '').trim() || submitting}
-                        isLoading={submitting}
+                        disabled={!(commentInputs[thread.id] || '').trim() || submitting[thread.id]}
+                        isLoading={submitting[thread.id]}
                         variant="primary"
                         className="px-3"
                       >

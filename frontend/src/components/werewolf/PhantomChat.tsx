@@ -30,11 +30,11 @@ export default function PhantomChat() {
       const response = await api.werewolfPhantomChat()
       const newCount = response.messages.length
       setMessages(response.messages)
-      // Only auto-scroll when new messages arrive
+      // Only auto-scroll when new messages arrive (not on every poll)
       if (newCount > prevCountRef.current) {
-        prevCountRef.current = newCount
         setTimeout(() => scrollToBottom(), 50)
       }
+      prevCountRef.current = newCount
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load messages')
     } finally {
@@ -66,7 +66,7 @@ export default function PhantomChat() {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -150,7 +150,7 @@ export default function PhantomChat() {
         <textarea
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={handleKeyPress}
+          onKeyDown={handleKeyDown}
           placeholder="Send a message to your team..."
           className="flex-1 px-3 py-2 bg-bg-tertiary border border-purple-500/30 rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
           rows={2}
