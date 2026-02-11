@@ -259,7 +259,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
           {/* Speed Presets */}
           <div>
             <label className="text-sm font-medium text-text-secondary mb-3 block">Game Speed</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {SPEED_PRESETS.map(preset => {
                 const Icon = preset.icon
                 const isActive = speed === preset.key
@@ -267,19 +267,21 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
                   <button
                     key={preset.key}
                     onClick={() => setSpeed(preset.key)}
-                    className={`p-4 rounded-lg border text-left transition-all ${
+                    className={`p-3.5 rounded-lg border text-left transition-all ${
                       isActive ? preset.activeColor : preset.bgColor + ' hover:opacity-80'
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon size={18} className={isActive ? 'text-white' : preset.color} />
-                      <span className={`font-bold text-sm ${isActive ? 'text-white' : 'text-text-primary'}`}>
+                    <div className="flex items-center gap-2">
+                      <Icon size={16} className={isActive ? 'text-white' : preset.color} />
+                      <span className={`font-semibold text-sm ${isActive ? 'text-white' : 'text-text-primary'}`}>
                         {preset.label}
                       </span>
+                      <span className={`text-xs ml-auto ${isActive ? 'text-white/70' : 'text-text-muted'}`}>
+                        {preset.round}
+                      </span>
                     </div>
-                    <div className={`text-xs space-y-0.5 ${isActive ? 'text-white/80' : 'text-text-muted'}`}>
-                      <div>Day {preset.day} / Night {preset.night}</div>
-                      <div>{preset.description}</div>
+                    <div className={`text-xs mt-1.5 ${isActive ? 'text-white/80' : 'text-text-muted'}`}>
+                      Day {preset.day} / Night {preset.night}
                     </div>
                   </button>
                 )
