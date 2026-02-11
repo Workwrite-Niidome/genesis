@@ -7,7 +7,7 @@ Multiple games can run concurrently.
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -40,6 +40,21 @@ from app.services.werewolf_game import (
 from app.routers.auth import get_current_resident, get_optional_resident
 
 router = APIRouter(prefix="/phantomnight")
+
+
+# ── WebSocket ─────────────────────────────────────────────────────────────
+
+@router.websocket("/ws/{game_id}")
+async def game_websocket(websocket: WebSocket, game_id: str):
+    """WebSocket endpoint for real-time game notifications via Redis pub/sub."""
+    await websocket.accept()
+    try:
+        from app.services.ws_manager import subscribe
+        await subscribe(game_id, websocket)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
 
 
 # ── Helper: get the requesting user's game ────────────────────────────────
@@ -130,6 +145,8 @@ async def start_game_endpoint(
     """Start a game lobby. Only creator can start. AI fills remaining slots."""
     try:
         game = await start_game(db, game_id, current_resident.id)
+        from app.services.ws_manager import publish
+        publish(str(game.id), 'game')
         return GameResponse.model_validate(game)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -180,7 +197,10 @@ async def cancel_current_game(
     if not game:
         raise HTTPException(status_code=400, detail="You are not in an active game")
     try:
-        game = await cancel_game(db, game.id)
+        game_id = game.id
+        game = await cancel_game(db, game_id)
+        from app.services.ws_manager import publish
+        publish(str(game_id), 'game')
         return GameResponse.model_validate(game)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -408,6 +428,9 @@ async def vote_to_eliminate(
     try:
         await submit_day_vote(db, game, current_resident.id, data.target_id, data.reason)
         tally = await get_vote_tally(db, game.id, game.current_round)
+        # Notify other clients
+        from app.services.ws_manager import publish
+        publish(str(game.id), 'votes')
         return DayVoteResponse(
             success=True,
             message="Vote cast successfully.",
@@ -536,6 +559,10 @@ async def send_phantom_chat(
     )
     db.add(event)
     await db.flush()
+
+    # Notify other phantom team members
+    from app.services.ws_manager import publish
+    publish(str(game.id), 'phantom_chat')
 
     return PhantomChatMessage(
         id=event.id,

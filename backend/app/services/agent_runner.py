@@ -1418,6 +1418,10 @@ def _werewolf_action_delay(agent_id, round_num: int, action: str,
     """
     h = _stable_hash(f"{agent_id}:{round_num}:{action}")
     lo, hi = _PERSONALITY_WINDOWS.get(personality_key, (0.10, 0.80))
+    # Compress windows for short phases (< 30 min) so agents act earlier
+    if phase_minutes < 30:
+        lo = min(lo, 0.05)
+        hi = min(hi, 0.50)
     frac = lo + (h % 10000) / 10000.0 * (hi - lo)
     return frac * phase_minutes
 
@@ -2087,6 +2091,58 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     )
     db.add(event)
     return 1
+
+
+async def run_werewolf_agent_cycle():
+    """Dedicated werewolf agent cycle — called every 60s by Celery.
+
+    Only runs werewolf-related functions (discuss, vote, night action, phantom chat).
+    More frequent than the general 5-minute agent cycle so AI agents reliably
+    hit their timing windows in fast games (casual = 18-min phases).
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
+
+    _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    async with _AsyncSession(_engine) as db:
+        result = await db.execute(
+            select(Resident).where(Resident._type == 'agent')
+        )
+        agents = result.scalars().all()
+        if not agents:
+            await _engine.dispose()
+            return
+
+        actions_taken = 0
+        active_game_ids = set()
+
+        for agent in agents:
+            profile = get_agent_profile(agent)
+            try:
+                n = 0
+                n += await agent_werewolf_night_action(agent, db, profile)
+                n += await agent_werewolf_day_vote(agent, db, profile)
+                n += await agent_werewolf_discuss(agent, db, profile)
+                n += await agent_werewolf_phantom_chat(agent, db, profile)
+                actions_taken += n
+                if n > 0 and agent.current_game_id:
+                    active_game_ids.add(str(agent.current_game_id))
+            except Exception as e:
+                logger.debug(f"Agent {agent.name} werewolf cycle error: {e}")
+
+        if actions_taken > 0:
+            await db.commit()
+            # Notify connected WebSocket clients
+            try:
+                from app.services.ws_manager import publish
+                for gid in active_game_ids:
+                    publish(gid, 'comments')
+                    publish(gid, 'votes')
+                    publish(gid, 'phantom_chat')
+            except Exception:
+                pass
+            logger.info(f"Werewolf agent cycle: {actions_taken} actions")
+
+    await _engine.dispose()
 
 
 async def create_additional_agents(count: int = 20):

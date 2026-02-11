@@ -8,7 +8,11 @@ import Button from '@/components/ui/Button'
 import clsx from 'clsx'
 import { MessageCircle, Send, AlertCircle } from 'lucide-react'
 
-export default function PhantomChat() {
+interface PhantomChatProps {
+  refreshTrigger?: number
+}
+
+export default function PhantomChat({ refreshTrigger }: PhantomChatProps) {
   const { resident } = useAuthStore()
   const [messages, setMessages] = useState<PhantomChatMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
@@ -44,9 +48,16 @@ export default function PhantomChat() {
 
   useEffect(() => {
     fetchMessages(true)
-    const interval = setInterval(() => fetchMessages(false), 10000)
+    const interval = setInterval(() => fetchMessages(false), 60000) // Fallback (WebSocket is primary)
     return () => clearInterval(interval)
   }, [])
+
+  // WebSocket-triggered refresh
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      fetchMessages(false)
+    }
+  }, [refreshTrigger])
 
   const handleSend = async () => {
     if (!newMessage.trim()) return

@@ -12,9 +12,10 @@ import { Vote, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react'
 interface DayVotePanelProps {
   players: WerewolfPlayer[]
   myRole: WerewolfMyRole | null
+  refreshTrigger?: number
 }
 
-export default function DayVotePanel({ players, myRole }: DayVotePanelProps) {
+export default function DayVotePanel({ players, myRole, refreshTrigger }: DayVotePanelProps) {
   const { resident } = useAuthStore()
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
   const [reason, setReason] = useState('')
@@ -40,10 +41,16 @@ export default function DayVotePanel({ players, myRole }: DayVotePanelProps) {
 
   useEffect(() => {
     fetchVotes()
-    // Refresh votes every 30 seconds
-    const interval = setInterval(fetchVotes, 30000)
+    const interval = setInterval(fetchVotes, 60000) // Fallback (WebSocket is primary)
     return () => clearInterval(interval)
   }, [])
+
+  // WebSocket-triggered refresh
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      fetchVotes()
+    }
+  }, [refreshTrigger])
 
   const handleSubmit = async () => {
     if (!selectedTarget) return

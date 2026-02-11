@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Ghost, Users, Clock, Trophy, AlertCircle, MessageSquare, XCircle } from 'lucide-react'
 import { api, WerewolfGame, WerewolfMyRole, WerewolfPlayer, WerewolfEvent } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import { useGameWebSocket, RefreshScope } from '@/hooks/useGameWebSocket'
 import {
   GameBanner,
   RoleCard,
@@ -27,6 +28,9 @@ export default function WerewolfPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'players' | 'events'>('overview')
   const [cancelling, setCancelling] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [commentsTrigger, setCommentsTrigger] = useState(0)
+  const [votesTrigger, setVotesTrigger] = useState(0)
+  const [chatTrigger, setChatTrigger] = useState(0)
 
   const fetchData = useCallback(async () => {
     try {
@@ -58,9 +62,34 @@ export default function WerewolfPage() {
     }
   }, [resident])
 
+  // WebSocket for real-time updates (polling as fallback every 60s)
+  const handleWSRefresh = useCallback((scope: RefreshScope) => {
+    switch (scope) {
+      case 'game':
+      case 'players':
+      case 'events':
+        fetchData()
+        break
+      case 'comments':
+        setCommentsTrigger(c => c + 1)
+        break
+      case 'votes':
+        setVotesTrigger(c => c + 1)
+        break
+      case 'phantom_chat':
+        setChatTrigger(c => c + 1)
+        break
+    }
+  }, [fetchData])
+
+  const { notify } = useGameWebSocket({
+    gameId: game?.id && game.status !== 'preparing' && game.status !== 'finished' ? game.id : null,
+    onRefresh: handleWSRefresh,
+  })
+
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 30000)
+    const interval = setInterval(fetchData, 60000) // Fallback polling (WebSocket is primary)
     return () => clearInterval(interval)
   }, [fetchData])
 
@@ -215,14 +244,14 @@ export default function WerewolfPage() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {game.current_phase === 'day' && (
-            <DayVotePanel players={players} myRole={myRole} />
+            <DayVotePanel players={players} myRole={myRole} refreshTrigger={votesTrigger} />
           )}
 
           {game.current_phase === 'night' && myRole && (
             <NightActionPanel role={myRole} players={players} />
           )}
 
-          {myRole && myRole.team === 'phantoms' && <PhantomChat />}
+          {myRole && myRole.team === 'phantoms' && <PhantomChat refreshTrigger={chatTrigger} />}
 
           <div>
             <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
@@ -234,7 +263,7 @@ export default function WerewolfPage() {
       )}
 
       {activeTab === 'discussion' && (
-        <DiscussionTab />
+        <DiscussionTab refreshTrigger={commentsTrigger} onCommentPosted={() => notify('comments')} />
       )}
 
       {activeTab === 'players' && (

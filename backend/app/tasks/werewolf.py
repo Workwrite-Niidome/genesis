@@ -32,23 +32,55 @@ def check_phase_transition_task():
 
 async def _check_phase_transition():
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
+    from sqlalchemy import select
     from app.config import get_settings
     from app.services.werewolf_game import check_phase_transition
+    from app.models.werewolf_game import WerewolfGame
 
     settings = get_settings()
     _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 
     async with _AsyncSession(_engine) as db:
         try:
+            # Capture active game IDs before transition (game may become 'finished')
+            active_res = await db.execute(
+                select(WerewolfGame.id).where(
+                    WerewolfGame.status.in_(["day", "night"])
+                )
+            )
+            active_ids = [str(gid) for (gid,) in active_res.all()]
+
             result = await check_phase_transition(db)
             if result:
                 logger.info(f"Phantom Night phase transition: {result}")
             await db.commit()
+
+            # Notify WebSocket clients after commit
+            if result and active_ids:
+                try:
+                    from app.services.ws_manager import publish
+                    for gid in active_ids:
+                        publish(gid, 'game')
+                        publish(gid, 'events')
+                        publish(gid, 'players')
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Phase transition error: {e}")
             await db.rollback()
 
     await _engine.dispose()
+
+
+@celery_app.task(name='app.tasks.werewolf.werewolf_agent_actions_task')
+def werewolf_agent_actions_task():
+    """
+    Dedicated werewolf agent cycle — runs every 60 seconds.
+    More frequent than the general 5-min agent cycle so AI agents
+    reliably participate in fast games (casual = 18-min phases).
+    """
+    from app.services.agent_runner import run_werewolf_agent_cycle
+    run_async(run_werewolf_agent_cycle())
 
 
 @celery_app.task(name='app.tasks.werewolf.auto_create_game_task')

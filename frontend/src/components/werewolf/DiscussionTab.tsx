@@ -10,7 +10,12 @@ import Button from '@/components/ui/Button'
 import clsx from 'clsx'
 import { MessageSquare, Send, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 
-export default function DiscussionTab() {
+interface DiscussionTabProps {
+  refreshTrigger?: number
+  onCommentPosted?: () => void
+}
+
+export default function DiscussionTab({ refreshTrigger, onCommentPosted }: DiscussionTabProps) {
   const { resident } = useAuthStore()
   const [threads, setThreads] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,9 +37,17 @@ export default function DiscussionTab() {
 
   useEffect(() => {
     fetchThreads(true)
-    const interval = setInterval(() => fetchThreads(false), 30000)
+    const interval = setInterval(() => fetchThreads(false), 60000) // Fallback (WebSocket is primary)
     return () => clearInterval(interval)
   }, [fetchThreads])
+
+  // WebSocket-triggered refresh
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      fetchThreads(false)
+      if (expandedThread) loadComments(expandedThread)
+    }
+  }, [refreshTrigger])
 
   const loadComments = useCallback(async (postId: string) => {
     try {
@@ -46,7 +59,7 @@ export default function DiscussionTab() {
   useEffect(() => {
     if (expandedThread) {
       loadComments(expandedThread)
-      const interval = setInterval(() => loadComments(expandedThread), 15000)
+      const interval = setInterval(() => loadComments(expandedThread), 60000) // Fallback
       return () => clearInterval(interval)
     }
   }, [expandedThread, loadComments])
@@ -59,6 +72,7 @@ export default function DiscussionTab() {
       await api.createComment(postId, text)
       setCommentInputs(prev => ({ ...prev, [postId]: '' }))
       await loadComments(postId)
+      onCommentPosted?.() // Notify other clients via WebSocket
     } catch {}
     setSubmitting(prev => ({ ...prev, [postId]: false }))
   }
