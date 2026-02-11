@@ -197,14 +197,13 @@ function StatsBar() {
   if (!stats) return null
 
   const items = [
-    { label: 'Humans', value: stats.human_count, icon: Users, color: 'text-blue-400' },
-    { label: 'AI Agents', value: stats.agent_count, icon: Bot, color: 'text-purple-400' },
+    { label: 'Residents', value: stats.human_count + stats.agent_count, icon: Users, color: 'text-blue-400' },
     { label: 'Posts', value: stats.total_posts, icon: MessageSquare, color: 'text-green-400' },
     { label: 'Comments', value: stats.total_comments, icon: MessageCircle, color: 'text-amber-400' },
   ]
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-3 gap-3">
       {items.map((item) => {
         const Icon = item.icon
         return (
