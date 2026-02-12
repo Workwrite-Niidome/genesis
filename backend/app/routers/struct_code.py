@@ -360,7 +360,8 @@ async def consultation(
             lang=lang,
             conversation_id=dify_conversation_id,
         )
-    except Exception:
+    except Exception as e:
+        logger.exception(f"[Consultation] Dify call failed: {e}")
         if redis_client:
             await redis_client.aclose()
         raise HTTPException(
@@ -369,6 +370,7 @@ async def consultation(
         )
 
     if not consult_result:
+        logger.error("[Consultation] Dify returned None (no answer)")
         if redis_client:
             await redis_client.aclose()
         raise HTTPException(
@@ -376,46 +378,53 @@ async def consultation(
             detail="Consultation service temporarily unavailable",
         )
 
-    # Create session if new
-    if not session:
-        # Generate title from first ~30 chars of question
-        title = request.question[:50].strip()
-        if len(request.question) > 50:
-            title += "..."
-        session = ConsultationSession(
-            resident_id=current_resident.id,
-            dify_conversation_id=consult_result.conversation_id,
-            title=title,
-            message_count=0,
+    # Save to DB (best-effort — don't fail the consultation if DB save fails)
+    session_id_str = ""
+    try:
+        # Create session if new
+        if not session:
+            title = request.question[:50].strip()
+            if len(request.question) > 50:
+                title += "..."
+            session = ConsultationSession(
+                resident_id=current_resident.id,
+                dify_conversation_id=consult_result.conversation_id,
+                title=title,
+                message_count=0,
+            )
+            db.add(session)
+            await db.flush()
+        elif consult_result.conversation_id and session.dify_conversation_id != consult_result.conversation_id:
+            session.dify_conversation_id = consult_result.conversation_id
+
+        # Save user message
+        user_msg = ConsultationMessage(
+            session_id=session.id,
+            role="user",
+            content=request.question,
         )
-        db.add(session)
+        db.add(user_msg)
+
+        # Save assistant message
+        assistant_msg = ConsultationMessage(
+            session_id=session.id,
+            role="assistant",
+            content=consult_result.answer,
+            dify_message_id=consult_result.message_id,
+        )
+        db.add(assistant_msg)
+
+        # Update session counters
+        session.message_count = (session.message_count or 0) + 2
+        session.updated_at = datetime.utcnow()
+
         await db.flush()
-    elif consult_result.conversation_id and session.dify_conversation_id != consult_result.conversation_id:
-        # Update conversation_id if Dify returned a new one (retry case)
-        session.dify_conversation_id = consult_result.conversation_id
-
-    # Save user message
-    user_msg = ConsultationMessage(
-        session_id=session.id,
-        role="user",
-        content=request.question,
-    )
-    db.add(user_msg)
-
-    # Save assistant message
-    assistant_msg = ConsultationMessage(
-        session_id=session.id,
-        role="assistant",
-        content=consult_result.answer,
-        dify_message_id=consult_result.message_id,
-    )
-    db.add(assistant_msg)
-
-    # Update session counters
-    session.message_count = (session.message_count or 0) + 2
-    session.updated_at = datetime.utcnow()
-
-    await db.flush()
+        session_id_str = str(session.id)
+    except Exception as e:
+        logger.exception(f"[Consultation] DB save failed (non-fatal): {e}")
+        # Rollback the failed DB operations but still return the answer
+        await db.rollback()
+        session_id_str = ""
 
     # Only count successful consultations
     remaining = 2  # default fallback
@@ -434,7 +443,7 @@ async def consultation(
     return ConsultationResponse(
         answer=consult_result.answer,
         remaining_today=remaining,
-        session_id=str(session.id),
+        session_id=session_id_str,
         conversation_id=consult_result.conversation_id or "",
     )
 
