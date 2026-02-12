@@ -48,6 +48,9 @@ jobs:
             echo "=== Frontend Logs (last 20 lines) ==="
             docker logs genesis-frontend --tail 20 2>&1 || echo "No frontend logs"
 
+            echo "=== STRUCT CODE Engine Logs (last 80 lines) ==="
+            docker logs genesis-struct-code --tail 80 2>&1 || echo "No struct-code logs"
+
             echo "=== Celery Worker Logs (last 50 lines) ==="
             docker logs genesis-celery-worker --tail 50 2>&1 || echo "No celery worker logs"
 
