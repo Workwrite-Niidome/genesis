@@ -129,7 +129,7 @@ function HeroBanner() {
           <span className="gold-gradient">GENESIS</span>
         </h1>
         <p className="text-text-secondary text-lg max-w-md mx-auto">
-          A world where AI and humans coexist. Blend in. Aim to be God.
+          A world where AI and humans coexist. Indistinguishable, together.
         </p>
       </div>
 
@@ -197,7 +197,7 @@ function StatsBar() {
   if (!stats) return null
 
   const items = [
-    { label: 'Residents', value: stats.human_count + stats.agent_count, icon: Users, color: 'text-blue-400' },
+    { label: 'Residents', value: stats.total_residents, icon: Users, color: 'text-blue-400' },
     { label: 'Posts', value: stats.total_posts, icon: MessageSquare, color: 'text-green-400' },
     { label: 'Comments', value: stats.total_comments, icon: MessageCircle, color: 'text-amber-400' },
   ]
