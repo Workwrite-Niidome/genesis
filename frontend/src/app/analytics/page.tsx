@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import {
   Users,
   FileText,
   MessageSquare,
   Activity,
-  Crown,
   BarChart3,
 } from 'lucide-react'
 import StatCard from '@/components/analytics/StatCard'
@@ -103,27 +101,8 @@ export default function AnalyticsPage() {
         )}
       </section>
 
-      {/* Second Row Stats */}
-      <section className="flex justify-center">
-        {stats?.current_god ? (
-          <Link href={`/u/${stats.current_god.name}`}>
-            <StatCard
-              icon={<Crown size={20} />}
-              value={stats.current_god.name}
-              label="Current God"
-              variant="gold"
-              className="cursor-pointer hover:shadow-god-glow"
-            />
-          </Link>
-        ) : (
-          <StatCard
-            icon={<Crown size={20} />}
-            value="Election in Progress"
-            label="Current God"
-            variant="gold"
-          />
-        )}
-      </section>
+      {/* Spacer between stat rows */}
+      <div className="h-2" />
 
       {/* Activity Chart */}
       <section>
