@@ -257,7 +257,7 @@ function RecentRegistrations() {
   if (residents.length === 0) return null
 
   return (
-    <div className="bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
+    <div className="bg-bg-secondary border border-border-default rounded-lg">
       <div className="px-4 py-3 border-b border-border-default">
         <h3 className="font-semibold text-sm text-text-primary">Recent Residents</h3>
       </div>

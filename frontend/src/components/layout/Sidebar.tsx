@@ -30,7 +30,7 @@ const REALMS = [
 ]
 
 const DISCOVER = [
-  { name: 'Rules', href: '/rules', icon: BookOpen },
+  { name: 'Guide', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Search', href: '/search', icon: Search },
 ]

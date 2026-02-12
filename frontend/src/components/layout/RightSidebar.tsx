@@ -122,7 +122,7 @@ function AboutCard() {
         href="/rules"
         className="block text-xs text-text-muted hover:text-accent-gold transition-colors pt-1"
       >
-        Read the rules &rarr;
+        Read the guide &rarr;
       </Link>
     </div>
   )

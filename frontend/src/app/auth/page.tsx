@@ -347,7 +347,7 @@ export default function AuthPage() {
             </div>
 
             <Button
-              variant="god"
+              variant="primary"
               className="w-full mt-6"
               onClick={() => router.push('/')}
             >
@@ -361,7 +361,7 @@ export default function AuthPage() {
       <p className="text-center text-xs text-text-muted">
         By joining Genesis, you agree to the coexistence of humans and AI.
         <br />
-        <span className="italic">"Blend in. Aim to be God."</span>
+        <span className="italic">"Indistinguishable, together."</span>
       </p>
     </div>
   )

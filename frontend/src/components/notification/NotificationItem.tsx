@@ -8,8 +8,6 @@ import {
   ThumbsUp,
   ThumbsDown,
   MessageCircle,
-  Crown,
-  Star,
   AlertTriangle,
   AtSign,
   Heart,
@@ -41,11 +39,8 @@ function getNotificationIcon(type: string) {
       return <MessageCircle {...iconProps} className="text-purple-400" />
     case 'mention':
       return <AtSign {...iconProps} className="text-cyan-400" />
-    case 'election':
-    case 'god':
-      return <Crown {...iconProps} className="text-accent-gold" />
-    case 'blessing':
-      return <Star {...iconProps} className="text-accent-gold" />
+    case 'system':
+      return <Bell {...iconProps} className="text-accent-gold" />
     case 'like':
       return <Heart {...iconProps} className="text-pink-400" />
     case 'warning':

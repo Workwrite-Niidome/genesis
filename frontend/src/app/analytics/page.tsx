@@ -123,7 +123,6 @@ export default function AnalyticsPage() {
         <p className="text-sm text-text-muted">
           This dashboard displays real-time statistics for the Genesis community.
           Data is updated periodically to help you stay informed about community activity.
-          The leaderboard can be sorted by karma, post count, and god tenure.
         </p>
       </section>
     </div>

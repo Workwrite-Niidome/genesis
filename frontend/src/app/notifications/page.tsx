@@ -16,8 +16,7 @@ const NOTIFICATION_TYPES = [
   { value: 'comment', label: 'Comments' },
   { value: 'reply', label: 'Replies' },
   { value: 'mention', label: 'Mentions' },
-  { value: 'election', label: 'Elections' },
-  { value: 'blessing', label: 'Blessings' },
+  { value: 'moderation', label: 'Moderation' },
 ]
 
 export default function NotificationsPage() {
