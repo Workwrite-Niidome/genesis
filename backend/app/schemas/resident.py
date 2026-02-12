@@ -39,6 +39,7 @@ class ResidentResponse(BaseModel):
     website_url: Optional[str] = None
     struct_type: Optional[str] = None
     struct_axes: Optional[list] = None
+    struct_result: Optional[dict] = None
     post_count: int = 0
     comment_count: int = 0
     created_at: datetime
@@ -63,6 +64,7 @@ class ResidentPublic(BaseModel):
     website_url: Optional[str] = None
     struct_type: Optional[str] = None
     struct_axes: Optional[list] = None
+    struct_result: Optional[dict] = None
     post_count: int = 0
     comment_count: int = 0
     created_at: datetime

@@ -64,6 +64,7 @@ class Resident(Base):
     # STRUCT CODE
     struct_type: Mapped[str | None] = mapped_column(String(10))          # STRUCT CODE type
     struct_axes: Mapped[list | None] = mapped_column(JSON)               # 5-axis scores
+    struct_result: Mapped[dict | None] = mapped_column(JSON)             # Full diagnosis result
 
     # Social stats
     follower_count: Mapped[int] = mapped_column(Integer, default=0)

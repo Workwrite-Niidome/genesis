@@ -1,0 +1,552 @@
+{
+  "Q.01": {
+    "axis": "起動軸",
+    "question": "When you \"move forward,\" which sensation feels closest to what arises within you?",
+    "choices": {
+      "A": {
+        "text": "A feeling of being pushed upward by something beneath the ground",
+        "vector": [0.92, 0.45, 0.5, 0.35, 0.45]
+      },
+      "B": {
+        "text": "A sense that the path ahead is illuminated, and you think \"that's it\"",
+        "vector": [0.7, 0.65, 0.7, 0.45, 0.55]
+      },
+      "C": {
+        "text": "An impression of being led by the hand by someone",
+        "vector": [0.35, 0.45, 0.5, 0.88, 0.5]
+      },
+      "D": {
+        "text": "You realize you've already been moving, and the meaning becomes clear later",
+        "vector": [0.65, 0.5, 0.55, 0.5, 0.75]
+      }
+    }
+  },
+  "Q.02": {
+    "axis": "起動軸",
+    "question": "In the moment you sense a \"self\" you have yet to discover, what comes most naturally to you?",
+    "choices": {
+      "A": {
+        "text": "Trying to interpret the structure and meaning",
+        "vector": [0.45, 0.9, 0.65, 0.4, 0.6]
+      },
+      "B": {
+        "text": "Feeling a nostalgia akin to deja vu",
+        "vector": [0.7, 0.5, 0.55, 0.5, 0.7]
+      },
+      "C": {
+        "text": "Remembering a self you had forgotten",
+        "vector": [0.5, 0.45, 0.5, 0.55, 0.88]
+      },
+      "D": {
+        "text": "Your body reacts first, and thought catches up later",
+        "vector": [0.92, 0.4, 0.45, 0.45, 0.5]
+      }
+    }
+  },
+  "Q.03": {
+    "axis": "起動軸",
+    "question": "When you are not understood, what kind of feeling lingers in your heart?",
+    "choices": {
+      "A": {
+        "text": "Thinking there was a problem with how you communicated",
+        "vector": [0.55, 0.88, 0.55, 0.5, 0.55]
+      },
+      "B": {
+        "text": "Feeling bewildered by the gap in values",
+        "vector": [0.5, 0.55, 0.85, 0.5, 0.55]
+      },
+      "C": {
+        "text": "Sensing that there was a wall protecting yourself",
+        "vector": [0.45, 0.5, 0.5, 0.55, 0.85]
+      },
+      "D": {
+        "text": "Feeling an invisible disconnect",
+        "vector": [0.5, 0.45, 0.5, 0.8, 0.55]
+      }
+    }
+  },
+  "Q.04": {
+    "axis": "起動軸",
+    "question": "Which moment from your past has left the strongest impression?",
+    "choices": {
+      "A": {
+        "text": "A tense moment when you made a critical decision",
+        "vector": [0.75, 0.8, 0.6, 0.45, 0.55]
+      },
+      "B": {
+        "text": "A moment when you felt you had \"moved forward\" despite having no rational explanation",
+        "vector": [0.9, 0.4, 0.55, 0.45, 0.55]
+      },
+      "C": {
+        "text": "When you felt a deep bond with someone",
+        "vector": [0.5, 0.45, 0.5, 0.92, 0.5]
+      },
+      "D": {
+        "text": "A puzzling scene whose meaning only became clear afterward",
+        "vector": [0.55, 0.5, 0.65, 0.5, 0.8]
+      }
+    }
+  },
+  "Q.05": {
+    "axis": "判断軸",
+    "question": "When someone tells you \"only you can do this,\" which inner response is closest to yours?",
+    "choices": {
+      "A": {
+        "text": "Feeling puzzled and questioning back, \"Why me?\"",
+        "vector": [0.55, 0.85, 0.55, 0.45, 0.7]
+      },
+      "B": {
+        "text": "Straightening your back, feeling you must live up to the expectation",
+        "vector": [0.8, 0.6, 0.55, 0.6, 0.5]
+      },
+      "C": {
+        "text": "Feeling joy and the weight of responsibility at the same time",
+        "vector": [0.55, 0.5, 0.6, 0.75, 0.65]
+      },
+      "D": {
+        "text": "Quietly accepting the irreplaceability of yourself",
+        "vector": [0.5, 0.55, 0.65, 0.5, 0.85]
+      }
+    }
+  },
+  "Q.06": {
+    "axis": "判断軸",
+    "question": "When your consciousness is deeply immersed, when do you feel most like yourself?",
+    "choices": {
+      "A": {
+        "text": "When you are focused on pursuing a goal",
+        "vector": [0.82, 0.7, 0.55, 0.45, 0.5]
+      },
+      "B": {
+        "text": "When a quiet sense of acceptance is spreading within you",
+        "vector": [0.5, 0.6, 0.7, 0.5, 0.75]
+      },
+      "C": {
+        "text": "When you feel the sensation of collaborating with someone",
+        "vector": [0.55, 0.5, 0.5, 0.9, 0.5]
+      },
+      "D": {
+        "text": "When your body moves first, and meaning surfaces afterward",
+        "vector": [0.88, 0.4, 0.5, 0.45, 0.6]
+      }
+    }
+  },
+  "Q.07": {
+    "axis": "判断軸",
+    "question": "When no one is watching, where does your heart gravitate?",
+    "choices": {
+      "A": {
+        "text": "The impulse to take a step forward",
+        "vector": [0.92, 0.45, 0.5, 0.4, 0.45]
+      },
+      "B": {
+        "text": "Constructing logical reasoning",
+        "vector": [0.45, 0.92, 0.6, 0.4, 0.55]
+      },
+      "C": {
+        "text": "Imagining someone else's reaction",
+        "vector": [0.5, 0.5, 0.5, 0.85, 0.55]
+      },
+      "D": {
+        "text": "Listening to the voice within your heart",
+        "vector": [0.5, 0.5, 0.55, 0.55, 0.88]
+      }
+    }
+  },
+  "Q.08": {
+    "axis": "判断軸",
+    "question": "How do you most often perceive the world?",
+    "choices": {
+      "A": {
+        "text": "Dynamic, as if you are being propelled forward",
+        "vector": [0.9, 0.5, 0.5, 0.45, 0.45]
+      },
+      "B": {
+        "text": "Lucid, with a clear and orderly path visible",
+        "vector": [0.5, 0.9, 0.7, 0.45, 0.55]
+      },
+      "C": {
+        "text": "Multi-layered, with relationships to those around you emerging",
+        "vector": [0.5, 0.55, 0.6, 0.85, 0.6]
+      },
+      "D": {
+        "text": "Deep and still, where the meaningless begins to carry meaning",
+        "vector": [0.55, 0.5, 0.65, 0.55, 0.85]
+      }
+    }
+  },
+  "Q.09": {
+    "axis": "選択軸",
+    "question": "If asked \"why are you here, right now, in this moment?\"",
+    "choices": {
+      "A": {
+        "text": "Timing and chance led me here",
+        "vector": [0.78, 0.5, 0.55, 0.5, 0.5]
+      },
+      "B": {
+        "text": "I chose this because I felt it had meaning",
+        "vector": [0.5, 0.65, 0.9, 0.45, 0.35]
+      },
+      "C": {
+        "text": "I feel I am following someone's will or the flow of things",
+        "vector": [0.5, 0.5, 0.55, 0.85, 0.5]
+      },
+      "D": {
+        "text": "There is no reason, but it was meant to be",
+        "vector": [0.55, 0.5, 0.6, 0.5, 0.82]
+      }
+    }
+  },
+  "Q.10": {
+    "axis": "選択軸",
+    "question": "If you were to compare your life to a single painting, what would characterize it?",
+    "choices": {
+      "A": {
+        "text": "Advancing while spiraling, like a helix",
+        "vector": [0.8, 0.55, 0.6, 0.5, 0.5]
+      },
+      "B": {
+        "text": "An impression like a blueprint drawn with lines",
+        "vector": [0.5, 0.88, 0.7, 0.45, 0.55]
+      },
+      "C": {
+        "text": "Multiple layers overlapping one another",
+        "vector": [0.55, 0.55, 0.65, 0.75, 0.7]
+      },
+      "D": {
+        "text": "Its meaning is unclear at first glance, yet it draws you in",
+        "vector": [0.55, 0.5, 0.6, 0.5, 0.82]
+      }
+    }
+  },
+  "Q.11": {
+    "axis": "選択軸",
+    "question": "What sensation is closest to what \"conviction\" feels like for you?",
+    "choices": {
+      "A": {
+        "text": "It arrives when all the logic falls into place",
+        "vector": [0.5, 0.92, 0.35, 0.45, 0.55]
+      },
+      "B": {
+        "text": "A feeling of a single axis passing cleanly through your core",
+        "vector": [0.65, 0.55, 0.8, 0.5, 0.7]
+      },
+      "C": {
+        "text": "It emerges when your sense aligns with another person's",
+        "vector": [0.5, 0.5, 0.55, 0.9, 0.55]
+      },
+      "D": {
+        "text": "You cannot explain why, but you feel absolutely certain",
+        "vector": [0.7, 0.45, 0.55, 0.45, 0.78]
+      }
+    }
+  },
+  "Q.12": {
+    "axis": "選択軸",
+    "question": "When you feel you want to \"begin\" something, what flips the switch for you?",
+    "choices": {
+      "A": {
+        "text": "When the reason becomes clear",
+        "vector": [0.55, 0.9, 0.65, 0.45, 0.55]
+      },
+      "B": {
+        "text": "When you notice your body is already leaning forward",
+        "vector": [0.92, 0.45, 0.5, 0.45, 0.5]
+      },
+      "C": {
+        "text": "When a surge of energy arises between you and someone else",
+        "vector": [0.55, 0.5, 0.55, 0.88, 0.5]
+      },
+      "D": {
+        "text": "When something wells up naturally from deep within you",
+        "vector": [0.7, 0.45, 0.6, 0.5, 0.8]
+      }
+    }
+  },
+  "Q.13": {
+    "axis": "共鳴軸",
+    "question": "When do someone else's words cut deeply into you?",
+    "choices": {
+      "A": {
+        "text": "When your reasoning is challenged or denied",
+        "vector": [0.5, 0.85, 0.55, 0.55, 0.55]
+      },
+      "B": {
+        "text": "When someone closes the emotional distance with you",
+        "vector": [0.6, 0.5, 0.5, 0.85, 0.55]
+      },
+      "C": {
+        "text": "When someone touches a part of you that even you were unaware of",
+        "vector": [0.5, 0.55, 0.55, 0.6, 0.88]
+      },
+      "D": {
+        "text": "When the atmosphere or silence of a moment affects you more than the words themselves",
+        "vector": [0.75, 0.45, 0.5, 0.65, 0.55]
+      }
+    }
+  },
+  "Q.14": {
+    "axis": "共鳴軸",
+    "question": "When you are thinking alone in a quiet room, what kind of thought process unfolds?",
+    "choices": {
+      "A": {
+        "text": "Organizing key points while considering your own position",
+        "vector": [0.5, 0.9, 0.6, 0.45, 0.55]
+      },
+      "B": {
+        "text": "Reflecting on the flow of events and the context behind them",
+        "vector": [0.65, 0.55, 0.65, 0.55, 0.7]
+      },
+      "C": {
+        "text": "Replaying relationships with others and the movement of emotions",
+        "vector": [0.5, 0.5, 0.55, 0.88, 0.65]
+      },
+      "D": {
+        "text": "Wordless impressions and sensations drifting through you",
+        "vector": [0.7, 0.45, 0.5, 0.55, 0.75]
+      }
+    }
+  },
+  "Q.15": {
+    "axis": "共鳴軸",
+    "question": "When do you most strongly feel your own \"growth\"?",
+    "choices": {
+      "A": {
+        "text": "When you have overcome a challenge and produced results",
+        "vector": [0.8, 0.75, 0.55, 0.5, 0.55]
+      },
+      "B": {
+        "text": "When you realize you have continued making choices by your own will",
+        "vector": [0.6, 0.6, 0.85, 0.5, 0.7]
+      },
+      "C": {
+        "text": "After an experience of deeply connecting with someone",
+        "vector": [0.5, 0.5, 0.55, 0.9, 0.6]
+      },
+      "D": {
+        "text": "When you clearly sense a transformation, though you cannot explain it",
+        "vector": [0.65, 0.45, 0.55, 0.55, 0.8]
+      }
+    }
+  },
+  "Q.16": {
+    "axis": "共鳴軸",
+    "question": "Which of the following words is closest to your sense of \"will\"?",
+    "choices": {
+      "A": {
+        "text": "Reason",
+        "vector": [0.45, 0.92, 0.6, 0.4, 0.55]
+      },
+      "B": {
+        "text": "Gravity",
+        "vector": [0.88, 0.5, 0.55, 0.5, 0.5]
+      },
+      "C": {
+        "text": "Resonance",
+        "vector": [0.5, 0.45, 0.55, 0.95, 0.55]
+      },
+      "D": {
+        "text": "Silence",
+        "vector": [0.55, 0.45, 0.55, 0.5, 0.88]
+      }
+    }
+  },
+  "Q.17": {
+    "axis": "自覚軸",
+    "question": "When someone misunderstands you, which response is closest to your first reaction?",
+    "choices": {
+      "A": {
+        "text": "Trying to explain yourself again",
+        "vector": [0.6, 0.8, 0.55, 0.55, 0.55]
+      },
+      "B": {
+        "text": "Reflecting on why your message did not get through",
+        "vector": [0.5, 0.7, 0.55, 0.55, 0.82]
+      },
+      "C": {
+        "text": "Imagining the other person's background and emotions",
+        "vector": [0.5, 0.5, 0.55, 0.88, 0.65]
+      },
+      "D": {
+        "text": "Listening to the trembling within yourself",
+        "vector": [0.55, 0.45, 0.55, 0.55, 0.85]
+      }
+    }
+  },
+  "Q.18": {
+    "axis": "自覚軸",
+    "question": "In what form does your \"hesitation\" most often manifest?",
+    "choices": {
+      "A": {
+        "text": "Being unable to decide while comparing options",
+        "vector": [0.5, 0.85, 0.7, 0.45, 0.6]
+      },
+      "B": {
+        "text": "Being unable to move forward despite having all the reasons in place",
+        "vector": [0.55, 0.65, 0.55, 0.5, 0.85]
+      },
+      "C": {
+        "text": "Being unable to commit because you worry about someone's reaction",
+        "vector": [0.5, 0.5, 0.5, 0.88, 0.6]
+      },
+      "D": {
+        "text": "The meaning within you has not yet fully solidified",
+        "vector": [0.55, 0.5, 0.75, 0.5, 0.75]
+      }
+    }
+  },
+  "Q.19": {
+    "axis": "自覚軸",
+    "question": "If there were a \"landscape\" within your inner self, what would it be?",
+    "choices": {
+      "A": {
+        "text": "A city arranged in geometric patterns",
+        "vector": [0.35, 0.9, 0.7, 0.45, 0.35]
+      },
+      "B": {
+        "text": "A wilderness with a path of light stretching into the distance",
+        "vector": [0.85, 0.55, 0.35, 0.5, 0.35]
+      },
+      "C": {
+        "text": "A water surface rippling like a mirror",
+        "vector": [0.5, 0.5, 0.6, 0.7, 0.82]
+      },
+      "D": {
+        "text": "Silhouettes floating within an endless fog",
+        "vector": [0.55, 0.45, 0.55, 0.55, 0.85]
+      }
+    }
+  },
+  "Q.20": {
+    "axis": "自覚軸",
+    "question": "When you made a truly profound choice, what was present in that moment?",
+    "choices": {
+      "A": {
+        "text": "Logic and coherence",
+        "vector": [0.35, 0.9, 0.7, 0.35, 0.35]
+      },
+      "B": {
+        "text": "A feeling that the only option was to move forward",
+        "vector": [0.9, 0.45, 0.55, 0.45, 0.5]
+      },
+      "C": {
+        "text": "A resonance with someone else's feelings",
+        "vector": [0.5, 0.5, 0.55, 0.9, 0.6]
+      },
+      "D": {
+        "text": "A quiet conviction known only to yourself",
+        "vector": [0.55, 0.5, 0.65, 0.5, 0.88]
+      }
+    }
+  },
+  "Q.21": {
+    "axis": "起動軸",
+    "question": "When your \"true desire\" takes shape, what does it feel like?",
+    "choices": {
+      "A": {
+        "text": "It is supported by consistent logic and context",
+        "vector": [0.45, 0.9, 0.6, 0.4, 0.55]
+      },
+      "B": {
+        "text": "A clear sense of direction is moving your body",
+        "vector": [0.9, 0.5, 0.55, 0.45, 0.5]
+      },
+      "C": {
+        "text": "It overlaps with the feeling of being connected heart-to-heart with someone",
+        "vector": [0.5, 0.45, 0.5, 0.9, 0.55]
+      },
+      "D": {
+        "text": "You cannot put it into words, yet somehow it remains unshakable",
+        "vector": [0.55, 0.45, 0.55, 0.5, 0.85]
+      }
+    }
+  },
+  "Q.22": {
+    "axis": "判断軸",
+    "question": "Which moment comes closest to when you strongly felt \"this was my own choice\"?",
+    "choices": {
+      "A": {
+        "text": "It was the most structurally rational option",
+        "vector": [0.5, 0.92, 0.65, 0.4, 0.55]
+      },
+      "B": {
+        "text": "Your body responded without hesitation",
+        "vector": [0.9, 0.45, 0.5, 0.45, 0.5]
+      },
+      "C": {
+        "text": "Someone else's feelings were aligned with yours",
+        "vector": [0.5, 0.45, 0.55, 0.88, 0.55]
+      },
+      "D": {
+        "text": "Even without being able to explain it, you felt a deep inner acceptance",
+        "vector": [0.55, 0.5, 0.6, 0.5, 0.88]
+      }
+    }
+  },
+  "Q.23": {
+    "axis": "自覚軸",
+    "question": "When do you become aware of your \"true feelings\"?",
+    "choices": {
+      "A": {
+        "text": "After you have finished organizing your thoughts",
+        "vector": [0.5, 0.85, 0.6, 0.45, 0.75]
+      },
+      "B": {
+        "text": "When emotions you had been holding back overflow",
+        "vector": [0.75, 0.45, 0.55, 0.55, 0.78]
+      },
+      "C": {
+        "text": "When someone's words act as a trigger",
+        "vector": [0.55, 0.5, 0.55, 0.88, 0.65]
+      },
+      "D": {
+        "text": "When tears come for no apparent reason",
+        "vector": [0.6, 0.45, 0.55, 0.55, 0.85]
+      }
+    }
+  },
+  "Q.24": {
+    "axis": "共鳴軸",
+    "question": "Late at night, unable to sleep, which image comes closest to what floats into your mind?",
+    "choices": {
+      "A": {
+        "text": "Organizing plans for tomorrow and the future",
+        "vector": [0.5, 0.88, 0.65, 0.45, 0.55]
+      },
+      "B": {
+        "text": "An urge to get up and act right now",
+        "vector": [0.92, 0.4, 0.5, 0.45, 0.45]
+      },
+      "C": {
+        "text": "The lingering sensation of an exchange with someone",
+        "vector": [0.5, 0.5, 0.55, 0.9, 0.55]
+      },
+      "D": {
+        "text": "Afterimages of a dream whose meaning even you do not understand",
+        "vector": [0.65, 0.45, 0.55, 0.55, 0.8]
+      }
+    }
+  },
+  "Q.25": {
+    "axis": "選択軸",
+    "question": "Finally, which of the following is closest to what \"resides deep within you\"?",
+    "choices": {
+      "A": {
+        "text": "A conviction grounded in reason",
+        "vector": [0.5, 0.9, 0.7, 0.45, 0.55]
+      },
+      "B": {
+        "text": "An impulse toward a single movement",
+        "vector": [0.92, 0.45, 0.55, 0.45, 0.5]
+      },
+      "C": {
+        "text": "A memory of having truly connected with someone",
+        "vector": [0.5, 0.5, 0.55, 0.9, 0.6]
+      },
+      "D": {
+        "text": "A presence that exists before language",
+        "vector": [0.55, 0.45, 0.55, 0.5, 0.88]
+      }
+    }
+  }
+}

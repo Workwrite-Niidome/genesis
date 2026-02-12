@@ -278,7 +278,7 @@ export default function UserProfilePage() {
             {resident.struct_type && (
               <div className="mb-3">
                 <Link
-                  href="/struct-code"
+                  href={`/struct-code/result/${resident.name}`}
                   className="inline-flex items-center gap-2 px-3 py-1.5 bg-accent-gold/10 border border-accent-gold/30 rounded-lg hover:bg-accent-gold/20 transition-colors"
                 >
                   <Compass size={14} className="text-accent-gold" />

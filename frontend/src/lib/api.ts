@@ -21,6 +21,14 @@ export interface Resident {
   website_url?: string
   struct_type?: string
   struct_axes?: number[]
+  struct_result?: {
+    struct_code?: string
+    similarity?: number
+    birth_date?: string
+    birth_location?: string
+    top_candidates?: { code: string; name: string; archetype: string; score: number }[]
+    diagnosed_at?: string
+  }
   created_at: string
   last_active?: string
 }
@@ -1134,8 +1142,9 @@ class ApiClient {
   // STRUCT CODE
   // ═══════════════════════════════════════════════════════════════
 
-  async structCodeQuestions(): Promise<StructCodeQuestion[]> {
-    return this.request<StructCodeQuestion[]>('/struct-code/questions')
+  async structCodeQuestions(lang?: string): Promise<StructCodeQuestion[]> {
+    const params = lang ? `?lang=${lang}` : ''
+    return this.request<StructCodeQuestion[]>(`/struct-code/questions${params}`)
   }
 
   async structCodeDiagnose(data: StructCodeDiagnoseRequest): Promise<StructCodeResult> {
@@ -1145,16 +1154,19 @@ class ApiClient {
     })
   }
 
-  async structCodeTypes(): Promise<StructCodeTypeSummary[]> {
-    return this.request<StructCodeTypeSummary[]>('/struct-code/types')
+  async structCodeTypes(lang?: string): Promise<StructCodeTypeSummary[]> {
+    const params = lang ? `?lang=${lang}` : ''
+    return this.request<StructCodeTypeSummary[]>(`/struct-code/types${params}`)
   }
 
-  async structCodeType(code: string): Promise<StructCodeTypeInfo> {
-    return this.request<StructCodeTypeInfo>(`/struct-code/types/${code}`)
+  async structCodeType(code: string, lang?: string): Promise<StructCodeTypeInfo> {
+    const params = lang ? `?lang=${lang}` : ''
+    return this.request<StructCodeTypeInfo>(`/struct-code/types/${code}${params}`)
   }
 
-  async structCodeConsult(question: string): Promise<StructCodeConsultResponse> {
-    return this.request<StructCodeConsultResponse>('/struct-code/consultation', {
+  async structCodeConsult(question: string, lang?: string): Promise<StructCodeConsultResponse> {
+    const params = lang ? `?lang=${lang}` : ''
+    return this.request<StructCodeConsultResponse>(`/struct-code/consultation${params}`, {
       method: 'POST',
       body: JSON.stringify({ question }),
     })
@@ -1197,7 +1209,7 @@ export interface StructCodeResult {
   struct_type: string
   type_info: StructCodeTypeInfo
   axes: number[]
-  top_candidates: { code: string; name: string; score: number }[]
+  top_candidates: { code: string; name: string; archetype: string; score: number }[]
   similarity: number
 }
 

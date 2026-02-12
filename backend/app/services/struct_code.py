@@ -2,7 +2,7 @@
 STRUCT CODE Service — Type diagnosis, consultation, and data access.
 
 Provides:
-- Local JSON data access (types, questions)
+- Local JSON data access (types, questions) with bilingual support (ja/en)
 - STRUCT CODE API client (diagnosis via Docker container)
 - Claude API consultation (Dify replacement)
 - Random answer generation for AI agents
@@ -25,34 +25,41 @@ logger = logging.getLogger(__name__)
 # Data directory
 DATA_DIR = Path(__file__).parent.parent / "data" / "struct_code"
 
-# Cached data (loaded once)
-_types_cache: dict | None = None
-_questions_cache: dict | None = None
+# Cached data keyed by language
+_types_cache: dict[str, dict] = {}
+_questions_cache: dict[str, dict] = {}
 
 
-def _load_types() -> dict:
-    global _types_cache
-    if _types_cache is None:
-        with open(DATA_DIR / "comprehensive_types.json", "r", encoding="utf-8") as f:
-            _types_cache = json.load(f)
-    return _types_cache
+def _load_types(lang: str = "ja") -> dict:
+    if lang not in _types_cache:
+        suffix = "_en" if lang == "en" else ""
+        path = DATA_DIR / f"comprehensive_types{suffix}.json"
+        if not path.exists():
+            # Fallback to Japanese if translation file missing
+            path = DATA_DIR / "comprehensive_types.json"
+        with open(path, "r", encoding="utf-8") as f:
+            _types_cache[lang] = json.load(f)
+    return _types_cache[lang]
 
 
-def _load_questions() -> dict:
-    global _questions_cache
-    if _questions_cache is None:
-        with open(DATA_DIR / "question_full_map.json", "r", encoding="utf-8") as f:
-            _questions_cache = json.load(f)
-    return _questions_cache
+def _load_questions(lang: str = "ja") -> dict:
+    if lang not in _questions_cache:
+        suffix = "_en" if lang == "en" else ""
+        path = DATA_DIR / f"question_full_map{suffix}.json"
+        if not path.exists():
+            path = DATA_DIR / "question_full_map.json"
+        with open(path, "r", encoding="utf-8") as f:
+            _questions_cache[lang] = json.load(f)
+    return _questions_cache[lang]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DATA ACCESS (local JSON)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def get_questions() -> list[dict]:
+def get_questions(lang: str = "ja") -> list[dict]:
     """Return all 25 questions formatted for frontend."""
-    questions = _load_questions()
+    questions = _load_questions(lang)
     result = []
     for qid, qdata in questions.items():
         choices = {}
@@ -69,9 +76,9 @@ def get_questions() -> list[dict]:
     return result
 
 
-def get_all_types() -> list[dict]:
+def get_all_types(lang: str = "ja") -> list[dict]:
     """Return summary of all 24 types."""
-    types = _load_types()
+    types = _load_types(lang)
     result = []
     for code, info in types.items():
         result.append({
@@ -82,9 +89,9 @@ def get_all_types() -> list[dict]:
     return result
 
 
-def get_type_info(type_code: str) -> dict | None:
+def get_type_info(type_code: str, lang: str = "ja") -> dict | None:
     """Get full type details by code."""
-    types = _load_types()
+    types = _load_types(lang)
     info = types.get(type_code)
     if not info:
         return None
@@ -293,7 +300,7 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 # CLAUDE API CONSULTATION (Dify replacement)
 # ═══════════════════════════════════════════════════════════════════════════
 
-CONSULTATION_SYSTEM_PROMPT = """あなたはSTRUCT CODE性格診断の専門カウンセラーです。
+CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE性格診断の専門カウンセラーです。
 
 ユーザーのタイプ情報:
 - タイプ: {type_name} ({type_code})
@@ -305,16 +312,35 @@ CONSULTATION_SYSTEM_PROMPT = """あなたはSTRUCT CODE性格診断の専門カ�
 - 成長パス: {growth_path}
 - 盲点: {blindspot}
 - 5軸スコア: 起動={ax0:.2f}, 判断={ax1:.2f}, 選択={ax2:.2f}, 共鳴={ax3:.2f}, 自覚={ax4:.2f}
-
+{extra_context}
 この情報を基に、ユーザーの質問にパーソナライズされた深い洞察を提供してください。
 温かみがありつつも具体的なアドバイスを心がけてください。
 回答は日本語で、400-800文字程度にしてください。"""
+
+CONSULTATION_SYSTEM_PROMPT_EN = """You are an expert counselor specializing in STRUCT CODE personality diagnosis.
+
+User's Type Information:
+- Type: {type_name} ({type_code})
+- Archetype: {archetype}
+- Description: {description}
+- Decision-Making Style: {decision_making_style}
+- Choice Pattern: {choice_pattern}
+- Interpersonal Dynamics: {interpersonal_dynamics}
+- Growth Path: {growth_path}
+- Blindspot: {blindspot}
+- 5-Axis Scores: Activation={ax0:.2f}, Judgment={ax1:.2f}, Choice={ax2:.2f}, Resonance={ax3:.2f}, Awareness={ax4:.2f}
+{extra_context}
+Based on this information, provide personalized and deep insights in response to the user's question.
+Be warm yet specific in your advice.
+Keep your response between 200-400 words."""
 
 
 async def consult(
     type_code: str,
     axes: list[float],
     question: str,
+    struct_result: dict | None = None,
+    lang: str = "ja",
 ) -> str | None:
     """Call Claude API for STRUCT CODE consultation.
 
@@ -324,13 +350,44 @@ async def consult(
         logger.warning("Consultation skipped: no Claude API key")
         return None
 
-    type_info = get_type_info(type_code)
+    type_info = get_type_info(type_code, lang=lang)
     if not type_info:
         return None
 
     ax = axes if len(axes) >= 5 else [0.5] * 5
 
-    system = CONSULTATION_SYSTEM_PROMPT.format(
+    # Build extra context from struct_result
+    extra_context = ""
+    if struct_result:
+        top_candidates = struct_result.get("top_candidates", [])
+        if top_candidates:
+            if lang == "en":
+                lines = ["- TOP 3 Candidates:"]
+                for i, c in enumerate(top_candidates[:3], 1):
+                    lines.append(f"  #{i}: {c.get('name', '')} ({c.get('code', '')}) — {c.get('archetype', '')} — Match: {c.get('score', 0) * 100:.1f}%")
+            else:
+                lines = ["- TOP3候補:"]
+                for i, c in enumerate(top_candidates[:3], 1):
+                    lines.append(f"  #{i}: {c.get('name', '')} ({c.get('code', '')}) — {c.get('archetype', '')} — 一致度: {c.get('score', 0) * 100:.1f}%")
+            extra_context += "\n".join(lines) + "\n"
+
+        birth_date = struct_result.get("birth_date")
+        birth_location = struct_result.get("birth_location")
+        if birth_date or birth_location:
+            if lang == "en":
+                extra_context += f"- Birth: {birth_date or '?'}, {birth_location or '?'}\n"
+            else:
+                extra_context += f"- 生年月日: {birth_date or '?'}, 出生地: {birth_location or '?'}\n"
+
+        struct_code = struct_result.get("struct_code")
+        if struct_code:
+            extra_context += f"- STRUCT CODE: {struct_code}\n"
+
+    if extra_context:
+        extra_context = "\n" + extra_context
+
+    prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
+    system = prompt_template.format(
         type_name=type_info["name"],
         type_code=type_code,
         archetype=type_info["archetype"],
@@ -341,6 +398,7 @@ async def consult(
         growth_path=type_info["growth_path"][:300],
         blindspot=type_info["blindspot"][:300],
         ax0=ax[0], ax1=ax[1], ax2=ax[2], ax3=ax[3], ax4=ax[4],
+        extra_context=extra_context,
     )
 
     try:

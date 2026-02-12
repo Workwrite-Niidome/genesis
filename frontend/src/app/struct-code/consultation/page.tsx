@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, StructCodeConsultResponse } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -20,6 +20,11 @@ export default function ConsultationPage() {
   const [loading, setLoading] = useState(false)
   const [remaining, setRemaining] = useState<number | null>(null)
   const [error, setError] = useState('')
+
+  const lang = useMemo(() => {
+    if (typeof navigator === 'undefined') return 'ja'
+    return navigator.language.startsWith('ja') ? 'ja' : 'en'
+  }, [])
 
   // Redirect if not diagnosed
   if (resident && !resident.struct_type) {
@@ -58,7 +63,7 @@ export default function ConsultationPage() {
     setLoading(true)
 
     try {
-      const res: StructCodeConsultResponse = await api.structCodeConsult(question)
+      const res: StructCodeConsultResponse = await api.structCodeConsult(question, lang)
       setMessages(prev => [...prev, { role: 'assistant', content: res.answer }])
       setRemaining(res.remaining_today)
     } catch (e: any) {
@@ -78,7 +83,7 @@ export default function ConsultationPage() {
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push('/struct-code')}
+            onClick={() => router.back()}
             className="text-text-muted hover:text-text-primary transition-colors"
           >
             <ArrowLeft size={20} />

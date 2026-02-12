@@ -29,6 +29,7 @@ class TypeInfo(BaseModel):
 class CandidateInfo(BaseModel):
     code: str
     name: str = ""
+    archetype: str = ""
     score: float = 0.0
 
 

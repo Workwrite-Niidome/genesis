@@ -9,8 +9,9 @@ Endpoints:
   POST /struct-code/consultation       — Claude AI consultation (auth required)
 """
 import logging
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -35,9 +36,9 @@ router = APIRouter(prefix="/struct-code", tags=["struct-code"])
 
 
 @router.get("/questions")
-async def get_questions():
+async def get_questions(lang: str = Query("ja", regex="^(ja|en)$")):
     """Get all 25 diagnostic questions."""
-    return sc_service.get_questions()
+    return sc_service.get_questions(lang=lang)
 
 
 @router.post("/diagnose", response_model=DiagnoseResponse)
@@ -72,14 +73,18 @@ async def diagnose(
             axes = [0.5] * 5
         similarity = result.get("confidence", 0.0)
 
-        # Build top candidates
+        # Build top candidates (limit to 3)
         raw_candidates = result.get("metadata", {}).get("top_candidates", [])
         top_candidates = []
-        for c in raw_candidates[:5]:
+        for c in raw_candidates[:3]:
             if isinstance(c, dict):
+                code = c.get("code", c.get("type", ""))
+                type_data = sc_service.get_type_info(code)
+                archetype = type_data.get("archetype", "") if type_data else ""
                 top_candidates.append(CandidateInfo(
-                    code=c.get("code", c.get("type", "")),
+                    code=code,
                     name=c.get("name", c.get("label", "")),
+                    archetype=archetype,
                     score=c.get("score", c.get("similarity", 0.0)),
                 ))
     else:
@@ -102,9 +107,23 @@ async def diagnose(
             "interpersonal_dynamics": "", "growth_path": "",
         }
 
+    # Build struct_code string
+    struct_code = result.get("struct_code", f"{struct_type}-???") if result else f"{struct_type}-local"
+
     # Save to resident
     current_resident.struct_type = struct_type
     current_resident.struct_axes = axes
+    current_resident.struct_result = {
+        "struct_code": struct_code,
+        "similarity": similarity,
+        "birth_date": request.birth_date,
+        "birth_location": request.birth_location,
+        "top_candidates": [
+            {"code": c.code, "name": c.name, "archetype": c.archetype, "score": c.score}
+            for c in top_candidates[:3]
+        ],
+        "diagnosed_at": datetime.utcnow().isoformat(),
+    }
     await db.commit()
 
     return DiagnoseResponse(
@@ -117,15 +136,15 @@ async def diagnose(
 
 
 @router.get("/types", response_model=list[TypeSummary])
-async def get_types():
+async def get_types(lang: str = Query("ja", regex="^(ja|en)$")):
     """Get all 24 STRUCT CODE types."""
-    return sc_service.get_all_types()
+    return sc_service.get_all_types(lang=lang)
 
 
 @router.get("/types/{code}", response_model=TypeInfo)
-async def get_type(code: str):
+async def get_type(code: str, lang: str = Query("ja", regex="^(ja|en)$")):
     """Get detailed info for a specific type."""
-    info = sc_service.get_type_info(code)
+    info = sc_service.get_type_info(code, lang=lang)
     if not info:
         raise HTTPException(status_code=404, detail="Type not found")
     return TypeInfo(**info)
@@ -135,6 +154,7 @@ async def get_type(code: str):
 async def consultation(
     request: ConsultationRequest,
     current_resident: Resident = Depends(get_current_resident),
+    lang: str = Query("ja", regex="^(ja|en)$"),
 ):
     """Claude AI consultation based on your STRUCT CODE type."""
     if not current_resident.struct_type:
@@ -171,6 +191,8 @@ async def consultation(
         type_code=current_resident.struct_type,
         axes=axes,
         question=request.question,
+        struct_result=current_resident.struct_result,
+        lang=lang,
     )
 
     if not answer:

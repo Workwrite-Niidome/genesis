@@ -711,10 +711,11 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS posting_language VARCHAR(5);" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS struct_type VARCHAR(10);" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS struct_axes JSON;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS struct_result JSON;" 2>/dev/null || true
 
             # Fix alembic version if needed
             echo "=== Fixing migration state ==="
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5', '006_fix_submolts', '007_karma_as_life', '008_content_mod', '009_search_and_god_rules', '010_follow_system', '011_notification', '012_add_game_tables', '013_add_heartbeat_columns', '014_add_speed_column', '015_add_banned_reason', '016_add_personality_backstory', '017_add_profile_fields', '018_add_struct_code');" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5', '006_fix_submolts', '007_karma_as_life', '008_content_mod', '009_search_and_god_rules', '010_follow_system', '011_notification', '012_add_game_tables', '013_add_heartbeat_columns', '014_add_speed_column', '015_add_banned_reason', '016_add_personality_backstory', '017_add_profile_fields', '018_add_struct_code', '019_add_struct_result');" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE alembic_version SET version_num = '007_karma_as_life' WHERE version_num IN ('005_phase5', '006_fix_submolts');" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "INSERT INTO alembic_version (version_num) SELECT '007_karma_as_life' WHERE NOT EXISTS (SELECT 1 FROM alembic_version) AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'residents');" 2>/dev/null || true
 

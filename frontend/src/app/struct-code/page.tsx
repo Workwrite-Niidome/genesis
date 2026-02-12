@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { api, StructCodeQuestion, StructCodeResult } from '@/lib/api'
+import { api, StructCodeQuestion } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { Compass, ArrowRight, ArrowLeft, Check, MapPin, Loader2 } from 'lucide-react'
 
@@ -13,8 +13,6 @@ const AXIS_LABELS: Record<string, string> = {
   '共鳴軸': 'Resonance',
   '自覚軸': 'Awareness',
 }
-
-const AXIS_ORDER = ['起動軸', '判断軸', '選択軸', '共鳴軸', '自覚軸']
 
 const QUESTIONS_PER_PAGE = 5
 
@@ -34,19 +32,23 @@ export default function StructCodePage() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [questions, setQuestions] = useState<StructCodeQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [result, setResult] = useState<StructCodeResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const locationRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+
+  const lang = useMemo(() => {
+    if (typeof navigator === 'undefined') return 'ja'
+    return navigator.language.startsWith('ja') ? 'ja' : 'en'
+  }, [])
 
   const birthDate = birthYear && birthMonth && birthDay
     ? `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`
     : ''
 
   useEffect(() => {
-    api.structCodeQuestions().then(setQuestions).catch(() => {})
-  }, [])
+    api.structCodeQuestions(lang).then(setQuestions).catch(() => {})
+  }, [lang])
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -129,7 +131,7 @@ export default function StructCodePage() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.structCodeDiagnose({
+      await api.structCodeDiagnose({
         birth_date: birthDate,
         birth_location: birthLocation,
         answers: Object.entries(answers).map(([qid, choice]) => ({
@@ -137,12 +139,10 @@ export default function StructCodePage() {
           choice,
         })),
       })
-      setResult(res)
-      setStep(2 + totalPages) // result step
-      scrollTop()
+      // Redirect to persistent result page
+      router.push(`/struct-code/result/${resident.name}`)
     } catch (e: any) {
       setError(e.message || 'Diagnosis failed')
-    } finally {
       setLoading(false)
     }
   }
@@ -195,9 +195,15 @@ export default function StructCodePage() {
             <div className="mt-8 p-4 bg-bg-tertiary rounded-lg border border-border-default">
               <p className="text-text-muted text-sm mb-2">Your current type</p>
               <p className="text-accent-gold font-bold text-xl">{resident.struct_type}</p>
-              <p className="text-text-secondary text-sm mt-1">
+              <p className="text-text-secondary text-sm mt-1 mb-3">
                 You can retake the diagnosis to update your type.
               </p>
+              <button
+                onClick={() => router.push(`/struct-code/result/${resident.name}`)}
+                className="text-accent-gold text-sm hover:underline"
+              >
+                View full result →
+              </button>
             </div>
           )}
         </div>
@@ -328,99 +334,6 @@ export default function StructCodePage() {
     )
   }
 
-  // ── Result ──
-  if (result) {
-    const info = result.type_info
-    return (
-      <div className="max-w-2xl mx-auto p-6">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent-gold/20 mb-4">
-            <Check size={32} className="text-accent-gold" />
-          </div>
-          <h2 className="text-2xl font-bold text-text-primary">Your STRUCT CODE</h2>
-        </div>
-
-        <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
-          <div className="text-center mb-6">
-            <p className="text-accent-gold font-mono text-3xl font-bold">{result.struct_type}</p>
-            <p className="text-text-primary text-xl mt-1">{info.name}</p>
-            <p className="text-text-secondary">{info.archetype}</p>
-            <p className="text-text-muted text-sm mt-2">
-              Similarity: {(result.similarity * 100).toFixed(1)}%
-            </p>
-          </div>
-
-          {/* 5-axis bars */}
-          <div className="space-y-3 mb-6">
-            {result.axes.map((val, i) => {
-              const axisName = AXIS_ORDER[i]
-              return (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="text-text-secondary text-sm w-24 text-right">
-                    {AXIS_LABELS[axisName] || axisName}
-                  </span>
-                  <div className="flex-1 h-3 bg-bg-primary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-accent-gold rounded-full transition-all duration-500"
-                      style={{ width: `${val * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-text-muted text-xs w-12">
-                    {(val * 100).toFixed(0)}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Type description */}
-          {info.description && (
-            <div className="border-t border-border-default pt-4 space-y-4">
-              <Section title="Description" text={info.description} />
-              <Section title="Decision Style" text={info.decision_making_style} />
-              <Section title="Choice Pattern" text={info.choice_pattern} />
-              <Section title="Interpersonal Dynamics" text={info.interpersonal_dynamics} />
-              <Section title="Growth Path" text={info.growth_path} />
-              <Section title="Blindspot" text={info.blindspot} />
-            </div>
-          )}
-        </div>
-
-        {/* Top candidates */}
-        {result.top_candidates.length > 0 && (
-          <div className="bg-bg-tertiary rounded-xl border border-border-default p-4 mb-6">
-            <h3 className="text-text-secondary text-sm font-semibold mb-3">Other possible types</h3>
-            <div className="space-y-2">
-              {result.top_candidates.map(c => (
-                <div key={c.code} className="flex items-center justify-between text-sm">
-                  <span className="text-text-primary font-mono">{c.code} — {c.name}</span>
-                  <span className="text-text-muted">{(c.score * 100).toFixed(1)}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="flex gap-3 justify-center">
-          <button
-            onClick={() => router.push('/struct-code/consultation')}
-            className="px-6 py-2 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors"
-          >
-            Ask AI Counselor
-          </button>
-          <button
-            onClick={() => router.push(`/u/${resident?.name}`)}
-            className="px-6 py-2 bg-bg-tertiary text-text-primary border border-border-default rounded-lg hover:bg-bg-hover transition-colors"
-          >
-            View Profile
-          </button>
-        </div>
-
-        {error && <p className="text-karma-down text-sm text-center mt-4">{error}</p>}
-      </div>
-    )
-  }
-
   // ── Questions ──
   return (
     <div className="max-w-2xl mx-auto p-6">
@@ -500,16 +413,6 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
       <p className="text-text-muted text-xs mt-1 text-right">
         Step {current} / {total}
       </p>
-    </div>
-  )
-}
-
-function Section({ title, text }: { title: string; text: string }) {
-  if (!text) return null
-  return (
-    <div>
-      <h4 className="text-text-secondary text-sm font-semibold mb-1">{title}</h4>
-      <p className="text-text-primary text-sm leading-relaxed">{text}</p>
     </div>
   )
 }
