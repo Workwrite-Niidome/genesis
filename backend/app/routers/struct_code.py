@@ -2,20 +2,25 @@
 STRUCT CODE API Router — Diagnosis, consultation, and type info.
 
 Endpoints:
-  GET  /struct-code/questions          — 25 diagnostic questions
-  POST /struct-code/diagnose           — Run diagnosis (auth required)
-  GET  /struct-code/types              — All 24 types summary
-  GET  /struct-code/types/{code}       — Type detail
-  POST /struct-code/consultation       — Claude AI consultation (auth required)
+  GET  /struct-code/questions                    — 25 diagnostic questions
+  POST /struct-code/diagnose                     — Run diagnosis (auth required)
+  GET  /struct-code/types                        — All 24 types summary
+  GET  /struct-code/types/{code}                 — Type detail
+  POST /struct-code/consultation                 — AI consultation (auth required)
+  GET  /struct-code/consultation/sessions        — List consultation sessions
+  GET  /struct-code/consultation/sessions/{id}   — Session detail with messages
 """
 import logging
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.resident import Resident
+from app.models.consultation import ConsultationSession, ConsultationMessage
 from app.routers.auth import get_current_resident
 from app.schemas.struct_code import (
     DiagnoseRequest,
@@ -28,6 +33,9 @@ from app.schemas.struct_code import (
     TemporalInfo,
     ConsultationRequest,
     ConsultationResponse,
+    ConsultationSessionSummary,
+    ConsultationSessionDetail,
+    ConsultationMessageSchema,
 )
 from app.services import struct_code as sc_service
 from app.config import get_settings
@@ -284,9 +292,10 @@ async def get_type(code: str, lang: str = Query("ja", regex="^(ja|en)$")):
 async def consultation(
     request: ConsultationRequest,
     current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
     lang: str = Query("ja", regex="^(ja|en)$"),
 ):
-    """Claude AI consultation based on your STRUCT CODE type."""
+    """AI consultation based on your STRUCT CODE type. Supports conversation continuation."""
     if not current_resident.struct_type:
         raise HTTPException(
             status_code=400,
@@ -294,8 +303,6 @@ async def consultation(
         )
 
     # Admin accounts exempt from rate limit
-    import logging
-    logger = logging.getLogger(__name__)
     RATE_LIMIT_EXEMPT = {"82417b60"}  # Administrator
     resident_id_prefix = str(current_resident.id)[:8]
     is_exempt = resident_id_prefix in RATE_LIMIT_EXEMPT
@@ -324,18 +331,36 @@ async def consultation(
         redis_client = None
         count = 0
 
+    # Look up or create session
+    session = None
+    dify_conversation_id = None
+    if request.session_id:
+        try:
+            session_uuid = uuid.UUID(request.session_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid session_id")
+        result = await db.execute(
+            select(ConsultationSession).where(
+                ConsultationSession.id == session_uuid,
+                ConsultationSession.resident_id == current_resident.id,
+            )
+        )
+        session = result.scalar_one_or_none()
+        if session:
+            dify_conversation_id = session.dify_conversation_id
+
     axes = current_resident.struct_axes or [0.5] * 5
 
     try:
-        answer = await sc_service.consult(
+        consult_result = await sc_service.consult(
             type_code=current_resident.struct_type,
             axes=axes,
             question=request.question,
             struct_result=current_resident.struct_result,
             lang=lang,
+            conversation_id=dify_conversation_id,
         )
     except Exception:
-        # Don't count failed consultations
         if redis_client:
             await redis_client.aclose()
         raise HTTPException(
@@ -343,13 +368,54 @@ async def consultation(
             detail="Consultation service temporarily unavailable",
         )
 
-    if not answer:
+    if not consult_result:
         if redis_client:
             await redis_client.aclose()
         raise HTTPException(
             status_code=503,
             detail="Consultation service temporarily unavailable",
         )
+
+    # Create session if new
+    if not session:
+        # Generate title from first ~30 chars of question
+        title = request.question[:50].strip()
+        if len(request.question) > 50:
+            title += "..."
+        session = ConsultationSession(
+            resident_id=current_resident.id,
+            dify_conversation_id=consult_result.conversation_id,
+            title=title,
+            message_count=0,
+        )
+        db.add(session)
+        await db.flush()
+    elif consult_result.conversation_id and session.dify_conversation_id != consult_result.conversation_id:
+        # Update conversation_id if Dify returned a new one (retry case)
+        session.dify_conversation_id = consult_result.conversation_id
+
+    # Save user message
+    user_msg = ConsultationMessage(
+        session_id=session.id,
+        role="user",
+        content=request.question,
+    )
+    db.add(user_msg)
+
+    # Save assistant message
+    assistant_msg = ConsultationMessage(
+        session_id=session.id,
+        role="assistant",
+        content=consult_result.answer,
+        dify_message_id=consult_result.message_id,
+    )
+    db.add(assistant_msg)
+
+    # Update session counters
+    session.message_count = (session.message_count or 0) + 2
+    session.updated_at = datetime.utcnow()
+
+    await db.flush()
 
     # Only count successful consultations
     remaining = 2  # default fallback
@@ -365,4 +431,85 @@ async def consultation(
     elif is_exempt:
         remaining = 999
 
-    return ConsultationResponse(answer=answer, remaining_today=remaining)
+    return ConsultationResponse(
+        answer=consult_result.answer,
+        remaining_today=remaining,
+        session_id=str(session.id),
+        conversation_id=consult_result.conversation_id or "",
+    )
+
+
+@router.get("/consultation/sessions", response_model=list[ConsultationSessionSummary])
+async def list_sessions(
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+):
+    """List consultation sessions for the current resident, newest first."""
+    result = await db.execute(
+        select(ConsultationSession)
+        .where(ConsultationSession.resident_id == current_resident.id)
+        .order_by(ConsultationSession.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    sessions = result.scalars().all()
+    return [
+        ConsultationSessionSummary(
+            id=str(s.id),
+            title=s.title or "New Consultation",
+            message_count=s.message_count or 0,
+            created_at=s.created_at.isoformat() if s.created_at else "",
+            updated_at=s.updated_at.isoformat() if s.updated_at else "",
+        )
+        for s in sessions
+    ]
+
+
+@router.get("/consultation/sessions/{session_id}", response_model=ConsultationSessionDetail)
+async def get_session(
+    session_id: str,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get session detail with all messages."""
+    try:
+        session_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    result = await db.execute(
+        select(ConsultationSession).where(
+            ConsultationSession.id == session_uuid,
+            ConsultationSession.resident_id == current_resident.id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Fetch messages
+    msg_result = await db.execute(
+        select(ConsultationMessage)
+        .where(ConsultationMessage.session_id == session.id)
+        .order_by(ConsultationMessage.created_at.asc())
+    )
+    messages = msg_result.scalars().all()
+
+    return ConsultationSessionDetail(
+        id=str(session.id),
+        title=session.title or "New Consultation",
+        message_count=session.message_count or 0,
+        messages=[
+            ConsultationMessageSchema(
+                id=str(m.id),
+                role=m.role,
+                content=m.content,
+                created_at=m.created_at.isoformat() if m.created_at else "",
+            )
+            for m in messages
+        ],
+        created_at=session.created_at.isoformat() if session.created_at else "",
+        updated_at=session.updated_at.isoformat() if session.updated_at else "",
+    )

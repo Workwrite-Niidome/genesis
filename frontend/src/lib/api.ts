@@ -1169,17 +1169,20 @@ class ApiClient {
     return this.request<StructCodeTypeInfo>(`/struct-code/types/${code}${params}`)
   }
 
-  async structCodeConsult(question: string, lang?: string): Promise<StructCodeConsultResponse> {
+  async structCodeConsult(question: string, lang?: string, sessionId?: string): Promise<StructCodeConsultResponse> {
     // Use Next.js API route (not rewrite proxy) for longer timeout on Claude API calls
     const params = lang ? `?lang=${lang}` : ''
     const token = this.getToken()
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
 
+    const body: Record<string, string> = { question }
+    if (sessionId) body.session_id = sessionId
+
     const response = await fetch(`/api/struct-code/consultation${params}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(body),
     })
 
     if (!response.ok) {
@@ -1187,6 +1190,17 @@ class ApiClient {
       throw new Error(err.detail || 'Request failed')
     }
     return response.json()
+  }
+
+  async getConsultationSessions(limit = 20, offset = 0): Promise<ConsultationSessionSummary[]> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<ConsultationSessionSummary[]>(`/struct-code/consultation/sessions?${params}`)
+  }
+
+  async getConsultationSession(sessionId: string): Promise<ConsultationSessionDetail> {
+    return this.request<ConsultationSessionDetail>(`/struct-code/consultation/sessions/${sessionId}`)
   }
 }
 
@@ -1260,6 +1274,32 @@ export interface StructCodeResult {
 export interface StructCodeConsultResponse {
   answer: string
   remaining_today: number
+  session_id: string
+  conversation_id: string
+}
+
+export interface ConsultationSessionSummary {
+  id: string
+  title: string
+  message_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ConsultationMessageItem {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export interface ConsultationSessionDetail {
+  id: string
+  title: string
+  message_count: number
+  messages: ConsultationMessageItem[]
+  created_at: string
+  updated_at: string
 }
 
 export const api = new ApiClient()

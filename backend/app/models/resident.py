@@ -103,6 +103,9 @@ class Resident(Base):
     personality = relationship("AIPersonality", back_populates="resident", uselist=False)
     memory_episodes = relationship("AIMemoryEpisode", back_populates="resident", lazy="dynamic")
 
+    # Consultation
+    consultation_sessions = relationship("ConsultationSession", back_populates="resident", lazy="dynamic")
+
     @property
     def is_agent(self) -> bool:
         return self._type == "agent"

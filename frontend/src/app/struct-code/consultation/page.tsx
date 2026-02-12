@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { api, StructCodeConsultResponse } from '@/lib/api'
+import { api, StructCodeConsultResponse, ConsultationSessionSummary, ConsultationSessionDetail } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
-import { Send, Compass, ArrowLeft } from 'lucide-react'
+import { Send, Compass, ArrowLeft, Plus, History, X, MessageSquare } from 'lucide-react'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -77,6 +77,16 @@ function buildInitialPrompt(resident: any, lang: string): string {
   return lines.filter((l) => l !== undefined).join('\n')
 }
 
+function formatDate(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  const h = d.getHours().toString().padStart(2, '0')
+  const min = d.getMinutes().toString().padStart(2, '0')
+  return `${m}/${day} ${h}:${min}`
+}
+
 export default function ConsultationPage() {
   const router = useRouter()
   const { resident } = useAuthStore()
@@ -87,6 +97,10 @@ export default function ConsultationPage() {
   const [remaining, setRemaining] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [initialized, setInitialized] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<ConsultationSessionSummary[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [loadingSessions, setLoadingSessions] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -118,6 +132,43 @@ export default function ConsultationPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  const loadSessions = useCallback(async () => {
+    setLoadingSessions(true)
+    try {
+      const data = await api.getConsultationSessions()
+      setSessions(data)
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingSessions(false)
+    }
+  }, [])
+
+  const loadSession = useCallback(async (id: string) => {
+    try {
+      const detail: ConsultationSessionDetail = await api.getConsultationSession(id)
+      setSessionId(id)
+      setMessages(detail.messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })))
+      setShowHistory(false)
+      setInput('')
+      setError('')
+    } catch {
+      setError(lang === 'en' ? 'Failed to load session' : 'セッションの読み込みに失敗しました')
+    }
+  }, [lang])
+
+  const startNewConversation = useCallback(() => {
+    setSessionId(null)
+    setMessages([])
+    setError('')
+    setInitialized(false)
+    // Re-trigger initial prompt
+    if (resident?.struct_result) {
+      const prompt = buildInitialPrompt(resident, lang)
+      if (prompt) setInput(prompt)
+    }
+  }, [resident, lang])
 
   // Redirect if not diagnosed
   if (resident && !resident.struct_type) {
@@ -162,9 +213,17 @@ export default function ConsultationPage() {
     setLoading(true)
 
     try {
-      const res: StructCodeConsultResponse = await api.structCodeConsult(question, lang)
+      const res: StructCodeConsultResponse = await api.structCodeConsult(
+        question,
+        lang,
+        sessionId || undefined,
+      )
       setMessages((prev) => [...prev, { role: 'assistant', content: res.answer }])
       setRemaining(res.remaining_today)
+      // Track session for conversation continuation
+      if (res.session_id) {
+        setSessionId(res.session_id)
+      }
     } catch (e: any) {
       const msg = e.message || 'Consultation failed'
       setError(msg)
@@ -209,12 +268,77 @@ export default function ConsultationPage() {
             </p>
           </div>
         </div>
-        {remaining !== null && (
-          <span className="text-text-muted text-xs bg-bg-tertiary px-3 py-1 rounded-full">
-            {lang === 'en' ? `${remaining} left today` : `残り${remaining}回/日`}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {remaining !== null && (
+            <span className="text-text-muted text-xs bg-bg-tertiary px-3 py-1 rounded-full">
+              {lang === 'en' ? `${remaining} left today` : `残り${remaining}回/日`}
+            </span>
+          )}
+          <button
+            onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadSessions() }}
+            className="p-2 text-text-muted hover:text-text-primary transition-colors rounded-lg hover:bg-bg-tertiary"
+            title={lang === 'en' ? 'History' : '履歴'}
+          >
+            <History size={18} />
+          </button>
+          <button
+            onClick={startNewConversation}
+            className="p-2 text-text-muted hover:text-accent-gold transition-colors rounded-lg hover:bg-bg-tertiary"
+            title={lang === 'en' ? 'New conversation' : '新しい会話'}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </div>
+
+      {/* History Panel */}
+      {showHistory && (
+        <div className="mb-4 shrink-0 border border-border-default rounded-lg bg-bg-secondary overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border-default">
+            <span className="text-sm font-semibold text-text-primary">
+              {lang === 'en' ? 'Past Sessions' : '過去のセッション'}
+            </span>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="text-text-muted hover:text-text-primary"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {loadingSessions ? (
+              <p className="text-text-muted text-xs px-4 py-3">
+                {lang === 'en' ? 'Loading...' : '読み込み中...'}
+              </p>
+            ) : sessions.length === 0 ? (
+              <p className="text-text-muted text-xs px-4 py-3">
+                {lang === 'en' ? 'No past sessions' : '過去のセッションはありません'}
+              </p>
+            ) : (
+              sessions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => loadSession(s.id)}
+                  className={`w-full text-left px-4 py-2 hover:bg-bg-tertiary transition-colors border-b border-border-default last:border-b-0 ${
+                    sessionId === s.id ? 'bg-bg-tertiary' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={14} className="text-text-muted shrink-0" />
+                    <span className="text-sm text-text-primary truncate">{s.title}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 ml-[22px]">
+                    <span className="text-xs text-text-muted">
+                      {s.message_count} {lang === 'en' ? 'messages' : '件'}
+                    </span>
+                    <span className="text-xs text-text-muted">{formatDate(s.updated_at)}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">

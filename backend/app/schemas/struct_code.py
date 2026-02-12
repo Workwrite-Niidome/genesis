@@ -91,8 +91,35 @@ class QuestionItem(BaseModel):
 
 class ConsultationRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
+    session_id: str | None = None  # Existing session to continue
 
 
 class ConsultationResponse(BaseModel):
     answer: str
     remaining_today: int
+    session_id: str           # Genesis session UUID
+    conversation_id: str      # Dify conversation ID
+
+
+class ConsultationMessageSchema(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: str
+
+
+class ConsultationSessionSummary(BaseModel):
+    id: str
+    title: str
+    message_count: int
+    created_at: str
+    updated_at: str
+
+
+class ConsultationSessionDetail(BaseModel):
+    id: str
+    title: str
+    message_count: int
+    messages: list[ConsultationMessageSchema]
+    created_at: str
+    updated_at: str

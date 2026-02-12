@@ -34,6 +34,7 @@ from app.models.werewolf_game import (
     TEAMS as WEREWOLF_TEAMS,
     ROLE_DISTRIBUTION,
 )
+from app.models.consultation import ConsultationSession, ConsultationMessage
 
 __all__ = [
     "Resident",
@@ -83,4 +84,6 @@ __all__ = [
     "WEREWOLF_ROLES",
     "WEREWOLF_TEAMS",
     "ROLE_DISTRIBUTION",
+    "ConsultationSession",
+    "ConsultationMessage",
 ]
