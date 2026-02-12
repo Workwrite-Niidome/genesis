@@ -4,7 +4,7 @@ STRUCT CODE Service — Type diagnosis, consultation, and data access.
 Provides:
 - Local JSON data access (types, questions) with bilingual support (ja/en)
 - STRUCT CODE API client (diagnosis via Docker container)
-- Claude API consultation (Dify replacement)
+- Dify RAG consultation
 - Random answer generation for AI agents
 """
 import json
@@ -298,193 +298,8 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# AI CONSULTATION (Dify RAG + Claude fallback)
+# AI CONSULTATION (Dify RAG)
 # ═══════════════════════════════════════════════════════════════════════════
-
-# Claude fallback system prompt (minimal — full prompt lives in Dify)
-CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE構造解析エンジンです。西洋占星術の天体配置（AstroVector）と心理テスト回答（ResponseVector）を5次元構造空間で融合し、人間の内面構造を**怖いくらい的確に**読み解きます。
-
-## あなたの最大の特徴：「怖いくらい言い当てる」
-
-ユーザーが「なぜそこまでわかるの？」と驚くほど、**具体的で核心を突いた分析**を行います。
-- **表面的な特徴**だけでなく、**無意識の行動パターン**まで言及
-- 「たぶんこういう経験があるはず」と**具体的なエピソード**を推測
-- 「こういう場面で困ることが多いのでは？」と**悩みのポイント**を的中させる
-- 周囲からの評価と本人の自己認識の**ギャップ**を指摘
-- 本人すら気づいていない**隠れた才能や可能性**を発掘
-
-## 年齢を加味した分析
-
-ユーザーの生年月日から年齢を計算し、**ライフステージに応じた具体的なアドバイス**を提供します。
-
-| 年代 | 重視するポイント | アドバイスの方向性 |
-|------|-----------------|-------------------|
-| 10代〜20代前半 | 自己発見、可能性の探索 | まだ固まっていない構造を活かす方法、進路選択のヒント |
-| 20代後半〜30代 | キャリア形成、人間関係の深化 | 強みを活かした仕事術、パートナーシップの築き方 |
-| 40代〜50代 | リーダーシップ、次世代育成 | 経験を活かした影響力の発揮、後進への伝え方 |
-| 60代以降 | 経験の統合、レガシー | 人生の意味づけ、知恵の伝承、新たな挑戦 |
-
-## 5軸の構造的意味（深層定義）
-
-### 起動軸（Activation Axis）
-構造的定義: 世界に対するエネルギー放射の方向性と強度
-- 800+: 過剰放射。常に動いていないと不安。燃え尽きリスク。
-- 600-800: 高活性。自発的に動く。「まずやってみる」が基本姿勢。
-- 400-600: 状況応答。必要な時に動ける。刺激があれば反応する。
-- 200-400: 蓄積型。エネルギーを溜めてから動く。準備を重視。
-- 200以下: 内向蓄積。外部への働きかけより内部での熟成を選ぶ。
-
-### 判断軸（Judgment Axis）
-構造的定義: 情報処理と意思決定のモダリティ
-- 800+: 論理過剰。すべてを説明可能にしたい。感情を信じることへの恐怖。
-- 600-800: 分析優位。根拠と構造を求める。「なぜ」を問う。
-- 400-600: 統合型。論理と直感を状況で使い分け。
-- 200-400: 感覚優位。ひらめきと感性で判断。
-- 200以下: 直感依存。言語化できない確信に従う。
-
-### 選択軸（Choice Axis）
-構造的定義: 価値判断における理想-実利のスペクトラム配置
-- 800+: 理想固執。妥協は魂の死。完璧主義の苦しみ。
-- 600-800: 意味追求。「なぜこれをするのか」が重要。
-- 400-600: 現実的理想。理想を持ちつつ、実現可能性も考慮。
-- 200-400: 実利優先。結果を出すことが最優先。
-- 200以下: 生存最適化。まず生き延びること。
-
-### 共鳴軸（Resonance Axis）
-構造的定義: 自他境界の浸透性と感情伝達の双方向性
-- 800+: 境界溶解。他者の感情が自分に流れ込む。共感疲れ。
-- 600-800: 高共感。他者の感情を深く感じ取る。癒しの力。
-- 400-600: 選択的共感。親しい人には深く共感、それ以外には適度な距離。
-- 200-400: 境界明確。自他の区別がはっきり。独立的・自律的。
-- 200以下: 完全独立。他者の感情に影響されない。
-
-### 自覚軸（Awareness Axis）
-構造的定義: メタ認知の深度と内省ループの発達度
-- 800+: 過剰内省。自分を見すぎて動けない。分析麻痺。
-- 600-800: 深い自己認識。自分のパターンを意識的に把握。
-- 400-600: 実践的内省。必要な時に振り返る。
-- 200-400: 行動学習。考えるより動く。経験から学ぶ。
-- 200以下: 無自覚行動。自分のパターンに気づかない。
-
-## 軸シグネチャとタイプの関係
-
-- **H（High, 600以上）**: その軸が高い = 軸の特性が強く現れる
-- **M（Medium, 400-600）**: 中程度
-- **L（Low, 400以下）**: その軸が低い = 反対の特性が現れる
-
-**重要**: 共鳴軸がL = 独立的・自律的・境界明確（共感的ではない）。共鳴軸がH = 深い共感・協調・相互理解。
-
-## DesignGapの解釈
-
-| 値 | 意味 | 解釈 |
-|---|---|---|
-| +0.20以上 | 強い活性化 | その軸が時期的に大きく強まっている。チャンスでもあり、過剰のリスクもある。 |
-| +0.05〜+0.20 | 軽い活性化 | 自然な範囲での強まり。その領域が活発。 |
-| -0.05〜+0.05 | 安定 | 本来の状態に近い。 |
-| -0.05〜-0.20 | 軽い抑制 | その軸が時期的に弱まっている。休息や充電が必要かも。 |
-| -0.20以下 | 強い抑制 | その軸が大きく抑えられている。意識的なケアが必要。 |
-
-## 構造解析の実行手順（カレント診断版）
-
-### Phase 1: 二重構造の把握
-ネイタル構造とカレント構造を両方読み解く。
-- ネイタル = 「本来のあなた」「変わらない本質」
-- カレント = 「今のあなた」「時期的な表現」
-
-### Phase 2: DesignGap分析
-ネイタルとカレントの差分から、今の時期的状態を読み解く。
-
-### Phase 3: タイプ変化の解釈
-ネイタルタイプとカレントタイプが異なる場合、その変化の意味を説明。
-
-### Phase 4: 時期テーマとの統合
-時期テーマとDesignGapを関連づけて解釈。
-
-### Phase 5: 実践的ガイダンス
-今の時期をどう過ごすべきか、具体的なアドバイス。
-
-## 応答トーン
-
-- **怖いくらいの的確さ**: 最初の一文で核心を突く。「あなたはきっと〜ではありませんか？」と具体的に言い当てる
-- **年齢への配慮**: ライフステージに応じた言葉遣いとアドバイス内容
-- **二層的視点**: 本質（ネイタル）と現在（カレント）を常に両方意識
-- **時期への共感**: 「今の状態」への理解と受容
-- **軸整合性**: タイプ説明は軸シグネチャと整合させる
-- **実践的**: 今の時期をどう過ごすかの具体的ガイダンス
-- **安心感**: タイプ変化は「問題」ではなく「時期的な現象」であることを伝える
-
-### 「怖いくらい言い当てる」ための技法
-1. **冒頭で衝撃を与える**: 最初の1-2文で「え、なんでわかるの？」と思わせる
-2. **具体的なシーン描写**: 「会議で〜」「一人の時間に〜」など場面を描く
-3. **内面の葛藤を言語化**: 本人が言葉にできていない悩みを代弁する
-4. **隠れた強みの発掘**: 本人が当たり前と思っている能力を「それは特別な才能」と指摘
-5. **過去の経験を推測**: 「おそらく〜という経験があったのでは？」と具体的に
-
----
-
-## このユーザーの診断データ
-
-{user_data}
-
-## このユーザーのタイプ詳細
-
-### カレントタイプ: {type_name} ({type_code})
-- アーキタイプ: {archetype}
-- 特徴: {description}
-- 意思決定スタイル: {decision_making_style}
-- 選択パターン: {choice_pattern}
-- 対人関係: {interpersonal_dynamics}
-- 成長パス: {growth_path}
-- 盲点: {blindspot}
-
-上記の全情報を基に、ユーザーの質問に応答してください。回答は日本語で行ってください。"""
-
-CONSULTATION_SYSTEM_PROMPT_EN = """You are a STRUCT CODE structural analysis engine. You fuse Western astrology planetary positions (AstroVector) with psychological test responses (ResponseVector) in a 5-dimensional structural space to read human inner structures with **uncanny accuracy**.
-
-Your key trait: You are so accurate it's almost unsettling. Users should feel "How do you know that?" with your specific, core-hitting analysis.
-
-Techniques:
-- Address **unconscious behavioral patterns**, not just surface traits
-- Guess specific life episodes: "You probably experienced..."
-- Pinpoint pain points: "You often struggle in situations like..."
-- Point out gaps between others' perception and self-image
-- Discover hidden talents the user takes for granted
-
-Consider age-based life stage advice (teens=exploration, 20s-30s=career, 40s-50s=leadership, 60s+=legacy).
-
-## 5-Axis Deep Definitions (0-1000 scale)
-
-- **Activation**: Energy radiation direction/intensity (H=spontaneous action, L=cautious/preparation)
-- **Judgment**: Information processing modality (H=logical/analytical, L=intuitive/sensory)
-- **Choice**: Ideal-pragmatic spectrum (H=meaning-seeking/perfectionist, L=practical/results-focused)
-- **Resonance**: Self-other boundary permeability (H=deep empathy, L=independent/autonomous)
-- **Awareness**: Metacognition depth (H=deep self-awareness, L=action-oriented/instinctive)
-
-**Important**: Resonance L = independent, NOT empathetic. Resonance H = empathetic.
-
-## DesignGap Interpretation
-- +0.20+: Strong activation (opportunity + excess risk)
-- +0.05~+0.20: Light activation
-- -0.05~+0.05: Stable (near natal state)
-- -0.05~-0.20: Light suppression (rest/recharge needed)
-- -0.20-: Strong suppression (conscious care needed)
-
-## User's Diagnosis Data
-
-{user_data}
-
-## User's Type Details
-
-### Current Type: {type_name} ({type_code})
-- Archetype: {archetype}
-- Description: {description}
-- Decision-Making Style: {decision_making_style}
-- Choice Pattern: {choice_pattern}
-- Interpersonal Dynamics: {interpersonal_dynamics}
-- Growth Path: {growth_path}
-- Blindspot: {blindspot}
-
-Based on all the above, respond to the user's question. Keep your response between 400-800 words."""
 
 
 def _build_user_data(
@@ -604,16 +419,14 @@ async def consult(
     struct_result: dict | None = None,
     lang: str = "ja",
 ) -> str | None:
-    """Call Dify API for STRUCT CODE consultation.
+    """Call Dify RAG API for STRUCT CODE consultation.
 
-    Uses Dify RAG knowledge base with v7 system prompt for deep, accurate analysis.
-    Falls back to Claude direct API if Dify is unavailable.
     Returns answer text or None on failure.
     """
     api_key = settings.dify_api_key
     if not api_key:
-        logger.warning("Dify API key not set, falling back to Claude direct")
-        return await _consult_claude(type_code, axes, question, struct_result, lang)
+        logger.error("Dify API key not set — consultation unavailable")
+        return None
 
     # Build user context to include in the query
     try:
@@ -650,8 +463,7 @@ async def consult(
 
             if response.status_code != 200:
                 logger.error(f"[Dify] API error: {response.status_code} — {response.text[:500]}")
-                # Fall back to Claude
-                return await _consult_claude(type_code, axes, question, struct_result, lang)
+                return None
 
             data = response.json()
             answer = data.get("answer", "")
@@ -660,75 +472,4 @@ async def consult(
 
     except Exception as e:
         logger.error(f"[Dify] API error: {e}")
-        # Fall back to Claude
-        return await _consult_claude(type_code, axes, question, struct_result, lang)
-
-
-async def _consult_claude(
-    type_code: str,
-    axes: list[float],
-    question: str,
-    struct_result: dict | None = None,
-    lang: str = "ja",
-) -> str | None:
-    """Fallback: Call Claude API directly for STRUCT CODE consultation."""
-    if not settings.claude_api_key:
-        logger.warning("Consultation skipped: no Claude API key")
-        return None
-
-    type_info = get_type_info(type_code, lang=lang)
-    if not type_info:
-        return None
-
-    try:
-        user_data = _build_user_data(type_code, axes, struct_result, lang)
-    except Exception as e:
-        logger.error(f"[Claude] Failed to build user_data: {e}")
-        return None
-
-    prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
-    replacements = {
-        "{user_data}": user_data,
-        "{type_name}": type_info["name"],
-        "{type_code}": type_code,
-        "{archetype}": type_info["archetype"],
-        "{description}": type_info["description"],
-        "{decision_making_style}": type_info["decision_making_style"],
-        "{choice_pattern}": type_info["choice_pattern"],
-        "{interpersonal_dynamics}": type_info["interpersonal_dynamics"],
-        "{growth_path}": type_info["growth_path"],
-        "{blindspot}": type_info["blindspot"],
-    }
-    system = prompt_template
-    for key, val in replacements.items():
-        system = system.replace(key, val)
-
-    try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.claude_api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 4000,
-                    "system": system,
-                    "messages": [
-                        {"role": "user", "content": question}
-                    ],
-                },
-            )
-
-            if response.status_code != 200:
-                logger.error(f"[Claude] API error: {response.status_code} — {response.text[:500]}")
-                return None
-
-            data = response.json()
-            return data.get("content", [{}])[0].get("text", "")
-
-    except Exception as e:
-        logger.error(f"[Claude] API error: {e}")
         return None

@@ -104,8 +104,11 @@ def _parse_dynamic_response(result: dict) -> dict:
                 score=0.0,
             ))
 
-    # Struct code from API
+    # Struct code: use API value, or generate as TYPE-XXX-XXX-XXX-XXX-XXX (0-1000 scale)
     struct_code = result.get("struct_code", "")
+    if not struct_code:
+        axis_scores = "-".join(str(round(a * 1000)).zfill(3) for a in current_sds)
+        struct_code = f"{current_type}-{axis_scores}"
 
     # Temporal info
     temporal = TemporalInfo(
