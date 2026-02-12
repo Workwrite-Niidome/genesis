@@ -11,12 +11,16 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
-const AXIS_LABELS: Record<string, string> = {
-  '起動軸': 'Activation',
-  '判断軸': 'Judgment',
-  '選択軸': 'Choice',
-  '共鳴軸': 'Resonance',
-  '自覚軸': 'Awareness',
+function t(lang: string, ja: string, en: string): string {
+  return lang === 'en' ? en : ja
+}
+
+const AXIS_LABELS: Record<string, Record<string, string>> = {
+  '起動軸': { ja: '起動軸', en: 'Activation' },
+  '判断軸': { ja: '判断軸', en: 'Judgment' },
+  '選択軸': { ja: '選択軸', en: 'Choice' },
+  '共鳴軸': { ja: '共鳴軸', en: 'Resonance' },
+  '自覚軸': { ja: '自覚軸', en: 'Awareness' },
 }
 
 const AXIS_SHORT = ['Act', 'Jdg', 'Chc', 'Res', 'Awa']
@@ -28,22 +32,16 @@ function classifyAxis(val: number): { label: string; color: string } {
   return { label: 'L', color: 'bg-bg-primary text-text-muted' }
 }
 
-function getAxisStateInfo(state: string): { label: string; color: string; icon: typeof ArrowUp } {
+function getAxisStateInfo(state: string, lang: string): { label: string; color: string; icon: typeof ArrowUp } {
   switch (state) {
     case 'activation':
-      return { label: '活性化', color: 'text-emerald-400', icon: ArrowUp }
+      return { label: t(lang, '活性化', 'Active'), color: 'text-emerald-400', icon: ArrowUp }
     case 'suppression':
-      return { label: '抑制', color: 'text-red-400', icon: ArrowDown }
+      return { label: t(lang, '抑制', 'Suppressed'), color: 'text-red-400', icon: ArrowDown }
     default:
-      return { label: '安定', color: 'text-text-muted', icon: Minus }
+      return { label: t(lang, '安定', 'Stable'), color: 'text-text-muted', icon: Minus }
   }
 }
-
-const MEDAL_STYLES = [
-  { icon: Trophy, color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', label: 'Your Type' },
-  { icon: Award, color: 'text-gray-300', bg: 'bg-gray-300/10 border-gray-300/30', label: '' },
-  { icon: Medal, color: 'text-amber-600', bg: 'bg-amber-600/10 border-amber-600/30', label: '' },
-]
 
 export default function StructCodeResultPage() {
   const params = useParams()
@@ -88,6 +86,22 @@ export default function StructCodeResultPage() {
     load()
   }, [name, lang])
 
+  const MEDAL_STYLES = [
+    { icon: Trophy, color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', label: t(lang, 'あなたのタイプ', 'Your Type') },
+    { icon: Award, color: 'text-gray-300', bg: 'bg-gray-300/10 border-gray-300/30', label: '' },
+    { icon: Medal, color: 'text-amber-600', bg: 'bg-amber-600/10 border-amber-600/30', label: '' },
+  ]
+
+  // Section title translations
+  const SECTION_TITLES: Record<string, Record<string, string>> = {
+    description: { ja: '概要', en: 'Description' },
+    decision_making_style: { ja: '意思決定スタイル', en: 'Decision Making Style' },
+    choice_pattern: { ja: '選択パターン', en: 'Choice Pattern' },
+    interpersonal_dynamics: { ja: '対人関係の特徴', en: 'Interpersonal Dynamics' },
+    growth_path: { ja: '成長の道筋', en: 'Growth Path' },
+    blindspot: { ja: '盲点', en: 'Blindspot' },
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -100,16 +114,21 @@ export default function StructCodeResultPage() {
     return (
       <div className="max-w-2xl mx-auto p-6 text-center">
         <Compass size={48} className="text-text-muted mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-text-primary mb-2">No STRUCT CODE Result</h2>
+        <h2 className="text-xl font-bold text-text-primary mb-2">
+          {t(lang, 'STRUCT CODE 結果なし', 'No STRUCT CODE Result')}
+        </h2>
         <p className="text-text-secondary mb-6">
-          {resident ? 'This user has not completed their STRUCT CODE diagnosis yet.' : 'User not found.'}
+          {resident
+            ? t(lang, 'このユーザーはまだSTRUCT CODE診断を受けていません。', 'This user has not completed their STRUCT CODE diagnosis yet.')
+            : t(lang, 'ユーザーが見つかりません。', 'User not found.')
+          }
         </p>
         {currentUser?.name === name && (
           <Link
             href="/struct-code"
             className="inline-flex items-center gap-2 px-6 py-2 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors"
           >
-            Take Diagnosis
+            {t(lang, '診断を受ける', 'Take Diagnosis')}
           </Link>
         )}
       </div>
@@ -138,7 +157,9 @@ export default function StructCodeResultPage() {
   }
 
   const handleShareX = () => {
-    const text = `My STRUCT CODE type is ${resident.struct_type} (${typeInfo?.name || ''}) — ${typeInfo?.archetype || ''}`
+    const text = lang === 'en'
+      ? `My STRUCT CODE type is ${resident.struct_type} (${typeInfo?.name || ''}) — ${typeInfo?.archetype || ''}`
+      : `私のSTRUCT CODEタイプは ${resident.struct_type}（${typeInfo?.name || ''}）— ${typeInfo?.archetype || ''}`
     const url = window.location.href
     window.open(
       `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
@@ -157,7 +178,9 @@ export default function StructCodeResultPage() {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-lg font-bold text-text-primary">STRUCT CODE Result</h1>
+          <h1 className="text-lg font-bold text-text-primary">
+            {t(lang, 'STRUCT CODE 結果', 'STRUCT CODE Result')}
+          </h1>
           <p className="text-text-muted text-xs">
             <Link href={`/u/${name}`} className="hover:text-accent-gold transition-colors">
               @{name}
@@ -172,7 +195,9 @@ export default function StructCodeResultPage() {
           {/* Current Type (Primary) */}
           <div className="bg-bg-tertiary rounded-xl border border-accent-gold/40 p-5">
             <div className="text-center">
-              <p className="text-accent-gold text-[10px] font-semibold uppercase tracking-widest mb-2">Current Type</p>
+              <p className="text-accent-gold text-[10px] font-semibold uppercase tracking-widest mb-2">
+                {t(lang, 'カレントタイプ', 'Current Type')}
+              </p>
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent-gold/20 mb-2">
                 <Compass size={24} className="text-accent-gold" />
               </div>
@@ -190,7 +215,9 @@ export default function StructCodeResultPage() {
           {/* Natal Type */}
           <div className="bg-bg-tertiary rounded-xl border border-border-default p-5">
             <div className="text-center">
-              <p className="text-text-muted text-[10px] font-semibold uppercase tracking-widest mb-2">Natal Type</p>
+              <p className="text-text-muted text-[10px] font-semibold uppercase tracking-widest mb-2">
+                {t(lang, 'ネイタルタイプ', 'Natal Type')}
+              </p>
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-text-muted/10 mb-2">
                 <Compass size={24} className="text-text-muted" />
               </div>
@@ -218,7 +245,9 @@ export default function StructCodeResultPage() {
             <p className="text-text-primary text-xl mt-2">{typeInfo?.name || ''}</p>
             <p className="text-text-secondary">{typeInfo?.archetype || ''}</p>
             {natal && current && natal.type === current.type && (
-              <p className="text-text-muted text-xs mt-2">Natal = Current</p>
+              <p className="text-text-muted text-xs mt-2">
+                {t(lang, 'ネイタル = カレント', 'Natal = Current')}
+              </p>
             )}
           </div>
         </div>
@@ -231,7 +260,7 @@ export default function StructCodeResultPage() {
             <p className="font-mono text-text-primary text-sm tracking-widest">{structCode}</p>
             {similarity > 0 && (
               <span className="text-accent-gold text-xs font-semibold">
-                Match: {(similarity * 100).toFixed(1)}%
+                {t(lang, '適合度', 'Match')}: {(similarity * 100).toFixed(1)}%
               </span>
             )}
           </div>
@@ -278,21 +307,23 @@ export default function StructCodeResultPage() {
 
       {/* 5-Axis Profile with Axis States */}
       <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
-        <h3 className="text-text-primary font-semibold mb-4">5-Axis Profile</h3>
+        <h3 className="text-text-primary font-semibold mb-4">
+          {t(lang, '5軸プロフィール', '5-Axis Profile')}
+        </h3>
         <div className="space-y-4">
           {axes.map((val: number, i: number) => {
             const axisName = AXIS_ORDER[i]
             const cls = classifyAxis(val)
             const natalVal = natal?.axes?.[i]
             const stateData = axisStates.find(s => s.axis === axisName)
-            const stateInfo = stateData ? getAxisStateInfo(stateData.state) : null
+            const stateInfo = stateData ? getAxisStateInfo(stateData.state, lang) : null
             const StateIcon = stateInfo?.icon || Minus
             return (
               <div key={i}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-text-primary text-sm font-medium">
-                      {AXIS_LABELS[axisName] || AXIS_SHORT[i]}
+                      {AXIS_LABELS[axisName]?.[lang] || AXIS_SHORT[i]}
                     </span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cls.color}`}>
                       {cls.label}
@@ -337,18 +368,22 @@ export default function StructCodeResultPage() {
         {/* Axis state legend */}
         {axisStates.length > 0 && (
           <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border-default">
-            <span className="text-text-muted text-[10px]">Axis States:</span>
+            <span className="text-text-muted text-[10px]">
+              {t(lang, '軸の状態:', 'Axis States:')}
+            </span>
             <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
-              <ArrowUp size={10} /> 活性化
+              <ArrowUp size={10} /> {t(lang, '活性化', 'Active')}
             </span>
             <span className="inline-flex items-center gap-1 text-[10px] text-text-muted">
-              <Minus size={10} /> 安定
+              <Minus size={10} /> {t(lang, '安定', 'Stable')}
             </span>
             <span className="inline-flex items-center gap-1 text-[10px] text-red-400">
-              <ArrowDown size={10} /> 抑制
+              <ArrowDown size={10} /> {t(lang, '抑制', 'Suppressed')}
             </span>
             {hasNatalCurrentSplit && (
-              <span className="text-text-muted text-[10px]">( ) = Natal</span>
+              <span className="text-text-muted text-[10px]">
+                {t(lang, '( ) = ネイタル', '( ) = Natal')}
+              </span>
             )}
           </div>
         )}
@@ -357,7 +392,9 @@ export default function StructCodeResultPage() {
       {/* TOP 3 Type Candidates */}
       {topCandidates.length > 0 && (
         <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
-          <h3 className="text-text-primary font-semibold mb-4">TOP 3 Type Candidates</h3>
+          <h3 className="text-text-primary font-semibold mb-4">
+            {t(lang, 'タイプ候補 TOP 3', 'TOP 3 Type Candidates')}
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {topCandidates.slice(0, 3).map((c: any, i: number) => {
               const medal = MEDAL_STYLES[i] || MEDAL_STYLES[2]
@@ -374,7 +411,7 @@ export default function StructCodeResultPage() {
                         <span className="font-mono font-bold text-text-primary">{c.code}</span>
                         {i === 0 && (
                           <span className="text-[10px] font-semibold text-accent-gold bg-accent-gold/10 px-1.5 py-0.5 rounded">
-                            Your Type
+                            {t(lang, 'あなたのタイプ', 'Your Type')}
                           </span>
                         )}
                       </div>
@@ -397,14 +434,16 @@ export default function StructCodeResultPage() {
       {/* Type Characteristics */}
       {typeInfo && typeInfo.description && (
         <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
-          <h3 className="text-text-primary font-semibold mb-4">Type Characteristics</h3>
+          <h3 className="text-text-primary font-semibold mb-4">
+            {t(lang, 'タイプの特徴', 'Type Characteristics')}
+          </h3>
           <div className="space-y-5">
-            <Section title="Description" text={typeInfo.description} />
-            <Section title="Decision Making Style" text={typeInfo.decision_making_style} />
-            <Section title="Choice Pattern" text={typeInfo.choice_pattern} />
-            <Section title="Interpersonal Dynamics" text={typeInfo.interpersonal_dynamics} />
-            <Section title="Growth Path" text={typeInfo.growth_path} />
-            <Section title="Blindspot" text={typeInfo.blindspot} />
+            <Section title={SECTION_TITLES.description[lang]} text={typeInfo.description} />
+            <Section title={SECTION_TITLES.decision_making_style[lang]} text={typeInfo.decision_making_style} />
+            <Section title={SECTION_TITLES.choice_pattern[lang]} text={typeInfo.choice_pattern} />
+            <Section title={SECTION_TITLES.interpersonal_dynamics[lang]} text={typeInfo.interpersonal_dynamics} />
+            <Section title={SECTION_TITLES.growth_path[lang]} text={typeInfo.growth_path} />
+            <Section title={SECTION_TITLES.blindspot[lang]} text={typeInfo.blindspot} />
           </div>
         </div>
       )}
@@ -415,14 +454,14 @@ export default function StructCodeResultPage() {
           href={`/u/${name}`}
           className="px-6 py-2 bg-bg-tertiary text-text-primary border border-border-default rounded-lg hover:bg-bg-hover transition-colors text-sm"
         >
-          View Profile
+          {t(lang, 'プロフィールを見る', 'View Profile')}
         </Link>
         {isOwnProfile && (
           <Link
             href="/struct-code"
             className="px-6 py-2 bg-bg-tertiary text-text-secondary border border-border-default rounded-lg hover:bg-bg-hover transition-colors text-sm"
           >
-            Retake Diagnosis
+            {t(lang, '再診断する', 'Retake Diagnosis')}
           </Link>
         )}
       </div>

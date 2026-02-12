@@ -173,7 +173,7 @@ export default function ConsultationPage() {
   // Redirect if not diagnosed
   if (resident && !resident.struct_type) {
     return (
-      <div className="max-w-2xl mx-auto p-6 text-center">
+      <div className="w-full px-4 text-center py-12">
         <Compass size={48} className="text-text-muted mx-auto mb-4" />
         <h2 className="text-xl font-bold text-text-primary mb-2">
           {lang === 'en' ? 'Diagnosis Required' : '診断が必要です'}
@@ -195,7 +195,7 @@ export default function ConsultationPage() {
 
   if (!resident) {
     return (
-      <div className="max-w-2xl mx-auto p-6 text-center">
+      <div className="w-full px-4 text-center py-12">
         <p className="text-text-secondary">
           {lang === 'en' ? 'Please log in to use the consultation.' : 'ログインしてください。'}
         </p>
@@ -250,7 +250,7 @@ export default function ConsultationPage() {
     : currentType || natalType || resident.struct_type || ''
 
   return (
-    <div className="max-w-2xl mx-auto p-6 flex flex-col h-[calc(100vh-8rem)]">
+    <div className="w-full px-4 flex flex-col h-[calc(100vh-8rem)]">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="flex items-center gap-3">

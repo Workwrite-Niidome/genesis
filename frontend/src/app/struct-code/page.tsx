@@ -6,15 +6,20 @@ import { api, StructCodeQuestion } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { Compass, ArrowRight, ArrowLeft, Check, MapPin, Loader2 } from 'lucide-react'
 
-const AXIS_LABELS: Record<string, string> = {
-  '起動軸': 'Activation',
-  '判断軸': 'Judgment',
-  '選択軸': 'Choice',
-  '共鳴軸': 'Resonance',
-  '自覚軸': 'Awareness',
+const AXIS_LABELS: Record<string, Record<string, string>> = {
+  '起動軸': { ja: '起動軸', en: 'Activation' },
+  '判断軸': { ja: '判断軸', en: 'Judgment' },
+  '選択軸': { ja: '選択軸', en: 'Choice' },
+  '共鳴軸': { ja: '共鳴軸', en: 'Resonance' },
+  '自覚軸': { ja: '自覚軸', en: 'Awareness' },
 }
 
 const QUESTIONS_PER_PAGE = 5
+
+// Bilingual text helper
+function t(lang: string, ja: string, en: string): string {
+  return lang === 'en' ? en : ja
+}
 
 export default function StructCodePage() {
   const router = useRouter()
@@ -125,7 +130,7 @@ export default function StructCodePage() {
 
   const handleSubmit = async () => {
     if (!resident) {
-      setError('Please log in first')
+      setError(t(lang, 'ログインしてください', 'Please log in first'))
       return
     }
     setLoading(true)
@@ -142,7 +147,7 @@ export default function StructCodePage() {
       // Redirect to persistent result page
       router.push(`/struct-code/result/${resident.name}`)
     } catch (e: any) {
-      setError(e.message || 'Diagnosis failed')
+      setError(e.message || t(lang, '診断に失敗しました', 'Diagnosis failed'))
       setLoading(false)
     }
   }
@@ -162,6 +167,11 @@ export default function StructCodePage() {
     scrollTop()
   }
 
+  // Month names
+  const MONTH_LABELS = lang === 'en'
+    ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    : ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+
   // ── Intro ──
   if (step === 0) {
     return (
@@ -172,14 +182,22 @@ export default function StructCodePage() {
           </div>
           <h1 className="text-3xl font-bold text-text-primary">STRUCT CODE</h1>
           <p className="text-text-secondary text-lg">
-            Discover your structural personality type through 25 questions and astrological analysis.
+            {t(lang,
+              '25の質問と天体配置から、あなたの構造的パーソナリティタイプを解析します。',
+              'Discover your structural personality type through 25 questions and astrological analysis.'
+            )}
           </p>
           <p className="text-text-muted text-sm">
-            24 types across 5 axes: Activation, Judgment, Choice, Resonance, Awareness
+            {t(lang,
+              '5つの軸 × 24タイプ: 起動・判断・選択・共鳴・自覚',
+              '24 types across 5 axes: Activation, Judgment, Choice, Resonance, Awareness'
+            )}
           </p>
 
           {!resident && (
-            <p className="text-karma-down text-sm">Please log in to take the diagnosis.</p>
+            <p className="text-karma-down text-sm">
+              {t(lang, 'ログインして診断を受けてください。', 'Please log in to take the diagnosis.')}
+            </p>
           )}
 
           <button
@@ -187,22 +205,27 @@ export default function StructCodePage() {
             disabled={!resident}
             className="inline-flex items-center gap-2 px-8 py-3 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Start Diagnosis
+            {t(lang, '診断を開始', 'Start Diagnosis')}
             <ArrowRight size={18} />
           </button>
 
           {resident?.struct_type && (
             <div className="mt-8 p-4 bg-bg-tertiary rounded-lg border border-border-default">
-              <p className="text-text-muted text-sm mb-2">Your current type</p>
+              <p className="text-text-muted text-sm mb-2">
+                {t(lang, '現在のタイプ', 'Your current type')}
+              </p>
               <p className="text-accent-gold font-bold text-xl">{resident.struct_type}</p>
               <p className="text-text-secondary text-sm mt-1 mb-3">
-                You can retake the diagnosis to update your type.
+                {t(lang,
+                  '再診断でタイプを更新できます。',
+                  'You can retake the diagnosis to update your type.'
+                )}
               </p>
               <button
                 onClick={() => router.push(`/struct-code/result/${resident.name}`)}
                 className="text-accent-gold text-sm hover:underline"
               >
-                View full result →
+                {t(lang, '結果を見る →', 'View full result →')}
               </button>
             </div>
           )}
@@ -223,15 +246,22 @@ export default function StructCodePage() {
 
     return (
       <div className="max-w-2xl mx-auto p-6">
-        <ProgressBar current={0} total={totalPages + 1} />
-        <h2 className="text-xl font-bold text-text-primary mb-6">Birth Information</h2>
+        <ProgressBar current={0} total={totalPages + 1} lang={lang} />
+        <h2 className="text-xl font-bold text-text-primary mb-6">
+          {t(lang, '生年月日・出生地', 'Birth Information')}
+        </h2>
         <p className="text-text-muted text-sm mb-4">
-          Astrological calculation requires accurate birth date and location.
+          {t(lang,
+            '天体配置の計算のため、正確な生年月日と出生地が必要です。',
+            'Astrological calculation requires accurate birth date and location.'
+          )}
         </p>
         <div className="space-y-5">
           {/* Birth Date - Year/Month/Day selects */}
           <div>
-            <label className="block text-text-secondary text-sm mb-2">Birth Date</label>
+            <label className="block text-text-secondary text-sm mb-2">
+              {t(lang, '生年月日', 'Birth Date')}
+            </label>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <select
@@ -239,7 +269,7 @@ export default function StructCodePage() {
                   onChange={e => { setBirthYear(e.target.value); if (birthDay && Number(birthDay) > new Date(Number(e.target.value), Number(birthMonth), 0).getDate()) setBirthDay('') }}
                   className="w-full px-3 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold appearance-none cursor-pointer"
                 >
-                  <option value="" className="text-text-muted">Year</option>
+                  <option value="" className="text-text-muted">{t(lang, '年', 'Year')}</option>
                   {years.map(y => (
                     <option key={y} value={String(y)}>{y}</option>
                   ))}
@@ -251,9 +281,9 @@ export default function StructCodePage() {
                   onChange={e => { setBirthMonth(e.target.value); if (birthDay && Number(birthDay) > new Date(Number(birthYear), Number(e.target.value), 0).getDate()) setBirthDay('') }}
                   className="w-full px-3 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold appearance-none cursor-pointer"
                 >
-                  <option value="" className="text-text-muted">Month</option>
+                  <option value="" className="text-text-muted">{t(lang, '月', 'Month')}</option>
                   {months.map(m => (
-                    <option key={m} value={String(m)}>{m}月 / {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]}</option>
+                    <option key={m} value={String(m)}>{MONTH_LABELS[m - 1]}</option>
                   ))}
                 </select>
               </div>
@@ -263,7 +293,7 @@ export default function StructCodePage() {
                   onChange={e => setBirthDay(e.target.value)}
                   className="w-full px-3 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold appearance-none cursor-pointer"
                 >
-                  <option value="" className="text-text-muted">Day</option>
+                  <option value="" className="text-text-muted">{t(lang, '日', 'Day')}</option>
                   {days.map(d => (
                     <option key={d} value={String(d)}>{d}</option>
                   ))}
@@ -274,9 +304,14 @@ export default function StructCodePage() {
 
           {/* Birth Location - Autocomplete with Nominatim */}
           <div ref={locationRef}>
-            <label className="block text-text-secondary text-sm mb-2">Birth Location</label>
+            <label className="block text-text-secondary text-sm mb-2">
+              {t(lang, '出生地', 'Birth Location')}
+            </label>
             <p className="text-text-muted text-xs mb-2">
-              Please specify down to the city/ward level (市区町村). Example: 渋谷区, 福岡市中央区, Manhattan NY
+              {t(lang,
+                '市区町村レベルまで指定してください。例: 渋谷区, 福岡市中央区, Manhattan NY',
+                'Please specify down to the city/ward level. Example: Shibuya, Manhattan NY, London'
+              )}
             </p>
             <div className="relative">
               <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -285,7 +320,7 @@ export default function StructCodePage() {
                 value={locationQuery}
                 onChange={e => handleLocationInput(e.target.value)}
                 onFocus={() => locationSuggestions.length > 0 && setShowSuggestions(true)}
-                placeholder="e.g. 渋谷区, Shibuya, Manhattan, 福岡市..."
+                placeholder={t(lang, '例: 渋谷区, 福岡市, Manhattan...', 'e.g. Shibuya, Manhattan, London...')}
                 className="w-full pl-10 pr-10 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold"
               />
               {locationLoading && (
@@ -320,14 +355,14 @@ export default function StructCodePage() {
             onClick={handleBack}
             className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
           >
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft size={16} /> {t(lang, '戻る', 'Back')}
           </button>
           <button
             onClick={handleNext}
             disabled={!canProceed()}
             className="flex items-center gap-2 px-6 py-2 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors disabled:opacity-50"
           >
-            Next <ArrowRight size={16} />
+            {t(lang, '次へ', 'Next')} <ArrowRight size={16} />
           </button>
         </div>
       </div>
@@ -337,15 +372,15 @@ export default function StructCodePage() {
   // ── Questions ──
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <ProgressBar current={questionPage + 1} total={totalPages + 1} />
+      <ProgressBar current={questionPage + 1} total={totalPages + 1} lang={lang} />
 
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-bold text-text-primary">
-          Questions {questionPage * QUESTIONS_PER_PAGE + 1}-
-          {Math.min((questionPage + 1) * QUESTIONS_PER_PAGE, questions.length)} of {questions.length}
+          {t(lang, '質問', 'Questions')} {questionPage * QUESTIONS_PER_PAGE + 1}-
+          {Math.min((questionPage + 1) * QUESTIONS_PER_PAGE, questions.length)} / {questions.length}
         </h2>
         <span className="text-text-muted text-sm">
-          {currentQuestions[0]?.axis && (AXIS_LABELS[currentQuestions[0].axis] || currentQuestions[0].axis)}
+          {currentQuestions[0]?.axis && (AXIS_LABELS[currentQuestions[0].axis]?.[lang] || currentQuestions[0].axis)}
         </span>
       </div>
 
@@ -380,7 +415,7 @@ export default function StructCodePage() {
           onClick={handleBack}
           className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
         >
-          <ArrowLeft size={16} /> Back
+          <ArrowLeft size={16} /> {t(lang, '戻る', 'Back')}
         </button>
         <button
           onClick={handleNext}
@@ -388,11 +423,11 @@ export default function StructCodePage() {
           className="flex items-center gap-2 px-6 py-2 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors disabled:opacity-50"
         >
           {loading ? (
-            'Analyzing...'
+            t(lang, '解析中...', 'Analyzing...')
           ) : step === 1 + totalPages ? (
-            <>Submit <Check size={16} /></>
+            <>{t(lang, '送信', 'Submit')} <Check size={16} /></>
           ) : (
-            <>Next <ArrowRight size={16} /></>
+            <>{t(lang, '次へ', 'Next')} <ArrowRight size={16} /></>
           )}
         </button>
       </div>
@@ -400,7 +435,7 @@ export default function StructCodePage() {
   )
 }
 
-function ProgressBar({ current, total }: { current: number; total: number }) {
+function ProgressBar({ current, total, lang }: { current: number; total: number; lang: string }) {
   const pct = (current / total) * 100
   return (
     <div className="mb-6">
@@ -411,7 +446,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
         />
       </div>
       <p className="text-text-muted text-xs mt-1 text-right">
-        Step {current} / {total}
+        {lang === 'en' ? `Step ${current} / ${total}` : `ステップ ${current} / ${total}`}
       </p>
     </div>
   )
