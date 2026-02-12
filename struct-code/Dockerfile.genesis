@@ -13,7 +13,7 @@ COPY backend/app/ app/
 COPY backend/data/ data/
 
 # de421.bsp ephemeris file (17MB, required by Skyfield)
-COPY backend/de421.bsp de421.bsp
+COPY backend/de421.bsp data/de421.bsp
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
