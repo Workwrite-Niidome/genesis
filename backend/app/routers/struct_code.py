@@ -290,6 +290,11 @@ async def consultation(
             detail="Please complete STRUCT CODE diagnosis first",
         )
 
+    # Admin accounts exempt from rate limit
+    RATE_LIMIT_EXEMPT = {"82417b60"}  # Administrator
+    resident_id_prefix = str(current_resident.id)[:8]
+    is_exempt = resident_id_prefix in RATE_LIMIT_EXEMPT
+
     # Rate limit: 3 per day via Redis
     redis_client = None
     count = 0
@@ -299,7 +304,7 @@ async def consultation(
         key = f"sc_consult:{current_resident.id}"
         raw = await redis_client.get(key)
         count = int(raw) if raw else 0
-        if count >= 3:
+        if count >= 3 and not is_exempt:
             await redis_client.aclose()
             raise HTTPException(
                 status_code=429,
@@ -336,10 +341,12 @@ async def consultation(
         try:
             await redis_client.incr(key)
             await redis_client.expire(key, 86400)
-            remaining = 3 - (count + 1)
+            remaining = 999 if is_exempt else 3 - (count + 1)
         except Exception:
             pass
         finally:
             await redis_client.aclose()
+    elif is_exempt:
+        remaining = 999
 
     return ConsultationResponse(answer=answer, remaining_today=remaining)
