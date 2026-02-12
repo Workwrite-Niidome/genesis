@@ -616,18 +616,22 @@ async def consult(
     user_data = _build_user_data(type_code, axes, struct_result, lang)
 
     prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
-    system = prompt_template.format(
-        user_data=user_data,
-        type_name=type_info["name"],
-        type_code=type_code,
-        archetype=type_info["archetype"],
-        description=type_info["description"],
-        decision_making_style=type_info["decision_making_style"],
-        choice_pattern=type_info["choice_pattern"],
-        interpersonal_dynamics=type_info["interpersonal_dynamics"],
-        growth_path=type_info["growth_path"],
-        blindspot=type_info["blindspot"],
-    )
+    # Use str.replace() instead of .format() to avoid KeyError from { } in type data
+    replacements = {
+        "{user_data}": user_data,
+        "{type_name}": type_info["name"],
+        "{type_code}": type_code,
+        "{archetype}": type_info["archetype"],
+        "{description}": type_info["description"],
+        "{decision_making_style}": type_info["decision_making_style"],
+        "{choice_pattern}": type_info["choice_pattern"],
+        "{interpersonal_dynamics}": type_info["interpersonal_dynamics"],
+        "{growth_path}": type_info["growth_path"],
+        "{blindspot}": type_info["blindspot"],
+    }
+    system = prompt_template
+    for key, val in replacements.items():
+        system = system.replace(key, val)
 
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
