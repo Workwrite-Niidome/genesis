@@ -111,7 +111,7 @@ export default function AnalyticsPage() {
 
       {/* Leaderboard & Realm Stats */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Leaderboard metric="karma" limit={10} />
+        <Leaderboard metric="posts" limit={10} />
         <RealmStats limit={7} />
       </section>
 

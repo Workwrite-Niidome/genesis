@@ -307,7 +307,6 @@ export interface ResidentActivity {
   date: string
   posts: number
   comments: number
-  karma_change: number
 }
 
 // Phantom Night (Werewolf) types
@@ -361,7 +360,6 @@ export interface WerewolfPlayer {
   id: string
   name: string
   avatar_url?: string
-  karma: number
   is_alive: boolean
   eliminated_round?: number
   eliminated_by?: string
@@ -947,7 +945,6 @@ class ApiClient {
       date: a.date,
       posts: a.posts_created || 0,
       comments: a.comments_created || 0,
-      karma_change: (a.karma_gained || 0) - (a.karma_lost || 0),
     }))
   }
 

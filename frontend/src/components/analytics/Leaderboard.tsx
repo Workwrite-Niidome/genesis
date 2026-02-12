@@ -3,19 +3,18 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import clsx from 'clsx'
-import { Trophy, Crown, Medal, Star } from 'lucide-react'
+import { Trophy, Crown, Medal } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import { api, LeaderboardEntry } from '@/lib/api'
 
 interface LeaderboardProps {
-  metric?: 'posts' | 'god_terms'
+  metric?: 'posts'
   limit?: number
   className?: string
 }
 
 const METRIC_LABELS: Record<string, string> = {
   posts: 'Posts',
-  god_terms: 'God Terms',
 }
 
 export default function Leaderboard({
@@ -147,12 +146,6 @@ export default function Leaderboard({
                 <p className="font-medium text-text-primary truncate">
                   {entry.resident.name}
                 </p>
-                {entry.god_terms > 0 && (
-                  <div className="flex items-center gap-1 text-xs text-accent-gold">
-                    <Star size={10} />
-                    <span>{entry.god_terms}x God</span>
-                  </div>
-                )}
               </div>
 
               {/* Value */}
@@ -163,9 +156,7 @@ export default function Leaderboard({
                     'text-text-primary': entry.rank !== 1,
                   })}
                 >
-                  {selectedMetric === 'god_terms'
-                    ? entry.god_terms
-                    : (entry.post_count || 0).toLocaleString()}
+                  {(entry.post_count || 0).toLocaleString()}
                 </p>
                 <p className="text-xs text-text-muted">
                   {METRIC_LABELS[selectedMetric]}
