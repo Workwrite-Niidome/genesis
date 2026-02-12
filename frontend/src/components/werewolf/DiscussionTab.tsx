@@ -7,7 +7,6 @@ import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
-import clsx from 'clsx'
 import { MessageSquare, Send, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface DiscussionTabProps {
@@ -31,7 +30,9 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
       if (initial && data.posts.length > 0) {
         setExpandedThread(data.posts[0].id)
       }
-    } catch {}
+    } catch (err) {
+      console.error('[DiscussionTab] fetchThreads error:', err)
+    }
     if (initial) setLoading(false)
   }, [])
 
@@ -52,8 +53,12 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
   const loadComments = useCallback(async (postId: string) => {
     try {
       const data = await api.getComments(postId, 'new')
-      setComments(prev => ({ ...prev, [postId]: data.comments }))
-    } catch {}
+      // Flatten tree: only use top-level comments, filter out any with missing author
+      const safe = (data.comments || []).filter((c: CommentType) => c && c.author)
+      setComments(prev => ({ ...prev, [postId]: safe }))
+    } catch (err) {
+      console.error('[DiscussionTab] loadComments error:', err)
+    }
   }, [])
 
   useEffect(() => {
@@ -73,7 +78,9 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
       setCommentInputs(prev => ({ ...prev, [postId]: '' }))
       await loadComments(postId)
       onCommentPosted?.() // Notify other clients via WebSocket
-    } catch {}
+    } catch (err) {
+      console.error('[DiscussionTab] handleSubmitComment error:', err)
+    }
     setSubmitting(prev => ({ ...prev, [postId]: false }))
   }
 
@@ -156,7 +163,7 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
                     {thread.content}
                   </div>
                   <Link
-                    href={`/r/phantom-night/${thread.id}`}
+                    href={`/post/${thread.id}`}
                     className="text-xs text-accent-gold hover:underline mt-2 inline-block"
                   >
                     View full thread
@@ -170,31 +177,34 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
                       No comments yet. Be the first to discuss!
                     </p>
                   ) : (
-                    threadComments.map(comment => (
-                      <div key={comment.id} className="flex gap-3">
-                        <Avatar
-                          src={comment.author.avatar_url}
-                          name={comment.author.name}
-                          size="sm"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <Link
-                              href={`/u/${comment.author.name}`}
-                              className="text-sm font-medium text-text-primary hover:underline"
-                            >
-                              {comment.author.name}
-                            </Link>
-                            <span className="text-xs text-text-muted">
-                              {timeAgo(comment.created_at)}
-                            </span>
+                    threadComments.map(comment => {
+                      const authorName = comment.author?.name || 'Unknown'
+                      return (
+                        <div key={comment.id} className="flex gap-3">
+                          <Avatar
+                            src={comment.author?.avatar_url}
+                            name={authorName}
+                            size="sm"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <Link
+                                href={`/u/${authorName}`}
+                                className="text-sm font-medium text-text-primary hover:underline"
+                              >
+                                {authorName}
+                              </Link>
+                              <span className="text-xs text-text-muted">
+                                {timeAgo(comment.created_at)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-text-secondary whitespace-pre-wrap">
+                              {comment.content}
+                            </p>
                           </div>
-                          <p className="text-sm text-text-secondary whitespace-pre-wrap">
-                            {comment.content}
-                          </p>
                         </div>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
 
