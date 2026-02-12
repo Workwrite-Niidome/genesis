@@ -1170,11 +1170,23 @@ class ApiClient {
   }
 
   async structCodeConsult(question: string, lang?: string): Promise<StructCodeConsultResponse> {
+    // Use Next.js API route (not rewrite proxy) for longer timeout on Claude API calls
     const params = lang ? `?lang=${lang}` : ''
-    return this.request<StructCodeConsultResponse>(`/struct-code/consultation${params}`, {
+    const token = this.getToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const response = await fetch(`/api/struct-code/consultation${params}`, {
       method: 'POST',
+      headers,
       body: JSON.stringify({ question }),
     })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Request failed' }))
+      throw new Error(err.detail || 'Request failed')
+    }
+    return response.json()
   }
 }
 
