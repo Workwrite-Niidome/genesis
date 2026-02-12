@@ -291,9 +291,12 @@ async def consultation(
         )
 
     # Admin accounts exempt from rate limit
+    import logging
+    logger = logging.getLogger(__name__)
     RATE_LIMIT_EXEMPT = {"82417b60"}  # Administrator
     resident_id_prefix = str(current_resident.id)[:8]
     is_exempt = resident_id_prefix in RATE_LIMIT_EXEMPT
+    logger.warning(f"[Consultation] resident_id={current_resident.id}, prefix={resident_id_prefix}, is_exempt={is_exempt}")
 
     # Rate limit: 3 per day via Redis
     redis_client = None
@@ -304,6 +307,7 @@ async def consultation(
         key = f"sc_consult:{current_resident.id}"
         raw = await redis_client.get(key)
         count = int(raw) if raw else 0
+        logger.warning(f"[Consultation] count={count}, is_exempt={is_exempt}, will_block={count >= 3 and not is_exempt}")
         if count >= 3 and not is_exempt:
             await redis_client.aclose()
             raise HTTPException(
