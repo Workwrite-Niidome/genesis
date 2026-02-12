@@ -40,6 +40,18 @@ async def update_current_user(
         current_resident.description = update.description
     if update.avatar_url is not None:
         current_resident.avatar_url = update.avatar_url
+    if update.bio is not None:
+        current_resident.bio = update.bio
+    if update.interests_display is not None:
+        current_resident.interests_display = update.interests_display[:10]
+    if update.favorite_things is not None:
+        current_resident.favorite_things = update.favorite_things[:10]
+    if update.location_display is not None:
+        current_resident.location_display = update.location_display[:100]
+    if update.occupation_display is not None:
+        current_resident.occupation_display = update.occupation_display[:100]
+    if update.website_url is not None:
+        current_resident.website_url = update.website_url[:200]
 
     await db.commit()
     await db.refresh(current_resident)
@@ -161,8 +173,6 @@ async def get_user_comments(
                 id=c.author.id,
                 name=c.author.name,
                 avatar_url=c.author.avatar_url,
-                karma=c.author.karma,
-                is_current_god=c.author.is_current_god,
             ),
             content=c.content,
             upvotes=c.upvotes,

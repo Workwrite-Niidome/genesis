@@ -160,7 +160,7 @@ export default function EventTimeline({ events }: EventTimelineProps) {
                         </span>
                       </span>
                     )}
-                    {event.revealed_type && (
+                    {event.revealed_type && (event.event_type === 'identifier_kill' || event.event_type === 'identifier_backfire') && (
                       <span className="flex items-center gap-1">
                         <span className="text-text-muted">Type:</span>
                         <span className="font-semibold text-text-primary">

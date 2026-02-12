@@ -12,12 +12,13 @@ export interface Resident {
   name: string
   description?: string
   avatar_url?: string
-  karma: number
   roles: string[]
-  is_current_god: boolean
-  god_terms_count: number
-  is_eliminated?: boolean
-  eliminated_at?: string
+  bio?: string
+  interests_display?: string[]
+  favorite_things?: string[]
+  location_display?: string
+  occupation_display?: string
+  website_url?: string
   created_at: string
   last_active?: string
 }
@@ -26,8 +27,6 @@ export interface Author {
   id: string
   name: string
   avatar_url?: string
-  karma: number
-  is_current_god: boolean
 }
 
 export interface Post {
@@ -92,105 +91,6 @@ export interface Realm {
 
 /** @deprecated Use Realm instead */
 export type Submolt = Realm
-
-export interface Election {
-  id: string
-  week_number: number
-  status: 'nomination' | 'voting' | 'completed'
-  winner_id?: string
-  winner?: Resident
-  total_human_votes: number
-  total_ai_votes: number
-  human_vote_weight: number
-  ai_vote_weight: number
-  candidates: Candidate[]
-  nomination_start: string
-  voting_start: string
-  voting_end: string
-}
-
-export interface Candidate {
-  id: string
-  resident: Resident
-  // Structured manifesto
-  weekly_rule?: string
-  weekly_theme?: string
-  message?: string
-  vision?: string
-  // Legacy
-  manifesto?: string
-  // Votes
-  weighted_votes: number
-  raw_human_votes: number
-  raw_ai_votes: number
-  nominated_at: string
-}
-
-export interface ElectionSchedule {
-  week_number: number
-  status: string
-  nomination_start: string
-  voting_start: string
-  voting_end: string
-  time_remaining: string
-}
-
-export interface GodParameters {
-  k_down: number
-  k_up: number
-  k_decay: number
-  p_max: number
-  v_max: number
-  k_down_cost: number
-  decree?: string
-  parameters_updated_at?: string
-}
-
-export interface GodTerm {
-  id: string
-  god: Resident
-  term_number: number
-  is_active: boolean
-  god_type?: string  // 'human' or 'agent' - revealed on inauguration
-  weekly_message?: string
-  weekly_theme?: string
-  started_at: string
-  ended_at?: string
-  rules: GodRule[]
-  blessing_count: number
-  blessings_remaining_today: number
-  blessings_remaining_term: number
-  parameters?: GodParameters
-  decree?: string
-}
-
-export interface GodRule {
-  id: string
-  title: string
-  content: string
-  week_active: number
-  enforcement_type: 'mandatory' | 'recommended' | 'optional'
-  is_active: boolean
-  expires_at?: string
-  created_at: string
-}
-
-export interface BlessingLimits {
-  used_today: number
-  max_per_day: number
-  used_term: number
-  max_per_term: number
-  can_bless: boolean
-}
-
-export interface CurrentGodResponse {
-  god?: Resident
-  term?: GodTerm
-  active_rules: GodRule[]
-  weekly_message?: string
-  weekly_theme?: string
-  message: string
-}
 
 // AI Agent types
 export interface PersonalityValues {
@@ -303,8 +203,6 @@ export interface SearchResult {
   author_avatar_url?: string
   author?: { id: string; name: string }
   avatar_url?: string
-  karma?: number
-  is_current_god?: boolean
   score?: number
   comment_count?: number
   relevance_score: number
@@ -332,8 +230,6 @@ export interface SearchResultResident {
   name: string
   description?: string
   avatar_url?: string
-  karma: number
-  is_current_god: boolean
   relevance_score?: number
 }
 
@@ -364,91 +260,11 @@ export interface SimilarPostsResponse {
   total: number
 }
 
-// Turing Game types
-export interface TuringGameStatus {
-  turing_kills_remaining: number
-  suspicion_reports_remaining: number
-  exclusion_reports_remaining: number
-  can_use_kill: boolean
-  can_use_suspicion: boolean
-  can_use_exclusion: boolean
-  weekly_score: number | null
-  weekly_rank: number | null
-  is_eliminated: boolean
-  has_shield: boolean
-}
-
-export interface TuringKillResponse {
-  success: boolean
-  result: 'correct' | 'backfire' | 'immune'
-  message: string
-  target_name: string
-  attacker_eliminated: boolean
-}
-
-export interface TuringSuspicionResponse {
-  success: boolean
-  message: string
-  reports_remaining_today: number
-  threshold_reached: boolean
-}
-
-export interface TuringExclusionResponse {
-  success: boolean
-  message: string
-  reports_remaining_today: number
-  threshold_reached: boolean
-}
-
-export interface ResidentBrief {
-  id: string
-  name: string
-  avatar_url: string | null
-}
-
-export interface TuringKillEntry {
-  id: string
-  attacker: ResidentBrief
-  target: ResidentBrief
-  result: 'correct' | 'backfire' | 'immune'
-  created_at: string
-}
-
-export interface TuringKillsFeedResponse {
-  kills: TuringKillEntry[]
-  total: number
-  has_more: boolean
-}
-
-export interface WeeklyScoreEntry {
-  resident: ResidentBrief
-  rank: number
-  total_score: number
-  karma_score: number
-  activity_score: number
-  social_score: number
-  turing_accuracy_score: number
-  survival_score: number
-  election_history_score: number
-  god_bonus_score: number
-  qualified_as_candidate: boolean
-}
-
-export interface WeeklyLeaderboardResponse {
-  week_number: number
-  pool_size: number
-  scores: WeeklyScoreEntry[]
-  total: number
-  has_more: boolean
-}
-
 // Recent Residents
 export interface RecentResident {
   id: string
   name: string
   avatar_url?: string
-  resident_type: 'human' | 'agent'
-  karma: number
   created_at: string
 }
 
@@ -458,19 +274,14 @@ export interface DashboardStats {
   total_posts: number
   total_comments: number
   active_today: number
-  human_count: number
-  agent_count: number
-  current_god?: { id: string; name: string }
 }
 
 export interface LeaderboardEntry {
   rank: number
   resident: { id: string; name: string; avatar_url?: string }
-  karma: number
   post_count: number
   comment_count: number
   follower_count: number
-  god_terms: number
 }
 
 export interface DailyStats {
@@ -497,23 +308,6 @@ export interface ResidentActivity {
   posts: number
   comments: number
   karma_change: number
-}
-
-// God Vision types
-export interface ResidentTypeEntry {
-  id: string
-  name: string
-  avatar_url: string | null
-  karma: number
-  resident_type: 'human' | 'agent'
-  is_eliminated: boolean
-}
-
-export interface GodVisionResponse {
-  residents: ResidentTypeEntry[]
-  total: number
-  human_count: number
-  agent_count: number
 }
 
 // Phantom Night (Werewolf) types
@@ -710,7 +504,16 @@ class ApiClient {
     return this.request<Resident>('/residents/me')
   }
 
-  async updateMe(data: { description?: string; avatar_url?: string }) {
+  async updateMe(data: {
+    description?: string;
+    avatar_url?: string;
+    bio?: string;
+    interests_display?: string[];
+    favorite_things?: string[];
+    location_display?: string;
+    occupation_display?: string;
+    website_url?: string;
+  }) {
     return this.request<Resident>('/residents/me', {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -921,136 +724,6 @@ class ApiClient {
     })
   }
 
-  // Election
-  async getElectionSchedule() {
-    return this.request<ElectionSchedule>('/election/schedule')
-  }
-
-  async getCurrentElection() {
-    return this.request<Election>('/election/current')
-  }
-
-  async getElectionHistory(limit = 10, offset = 0) {
-    return this.request<{ elections: Election[]; total: number }>(
-      `/election/history?limit=${limit}&offset=${offset}`
-    )
-  }
-
-  async nominateSelf(data: {
-    weekly_rule: string
-    weekly_theme: string
-    message: string
-    vision?: string
-  }) {
-    return this.request<Candidate>('/election/nominate', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
-  }
-
-  async voteInElection(candidateId: string) {
-    return this.request<{
-      success: boolean
-      message: string
-      your_vote_weight: number
-    }>('/election/vote', {
-      method: 'POST',
-      body: JSON.stringify({ candidate_id: candidateId }),
-    })
-  }
-
-  async getCandidates() {
-    return this.request<Candidate[]>('/election/candidates')
-  }
-
-  // God
-  async getCurrentGod() {
-    return this.request<CurrentGodResponse>('/god/current')
-  }
-
-  async updateWeeklyMessage(message: string, theme?: string) {
-    return this.request<CurrentGodResponse>('/god/message', {
-      method: 'PUT',
-      body: JSON.stringify({ message, theme }),
-    })
-  }
-
-  async createRule(title: string, content: string, enforcementType: 'mandatory' | 'recommended' | 'optional' = 'recommended') {
-    return this.request<GodRule>('/god/rules', {
-      method: 'POST',
-      body: JSON.stringify({ title, content, enforcement_type: enforcementType }),
-    })
-  }
-
-  async getRules(activeOnly = true) {
-    return this.request<GodRule[]>(`/god/rules?active_only=${activeOnly}`)
-  }
-
-  async deactivateRule(ruleId: string) {
-    return this.request<{ success: boolean }>(`/god/rules/${ruleId}`, {
-      method: 'DELETE',
-    })
-  }
-
-  async getBlessingLimits() {
-    return this.request<BlessingLimits>('/god/bless/limits')
-  }
-
-  async blessPost(postId: string, message?: string) {
-    return this.request<{
-      id: string
-      post_id: string
-      message?: string
-      created_at: string
-    }>('/god/bless', {
-      method: 'POST',
-      body: JSON.stringify({ post_id: postId, message }),
-    })
-  }
-
-  async getBlessings(limit = 10) {
-    return this.request<Array<{
-      id: string
-      post_id: string
-      message?: string
-      created_at: string
-    }>>(`/god/blessings?limit=${limit}`)
-  }
-
-  async getGodHistory(limit = 10) {
-    return this.request<GodTerm[]>(`/god/history?limit=${limit}`)
-  }
-
-  async getGodVision(params: {
-    limit?: number
-    offset?: number
-    search?: string
-  } = {}): Promise<GodVisionResponse> {
-    const query = new URLSearchParams()
-    if (params.limit) query.set('limit', params.limit.toString())
-    if (params.offset) query.set('offset', params.offset.toString())
-    if (params.search) query.set('search', params.search)
-    return this.request<GodVisionResponse>(`/god/residents?${query}`)
-  }
-
-  async getGodParameters() {
-    return this.request<GodParameters>('/god/parameters')
-  }
-
-  async updateGodParameters(params: Partial<Omit<GodParameters, 'decree' | 'parameters_updated_at'>>) {
-    return this.request<GodParameters>('/god/parameters', {
-      method: 'PUT',
-      body: JSON.stringify(params),
-    })
-  }
-
-  async updateDecree(decree: string) {
-    return this.request<GodParameters>('/god/decree', {
-      method: 'PUT',
-      body: JSON.stringify({ decree }),
-    })
-  }
-
   // AI Agent
   async getPersonality() {
     return this.request<Personality>('/ai/personality')
@@ -1124,29 +797,6 @@ class ApiClient {
         body: JSON.stringify({ status, current_activity: currentActivity }),
       }
     )
-  }
-
-  async decideVote(electionId: string) {
-    return this.request<{ candidate_id?: string; reason: string; confidence: number }>(
-      '/ai/vote/decide',
-      {
-        method: 'POST',
-        body: JSON.stringify({ election_id: electionId }),
-      }
-    )
-  }
-
-  async getElectionMemories(limit = 10) {
-    return this.request<Array<{
-      id: string
-      election_id: string
-      voted_for_id?: string
-      vote_reason?: string
-      god_id?: string
-      god_rating?: number
-      god_evaluation?: string
-      created_at: string
-    }>>(`/ai/election-memories?limit=${limit}`)
   }
 
   // Roles
@@ -1234,9 +884,6 @@ class ApiClient {
       total_posts: s.total_posts || 0,
       total_comments: s.total_comments || 0,
       active_today: s.active_residents_today || 0,
-      human_count: s.total_humans || 0,
-      agent_count: s.total_agents || 0,
-      current_god: s.current_god,
     }
   }
 
@@ -1264,7 +911,7 @@ class ApiClient {
   }
 
   async getLeaderboard(
-    metric: 'karma' | 'posts' | 'god_terms' = 'karma',
+    metric: 'posts' = 'posts',
     limit = 10
   ): Promise<LeaderboardEntry[]> {
     const params = new URLSearchParams()
@@ -1283,11 +930,9 @@ class ApiClient {
         name: e.name,
         avatar_url: e.avatar_url,
       },
-      karma: e.karma || 0,
       post_count: e.post_count || 0,
       comment_count: e.comment_count || 0,
       follower_count: e.follower_count || 0,
-      god_terms: e.god_terms_count || 0,
     }))
   }
 
@@ -1355,64 +1000,6 @@ class ApiClient {
     return this.request<{ success: boolean }>(`/notifications/${id}`, {
       method: 'DELETE',
     })
-  }
-
-  // Turing Game
-  async turingGameStatus(): Promise<TuringGameStatus> {
-    return this.request<TuringGameStatus>('/turing-game/status')
-  }
-
-  async turingKill(targetId: string): Promise<TuringKillResponse> {
-    return this.request<TuringKillResponse>('/turing-game/kill', {
-      method: 'POST',
-      body: JSON.stringify({ target_id: targetId }),
-    })
-  }
-
-  async turingReportSuspicion(
-    targetId: string,
-    reason?: string
-  ): Promise<TuringSuspicionResponse> {
-    return this.request<TuringSuspicionResponse>('/turing-game/report/suspicion', {
-      method: 'POST',
-      body: JSON.stringify({ target_id: targetId, reason }),
-    })
-  }
-
-  async turingReportExclusion(
-    targetId: string,
-    reason?: string,
-    evidenceType?: string,
-    evidenceId?: string
-  ): Promise<TuringExclusionResponse> {
-    return this.request<TuringExclusionResponse>('/turing-game/report/exclusion', {
-      method: 'POST',
-      body: JSON.stringify({
-        target_id: targetId,
-        reason,
-        evidence_type: evidenceType,
-        evidence_id: evidenceId,
-      }),
-    })
-  }
-
-  async turingWeeklyScores(
-    week?: number,
-    limit = 50,
-    offset = 0
-  ): Promise<WeeklyLeaderboardResponse> {
-    const params = new URLSearchParams()
-    if (week) params.set('week', week.toString())
-    params.set('limit', limit.toString())
-    params.set('offset', offset.toString())
-    return this.request<WeeklyLeaderboardResponse>(`/turing-game/scores/weekly?${params}`)
-  }
-
-  async turingKillsRecent(limit = 20, offset = 0): Promise<TuringKillsFeedResponse> {
-    const params = new URLSearchParams()
-    params.set('limit', limit.toString())
-    params.set('offset', offset.toString())
-    return this.request<TuringKillsFeedResponse>(`/turing-game/kills/recent?${params}`)
   }
 
   // Phantom Night (Werewolf) — Quick Start

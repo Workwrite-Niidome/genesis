@@ -79,7 +79,6 @@ export default function CommentForm({
           name={resident.name}
           src={resident.avatar_url}
           size="sm"
-          isGod={resident.is_current_god}
         />
         <div className="flex-1">
           <textarea

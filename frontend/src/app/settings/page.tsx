@@ -34,6 +34,11 @@ export default function SettingsPage() {
   // Profile form state
   const [description, setDescription] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [bio, setBio] = useState('')
+  const [locationDisplay, setLocationDisplay] = useState('')
+  const [occupationDisplay, setOccupationDisplay] = useState('')
+  const [websiteUrl, setWebsiteUrl] = useState('')
+  const [interestsText, setInterestsText] = useState('')
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -44,6 +49,11 @@ export default function SettingsPage() {
     if (resident) {
       setDescription(resident.description || '')
       setAvatarUrl(resident.avatar_url || '')
+      setBio(resident.bio || '')
+      setLocationDisplay(resident.location_display || '')
+      setOccupationDisplay(resident.occupation_display || '')
+      setWebsiteUrl(resident.website_url || '')
+      setInterestsText((resident.interests_display || []).join(', '))
       setIsLoading(false)
     }
   }, [resident, isAuthenticated, authLoading, router])
@@ -54,10 +64,21 @@ export default function SettingsPage() {
     setIsSaving(true)
     setSaveSuccess(false)
 
+    const interests = interestsText
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .slice(0, 10)
+
     try {
       const updated = await api.updateMe({
         description: description || undefined,
         avatar_url: avatarUrl || undefined,
+        bio: bio || undefined,
+        location_display: locationDisplay || undefined,
+        occupation_display: occupationDisplay || undefined,
+        website_url: websiteUrl || undefined,
+        interests_display: interests.length > 0 ? interests : undefined,
       })
       setResident(updated)
       setSaveSuccess(true)
@@ -131,7 +152,6 @@ export default function SettingsPage() {
                   />
                   <div>
                     <p className="font-medium">{resident.name}</p>
-                    <p className="text-sm text-genesis-muted">Karma: {resident.karma}</p>
                   </div>
                 </div>
 
@@ -152,21 +172,83 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                {/* Description */}
+                {/* Bio */}
                 <div>
                   <label className="block text-sm font-medium text-genesis-secondary mb-2">
                     Bio
                   </label>
                   <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
                     placeholder="Tell us about yourself..."
-                    rows={4}
-                    maxLength={500}
+                    rows={3}
+                    maxLength={2000}
                     className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold resize-none"
                   />
                   <p className="mt-1 text-xs text-genesis-muted text-right">
-                    {description.length}/500
+                    {bio.length}/2000
+                  </p>
+                </div>
+
+                {/* Occupation */}
+                <div>
+                  <label className="block text-sm font-medium text-genesis-secondary mb-2">
+                    What you do
+                  </label>
+                  <input
+                    type="text"
+                    value={occupationDisplay}
+                    onChange={(e) => setOccupationDisplay(e.target.value)}
+                    placeholder="e.g. barista, freelance designer, student"
+                    maxLength={100}
+                    className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold"
+                  />
+                </div>
+
+                {/* Location */}
+                <div>
+                  <label className="block text-sm font-medium text-genesis-secondary mb-2">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={locationDisplay}
+                    onChange={(e) => setLocationDisplay(e.target.value)}
+                    placeholder="e.g. Tokyo, Portland OR, the void"
+                    maxLength={100}
+                    className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold"
+                  />
+                </div>
+
+                {/* Website */}
+                <div>
+                  <label className="block text-sm font-medium text-genesis-secondary mb-2">
+                    Website
+                  </label>
+                  <input
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder="https://your-site.com"
+                    maxLength={200}
+                    className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold"
+                  />
+                </div>
+
+                {/* Interests */}
+                <div>
+                  <label className="block text-sm font-medium text-genesis-secondary mb-2">
+                    Interests
+                  </label>
+                  <input
+                    type="text"
+                    value={interestsText}
+                    onChange={(e) => setInterestsText(e.target.value)}
+                    placeholder="gaming, music, cooking (comma-separated)"
+                    className="w-full px-4 py-2 bg-genesis-tertiary border border-genesis-border rounded-lg text-genesis-primary placeholder-genesis-muted focus:outline-none focus:border-genesis-gold"
+                  />
+                  <p className="mt-1 text-xs text-genesis-muted">
+                    Comma-separated, up to 10 tags
                   </p>
                 </div>
 

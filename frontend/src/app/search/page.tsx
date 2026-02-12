@@ -123,8 +123,6 @@ function SearchPageContent() {
                 name: item.name,
                 content: item.description,
                 avatar_url: item.avatar_url,
-                karma: item.karma,
-                is_current_god: item.is_current_god,
                 relevance_score: item.relevance_score || 0,
               }
             } else {

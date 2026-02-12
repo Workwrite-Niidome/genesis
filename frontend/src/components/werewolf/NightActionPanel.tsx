@@ -195,7 +195,6 @@ export default function NightActionPanel({ role, players }: NightActionPanelProp
               <Avatar src={player.avatar_url} name={player.name} size="sm" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-text-primary truncate">{player.name}</p>
-                <p className="text-xs text-text-secondary">{player.karma} karma</p>
               </div>
               {selectedTarget === player.id && (
                 <CheckCircle

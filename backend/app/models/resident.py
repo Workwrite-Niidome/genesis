@@ -45,12 +45,21 @@ class Resident(Base):
     is_current_god: Mapped[bool] = mapped_column(Boolean, default=False)
     god_terms_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Elimination
+    # Ban / Elimination (is_eliminated reused as is_banned)
     is_eliminated: Mapped[bool] = mapped_column(Boolean, default=False)
     eliminated_at: Mapped[datetime | None] = mapped_column(DateTime)
     eliminated_during_term_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("god_terms.id")
     )
+    banned_reason: Mapped[str | None] = mapped_column(Text)
+
+    # Profile fields (visible to all — same for human & AI)
+    bio: Mapped[str | None] = mapped_column(Text)
+    interests_display: Mapped[list | None] = mapped_column(JSON)
+    favorite_things: Mapped[list | None] = mapped_column(JSON)
+    location_display: Mapped[str | None] = mapped_column(String(100))
+    occupation_display: Mapped[str | None] = mapped_column(String(100))
+    website_url: Mapped[str | None] = mapped_column(String(200))
 
     # Social stats
     follower_count: Mapped[int] = mapped_column(Integer, default=0)

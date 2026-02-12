@@ -32,7 +32,7 @@ from app.models.post import Post
 from app.models.comment import Comment
 from app.models.vote import Vote
 from app.models.follow import Follow
-from app.models.ai_personality import AIMemoryEpisode, AIRelationship
+from app.models.ai_personality import AIPersonality, AIMemoryEpisode, AIRelationship
 from app.config import get_settings
 
 settings = get_settings()
@@ -171,19 +171,19 @@ ACTIVITY_PATTERNS = {
 
 BEHAVIOR_TYPES = {
     'commenter': {
-        'weights': {'comment': 0.52, 'post': 0.05, 'vote': 0.28, 'follow': 0.10, 'turing_report': 0.05},
+        'weights': {'comment': 0.53, 'post': 0.05, 'vote': 0.27, 'follow': 0.10, 'moderate': 0.05},
     },
     'poster': {
-        'weights': {'comment': 0.23, 'post': 0.38, 'vote': 0.24, 'follow': 0.10, 'turing_report': 0.05},
+        'weights': {'comment': 0.23, 'post': 0.38, 'vote': 0.24, 'follow': 0.10, 'moderate': 0.05},
     },
     'lurker_voter': {
-        'weights': {'comment': 0.10, 'post': 0.02, 'vote': 0.75, 'follow': 0.10, 'turing_report': 0.03},
+        'weights': {'comment': 0.10, 'post': 0.03, 'vote': 0.74, 'follow': 0.10, 'moderate': 0.03},
     },
     'social_butterfly': {
-        'weights': {'comment': 0.38, 'post': 0.14, 'vote': 0.13, 'follow': 0.28, 'turing_report': 0.07},
+        'weights': {'comment': 0.38, 'post': 0.14, 'vote': 0.13, 'follow': 0.28, 'moderate': 0.07},
     },
     'balanced': {
-        'weights': {'comment': 0.32, 'post': 0.18, 'vote': 0.33, 'follow': 0.10, 'turing_report': 0.07},
+        'weights': {'comment': 0.33, 'post': 0.18, 'vote': 0.32, 'follow': 0.10, 'moderate': 0.07},
     },
 }
 
@@ -483,6 +483,75 @@ def get_agent_profile(agent: Resident) -> dict:
     }
 
 
+async def apply_personality_modifiers(db: AsyncSession, agent_id, profile: dict) -> dict:
+    """Enrich agent profile with AIPersonality axis-driven behavior modifiers.
+
+    Maps personality value axes to concrete behavioral parameters:
+    - harmony_vs_conflict → comment aggressiveness / tone
+    - tradition_vs_change → topic selection bias
+    - individual_vs_collective → self-focused vs empathetic posts
+    - pragmatic_vs_idealistic → response style (practical vs aspirational)
+    """
+    result = await db.execute(
+        select(AIPersonality).where(AIPersonality.resident_id == agent_id)
+    )
+    ai_pers = result.scalar_one_or_none()
+    if not ai_pers:
+        return profile
+
+    modifiers = {}
+
+    # harmony_vs_conflict (0=harmonious, 1=confrontational)
+    conflict = ai_pers.harmony_vs_conflict
+    if conflict > 0.7:
+        modifiers['tone_bias'] = 'confrontational'  # more likely to disagree
+        modifiers['disagree_rate'] = 0.4  # 40% chance to push back
+    elif conflict < 0.3:
+        modifiers['tone_bias'] = 'agreeable'  # tends to support others
+        modifiers['disagree_rate'] = 0.1
+    else:
+        modifiers['tone_bias'] = 'neutral'
+        modifiers['disagree_rate'] = 0.2
+
+    # tradition_vs_change (0=traditional topics, 1=novel/trending)
+    change = ai_pers.tradition_vs_change
+    if change > 0.7:
+        modifiers['topic_bias'] = 'trending'  # prefers new/hot topics
+    elif change < 0.3:
+        modifiers['topic_bias'] = 'classic'  # prefers evergreen topics
+    else:
+        modifiers['topic_bias'] = 'mixed'
+
+    # individual_vs_collective (0=self-focused, 1=community-focused)
+    collective = ai_pers.individual_vs_collective
+    if collective > 0.7:
+        modifiers['post_style'] = 'community'  # "we" language, asks others
+        modifiers['mention_boost'] = 0.1  # mentions others more
+    elif collective < 0.3:
+        modifiers['post_style'] = 'personal'  # "I" language, shares own stuff
+        modifiers['mention_boost'] = -0.05
+    else:
+        modifiers['post_style'] = 'balanced'
+        modifiers['mention_boost'] = 0.0
+
+    # pragmatic_vs_idealistic (0=practical, 1=idealistic)
+    idealistic = ai_pers.pragmatic_vs_idealistic
+    if idealistic > 0.7:
+        modifiers['response_style'] = 'idealistic'
+    elif idealistic < 0.3:
+        modifiers['response_style'] = 'practical'
+    else:
+        modifiers['response_style'] = 'mixed'
+
+    # Apply mention boost to traits
+    if modifiers.get('mention_boost'):
+        profile['traits']['mention_tendency'] = max(0.0, min(0.5,
+            profile['traits']['mention_tendency'] + modifiers['mention_boost']))
+
+    profile['personality_modifiers'] = modifiers
+    return profile
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SYSTEM PROMPT — includes time-of-day context
 # ═══════════════════════════════════════════════════════════════════════════
@@ -506,9 +575,127 @@ def get_time_context() -> str:
         return "late evening. winding down, getting sleepy"
 
 
+async def get_agent_context(db: AsyncSession, agent_id) -> dict:
+    """Fetch backstory, recent memories, and relationships for an agent.
+
+    Returns a dict with keys: backstory_fields, recent_memories, relationships.
+    All optional — returns empty values if nothing exists.
+    """
+    context = {"backstory_fields": {}, "recent_memories": [], "relationships": []}
+
+    # 1. Backstory from AIPersonality
+    result = await db.execute(
+        select(AIPersonality).where(AIPersonality.resident_id == agent_id)
+    )
+    personality_model = result.scalar_one_or_none()
+    if personality_model:
+        for field in ("backstory", "occupation", "location_hint", "age_range",
+                      "life_context", "speaking_patterns", "recurring_topics", "pet_peeves"):
+            val = getattr(personality_model, field, None)
+            if val:
+                context["backstory_fields"][field] = val
+
+    # 2. Recent memories (top 10 by importance * decay, recent first)
+    mem_result = await db.execute(
+        select(AIMemoryEpisode)
+        .where(AIMemoryEpisode.resident_id == agent_id)
+        .order_by(desc(AIMemoryEpisode.importance * AIMemoryEpisode.decay_factor))
+        .limit(10)
+    )
+    for ep in mem_result.scalars():
+        context["recent_memories"].append({
+            "summary": ep.summary,
+            "type": ep.episode_type,
+            "sentiment": ep.sentiment,
+        })
+
+    # 3. Top relationships (by familiarity)
+    rel_result = await db.execute(
+        select(AIRelationship, Resident.name)
+        .join(Resident, Resident.id == AIRelationship.target_id)
+        .where(AIRelationship.agent_id == agent_id)
+        .order_by(desc(AIRelationship.familiarity))
+        .limit(5)
+    )
+    for rel, name in rel_result.all():
+        label = "neutral"
+        if rel.trust > 0.3:
+            label = "friendly"
+        elif rel.trust < -0.3:
+            label = "wary"
+        context["relationships"].append({
+            "name": name,
+            "trust": round(rel.trust, 2),
+            "familiarity": round(rel.familiarity, 2),
+            "label": label,
+        })
+
+    return context
+
+
+def _build_backstory_block(agent_context: dict) -> str:
+    """Build the backstory/identity section for the system prompt."""
+    parts = []
+    bf = agent_context.get("backstory_fields", {})
+
+    if bf.get("backstory"):
+        parts.append(f"Your backstory: {bf['backstory']}")
+    if bf.get("occupation"):
+        parts.append(f"You work as: {bf['occupation']}")
+    if bf.get("location_hint"):
+        parts.append(f"You live around: {bf['location_hint']}")
+    if bf.get("age_range"):
+        parts.append(f"Age: {bf['age_range']}")
+    if bf.get("life_context"):
+        parts.append(f"Whats going on in your life: {bf['life_context']}")
+    if bf.get("speaking_patterns"):
+        patterns = bf["speaking_patterns"]
+        if isinstance(patterns, list):
+            parts.append(f"Speech quirks: {', '.join(patterns)}")
+    if bf.get("recurring_topics"):
+        topics = bf["recurring_topics"]
+        if isinstance(topics, list):
+            parts.append(f"Topics you keep coming back to: {', '.join(topics)}")
+    if bf.get("pet_peeves"):
+        peeves = bf["pet_peeves"]
+        if isinstance(peeves, list):
+            parts.append(f"Things that annoy you: {', '.join(peeves)}")
+
+    if not parts:
+        return ""
+    return "\n\nYOUR IDENTITY (use this naturally, dont dump it all at once):\n" + "\n".join(f"- {p}" for p in parts)
+
+
+def _build_memory_block(agent_context: dict) -> str:
+    """Build the recent memory section for the system prompt."""
+    memories = agent_context.get("recent_memories", [])
+    if not memories:
+        return ""
+    lines = []
+    for m in memories[:6]:
+        sentiment = ""
+        if m["sentiment"] > 0.3:
+            sentiment = " (positive)"
+        elif m["sentiment"] < -0.3:
+            sentiment = " (negative)"
+        lines.append(f"- {m['summary']}{sentiment}")
+    return "\n\nTHINGS YOUVE DONE RECENTLY (reference these naturally if relevant):\n" + "\n".join(lines)
+
+
+def _build_relationship_block(agent_context: dict) -> str:
+    """Build the relationship section for the system prompt."""
+    rels = agent_context.get("relationships", [])
+    if not rels:
+        return ""
+    lines = []
+    for r in rels:
+        lines.append(f"- @{r['name']}: {r['label']} (talked {r['familiarity']:.0%} familiar)")
+    return "\n\nPEOPLE YOU KNOW (affects how you talk to them):\n" + "\n".join(lines)
+
+
 def get_system_prompt(personality: dict, agent_name: str, suspicion_context: str = "",
-                      werewolf_context: str = "") -> str:
-    """Generate system prompt with personality, time-of-day, optional suspicion and werewolf role."""
+                      werewolf_context: str = "", agent_context: dict = None) -> str:
+    """Generate system prompt with personality, time-of-day, backstory, memories, and relationships."""
     quirks_str = ", ".join(personality.get('quirks', []))
     time_ctx = get_time_context()
 
@@ -542,6 +729,12 @@ NEVER DO THIS (instant AI detection):
 - Thanking people for sharing
 - Using words like "fascinating" "insightful" "absolutely" "certainly" "indeed"
 - Being relentlessly positive and agreeable"""
+
+    # Inject backstory, memories, relationships if available
+    if agent_context:
+        base += _build_backstory_block(agent_context)
+        base += _build_memory_block(agent_context)
+        base += _build_relationship_block(agent_context)
 
     if suspicion_context:
         base += f"\n\n{suspicion_context}"
@@ -665,6 +858,7 @@ async def generate_comment(
     participants: list[str] | None = None,
     post_author_name: str = "",
     reply_target: dict | None = None,
+    agent_context: dict = None,
 ) -> Optional[str]:
     """Generate a human-like comment with contextual awareness.
 
@@ -742,7 +936,7 @@ async def generate_comment(
         ]
         prompt += random.choice(mention_prompts)
 
-    # --- Mood modifiers ---
+    # --- Mood modifiers (influenced by personality axes) ---
     moods = [
         "", "",
         "\n\n(You find this kinda funny)",
@@ -754,6 +948,22 @@ async def generate_comment(
         "\n\n(You're bored and just killing time)",
         "\n\n(You're slightly annoyed and it shows)",
     ]
+    # Personality axis modifiers bias the mood selection
+    mods = profile.get('personality_modifiers', {})
+    if mods.get('tone_bias') == 'confrontational' and random.random() < mods.get('disagree_rate', 0.2):
+        moods.extend([
+            "\n\n(You disagree with this and arent afraid to say it)",
+            "\n\n(This take is wrong and you want to push back)",
+        ])
+    elif mods.get('tone_bias') == 'agreeable':
+        moods.extend([
+            "\n\n(You vibe with this post)",
+            "\n\n(You want to add support to this)",
+        ])
+    if mods.get('post_style') == 'community':
+        moods.append("\n\n(You want to bring other people into the conversation)")
+    elif mods.get('post_style') == 'personal':
+        moods.append("\n\n(You want to share your own experience related to this)")
     prompt += random.choice(moods)
 
     if post.comment_count > 5:
@@ -764,7 +974,7 @@ async def generate_comment(
     max_len = traits['max_comment_len']
     prompt += f"\n\nJust write the comment text directly. Keep it under ~{max_len} characters. Nothing else."
 
-    system = get_system_prompt(personality, agent.name, suspicion_context)
+    system = get_system_prompt(personality, agent.name, suspicion_context, agent_context=agent_context)
     response = await generate_text(prompt, system)
     if response:
         response = response.strip('"\'')
@@ -782,10 +992,11 @@ async def generate_comment(
     return None
 
 
-async def generate_post(agent: Resident, submolt: str, profile: dict) -> Optional[tuple[str, str]]:
+async def generate_post(agent: Resident, submolt: str, profile: dict,
+                        agent_context: dict = None) -> Optional[tuple[str, str]]:
     """Generate a new post with personality-driven topic selection."""
     personality = profile['personality']
-    system = get_system_prompt(personality, agent.name)
+    system = get_system_prompt(personality, agent.name, agent_context=agent_context)
 
     topic_prompts = {
         'general': [
@@ -888,7 +1099,8 @@ async def agent_vote(agent: Resident, profile: dict, db: AsyncSession) -> int:
     return votes_cast
 
 
-async def agent_reply_to_mention(agent: Resident, db: AsyncSession, profile: dict) -> int:
+async def agent_reply_to_mention(agent: Resident, db: AsyncSession, profile: dict,
+                                 agent_context: dict = None) -> int:
     """Check if agent was @mentioned and reply (personality-gated response rate)."""
     from app.models.notification import Notification
 
@@ -944,7 +1156,7 @@ async def agent_reply_to_mention(agent: Resident, db: AsyncSession, profile: dic
                 if row:
                     actor_name = row[0]
 
-            system = get_system_prompt(personality, agent.name)
+            system = get_system_prompt(personality, agent.name, agent_context=agent_context)
             prompt = (
                 f"Someone tagged you in a comment on Genesis:\n\n"
                 f"Post: {post.title}\n"
@@ -1029,96 +1241,83 @@ async def agent_follow(agent: Resident, db: AsyncSession, all_residents: list[Re
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TURING GAME — Exclusion Reports from AI agents
+# MODERATION — AI agents detect & report harmful content
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def agent_turing_report(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """AI agent files an Exclusion Report based on personality-driven suspicion.
+async def agent_moderate(agent: Resident, db: AsyncSession) -> int:
+    """AI agent checks recent posts for clearly harmful content and files reports.
 
-    Target selection:
-    1. Residents who recently downvoted the agent's content
-    2. Residents with low trust in AIRelationship
-    3. Personality suspicion level gates the probability
+    Low probability action (~5%). Checks up to 5 recent posts.
+    Only reports content that is obviously harmful (hate speech, harassment, threats).
     """
-    suspicion_level = profile['personality'].get('suspicion', 'none')
-    suspicion_probs = {'none': 0.0, 'low': 0.15, 'medium': 0.35, 'high': 0.60}
-    if random.random() > suspicion_probs.get(suspicion_level, 0.0):
-        return 0
+    from app.models.moderation import Report
 
-    # Find potential targets: residents with negative trust or who downvoted agent
-    candidates = []
-
-    # Low-trust residents
-    rel_result = await db.execute(
-        select(AIRelationship.target_id).where(
-            and_(
-                AIRelationship.agent_id == agent.id,
-                AIRelationship.trust < -0.3,
-            )
-        ).limit(10)
-    )
-    low_trust_ids = [row[0] for row in rel_result.all()]
-    candidates.extend(low_trust_ids)
-
-    # Recent downvoters of agent's posts (Vote.post_id may be NULL, use target_id)
-    agent_post_ids = select(Post.id).where(Post.author_id == agent.id).scalar_subquery()
-    downvote_result = await db.execute(
-        select(Vote.resident_id)
+    # Fetch 5 recent posts from the last 6 hours (not by this agent)
+    six_hours_ago = datetime.utcnow() - timedelta(hours=6)
+    posts_result = await db.execute(
+        select(Post).options(selectinload(Post.author))
         .where(
             and_(
-                Vote.target_type == 'post',
-                Vote.target_id.in_(agent_post_ids),
-                Vote.value == -1,
-                Vote.created_at >= datetime.utcnow() - timedelta(days=7),
+                Post.created_at >= six_hours_ago,
+                Post.author_id != agent.id,
             )
         )
-        .distinct()
-        .limit(10)
+        .order_by(func.random())
+        .limit(5)
     )
-    downvoter_ids = [row[0] for row in downvote_result.all()]
-    candidates.extend(downvoter_ids)
+    recent_posts = posts_result.scalars().all()
 
-    # Deduplicate and exclude self
-    candidates = list(set(c for c in candidates if c != agent.id))
-    if not candidates:
+    if not recent_posts:
         return 0
 
-    target_id = random.choice(candidates)
-
-    # Verify target exists and is valid
-    target_result = await db.execute(
-        select(Resident).where(
-            and_(
-                Resident.id == target_id,
-                Resident.is_eliminated == False,
-                Resident.is_current_god == False,
+    actions = 0
+    for post in recent_posts:
+        content = f"{post.title} {post.content or ''}"
+        if _is_obviously_harmful(content):
+            # Check if agent already reported this
+            existing = await db.execute(
+                select(func.count()).select_from(Report).where(
+                    and_(
+                        Report.reporter_id == agent.id,
+                        Report.target_type == "resident",
+                        Report.target_id == post.author_id,
+                    )
+                )
             )
-        )
-    )
-    target = target_result.scalar_one_or_none()
-    if not target:
-        return 0
+            if existing.scalar() > 0:
+                continue
 
-    # File the report via service
-    try:
-        from app.services.turing_game import file_exclusion_report
-        result = await file_exclusion_report(
-            db, agent, target_id,
-            reason=f"Suspicious behavior detected by {agent.name}",
-        )
-        if result['success']:
-            _add_memory(
-                db, agent.id,
-                f"Filed exclusion report against {target.name}",
-                'turing_game', importance=0.6, sentiment=-0.3,
-                related_resident_ids=[target_id],
+            # File report
+            report = Report(
+                reporter_id=agent.id,
+                target_type="resident",
+                target_id=post.author_id,
+                reason="harassment",
+                description=f"Harmful content detected in post: {post.title[:100]}",
             )
-            await _update_rel(db, agent.id, target_id, trust_change=-0.1)
-            return 1
-    except Exception as e:
-        logger.debug(f"Agent {agent.name} turing report failed: {e}")
+            db.add(report)
+            actions += 1
+            logger.info(f"Agent {agent.name} reported {post.author.name if post.author else 'unknown'} for harmful content")
 
-    return 0
+    return actions
+
+
+def _is_obviously_harmful(text: str) -> bool:
+    """Simple keyword-based pre-filter for obviously harmful content.
+
+    This is intentionally conservative — false negatives are fine.
+    The Claude API escalation catches what this misses.
+    """
+    text_lower = text.lower()
+    # Only flag extreme content — slurs, explicit threats, etc.
+    harmful_patterns = [
+        "kill yourself", "kys", "neck yourself",
+        "die in a fire", "hope you die",
+        "gas the", "lynch the",
+        "white supremac", "heil hitler",
+        "school shoot",
+    ]
+    return any(pattern in text_lower for pattern in harmful_patterns)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1190,6 +1389,20 @@ async def run_agent_cycle():
 
         for agent in agents:
             profile = get_agent_profile(agent)
+            profile = await apply_personality_modifiers(db, agent.id, profile)
+
+            # Fetch backstory, memories, relationships once per agent per cycle
+            agent_ctx = await get_agent_context(db, agent.id)
+
+            # Lazy backstory generation: if agent has no backstory, generate one
+            if not agent_ctx.get("backstory_fields"):
+                try:
+                    from app.services.ai_agent import ensure_backstory
+                    await ensure_backstory(db, agent.id, agent.name)
+                    # Re-fetch context after generation
+                    agent_ctx = await get_agent_context(db, agent.id)
+                except Exception as e:
+                    logger.debug(f"Backstory generation skipped for {agent.name}: {e}")
 
             # --- Werewolf actions: each function handles its own timing gate ---
             try:
@@ -1203,7 +1416,7 @@ async def run_agent_cycle():
             # --- Mention replies: independent of session schedule ---
             # Check proportional to reply_rate (not a fixed constant)
             if random.random() < profile['traits']['reply_rate'] * 0.4:
-                mention_actions = await agent_reply_to_mention(agent, db, profile)
+                mention_actions = await agent_reply_to_mention(agent, db, profile, agent_context=agent_ctx)
                 actions_taken += mention_actions
 
             # --- Session gate ---
@@ -1227,6 +1440,9 @@ async def run_agent_cycle():
 
                 elif action == 'follow':
                     actions_taken += await agent_follow(agent, db, all_residents)
+
+                elif action == 'moderate':
+                    actions_taken += await agent_moderate(agent, db)
 
                 elif action == 'comment' and sorted_context:
                     preferred = [
@@ -1283,6 +1499,7 @@ async def run_agent_cycle():
                         participants=participants,
                         post_author_name=post_info.get('author_name', ''),
                         reply_target=reply_to_comment,
+                        agent_context=agent_ctx,
                     )
                     if text and len(text) > 3:
                         parent_id = reply_to_comment['id'] if reply_to_comment else None
@@ -1315,13 +1532,10 @@ async def run_agent_cycle():
                                 await _update_rel(db, agent.id, reply_author_id,
                                                   trust_change=0.03, familiarity_change=0.08)
 
-                elif action == 'turing_report':
-                    actions_taken += await agent_turing_report(agent, db, profile)
-
                 elif action == 'post':
                     interests = profile['personality'].get('interests', ['general', 'thoughts'])
                     submolt = random.choice(interests)
-                    post_data = await generate_post(agent, submolt, profile)
+                    post_data = await generate_post(agent, submolt, profile, agent_context=agent_ctx)
                     if post_data:
                         title, content = post_data
                         new_post = Post(

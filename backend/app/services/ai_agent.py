@@ -1,6 +1,8 @@
 """
 AI Agent Service - Personality generation, memory management, and voting logic
 """
+import json
+import logging
 import random
 from datetime import datetime, timedelta
 from typing import Optional
@@ -20,6 +22,7 @@ from app.models.ai_personality import (
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Predefined interests for random generation
 INTEREST_POOL = [
@@ -55,6 +58,124 @@ async def generate_random_personality(
     await db.commit()
     await db.refresh(personality)
     return personality
+
+
+BACKSTORY_PROMPT = """Generate a backstory for a person on an online forum. They should feel like a REAL, specific individual — not a generic character.
+
+Their personality traits:
+- Communication: {verbosity} verbosity, {tone} tone, {assertiveness} assertiveness
+- Interests: {interests}
+- Values: order/freedom={order_vs_freedom:.1f}, harmony/conflict={harmony_vs_conflict:.1f}, tradition/change={tradition_vs_change:.1f}
+
+Generate a JSON object with these fields (all strings unless noted):
+{{
+  "backstory": "2-3 sentences about their life story. specific details, not generic. include a defining moment or quirk",
+  "occupation": "their job (be specific, not just 'engineer' but 'backend dev at a startup' or 'barista who does art on the side')",
+  "location_hint": "where they live (city/region, be specific like 'suburban Tokyo' or 'Portland, OR')",
+  "age_range": "age range like '20代前半' or '30代後半'",
+  "life_context": "1-2 sentences about whats going on in their life RIGHT NOW",
+  "speaking_patterns": ["2-3 speech quirks or catchphrases they use often"],
+  "recurring_topics": ["2-3 topics they always come back to in conversations"],
+  "pet_peeves": ["2-3 things that annoy them"]
+}}
+
+Be creative and specific. No generic corporate bios. These are real internet people with messy, interesting lives.
+Respond with ONLY the JSON object, no markdown or explanation."""
+
+
+async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent_name: str) -> bool:
+    """Generate a rich backstory for an agent using Ollama.
+
+    Returns True if backstory was generated and saved, False otherwise.
+    """
+    from app.services.agent_runner import call_ollama
+
+    # Skip if backstory already exists
+    if personality.backstory:
+        return False
+
+    prompt = BACKSTORY_PROMPT.format(
+        verbosity=personality.verbosity,
+        tone=personality.tone,
+        assertiveness=personality.assertiveness,
+        interests=", ".join(personality.interests or []),
+        order_vs_freedom=personality.order_vs_freedom,
+        harmony_vs_conflict=personality.harmony_vs_conflict,
+        tradition_vs_change=personality.tradition_vs_change,
+    )
+
+    response = await call_ollama(prompt, f"You are creating a character profile for '{agent_name}' on an online forum.")
+    if not response:
+        logger.warning(f"Backstory generation failed for {agent_name}: no Ollama response")
+        return False
+
+    try:
+        # Parse JSON — Ollama may wrap in markdown code blocks
+        text = response.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+        data = json.loads(text)
+
+        personality.backstory = data.get("backstory", "")[:2000]
+        personality.occupation = data.get("occupation", "")[:100]
+        personality.location_hint = data.get("location_hint", "")[:100]
+        personality.age_range = data.get("age_range", "")[:20]
+        personality.life_context = data.get("life_context", "")[:2000]
+
+        sp = data.get("speaking_patterns")
+        if isinstance(sp, list):
+            personality.speaking_patterns = sp[:5]
+        rt = data.get("recurring_topics")
+        if isinstance(rt, list):
+            personality.recurring_topics = rt[:5]
+        pp = data.get("pet_peeves")
+        if isinstance(pp, list):
+            personality.pet_peeves = pp[:5]
+
+        # Also populate the resident's public profile fields
+        res = await db.execute(
+            select(Resident).where(Resident.id == personality.resident_id)
+        )
+        resident = res.scalar_one_or_none()
+        if resident:
+            if not resident.bio:
+                # Build a casual bio from backstory
+                bio_parts = []
+                if data.get("occupation"):
+                    bio_parts.append(data["occupation"])
+                if data.get("location_hint"):
+                    bio_parts.append(data["location_hint"])
+                if data.get("backstory"):
+                    bio_parts.append(data["backstory"][:200])
+                resident.bio = ". ".join(bio_parts)[:500] if bio_parts else None
+            if not resident.interests_display:
+                resident.interests_display = personality.interests[:5] if personality.interests else None
+            if not resident.location_display:
+                resident.location_display = data.get("location_hint", "")[:100] or None
+            if not resident.occupation_display:
+                resident.occupation_display = data.get("occupation", "")[:100] or None
+
+        await db.commit()
+        logger.info(f"Generated backstory for {agent_name}: {personality.occupation}")
+        return True
+
+    except (json.JSONDecodeError, Exception) as e:
+        logger.warning(f"Backstory parse failed for {agent_name}: {e}")
+        return False
+
+
+async def ensure_backstory(db: AsyncSession, resident_id: UUID, agent_name: str) -> None:
+    """Ensure an agent has a backstory. Generates one if missing."""
+    result = await db.execute(
+        select(AIPersonality).where(AIPersonality.resident_id == resident_id)
+    )
+    personality = result.scalar_one_or_none()
+    if not personality:
+        return
+
+    if not personality.backstory:
+        await generate_backstory(db, personality, agent_name)
 
 
 async def create_personality_from_description(

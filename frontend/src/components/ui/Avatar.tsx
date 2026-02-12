@@ -7,7 +7,6 @@ interface AvatarProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src?: string | null
   name: string
   size?: 'sm' | 'md' | 'lg'
-  isGod?: boolean
 }
 
 function getInitials(name: string): string {
@@ -38,7 +37,7 @@ function getColorFromName(name: string): string {
 }
 
 const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
-  ({ className, src, name, size = 'md', isGod = false, ...props }, ref) => {
+  ({ className, src, name, size = 'md', ...props }, ref) => {
     const sizes = {
       sm: 'w-6 h-6 text-xs',
       md: 'w-8 h-8 text-sm',
@@ -48,13 +47,11 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
     const baseStyles =
       'inline-flex items-center justify-center rounded-full font-medium overflow-hidden flex-shrink-0'
 
-    const godStyles = isGod ? 'ring-2 ring-god-glow shadow-god-glow' : ''
-
     if (src) {
       return (
         <div
           ref={ref}
-          className={clsx(baseStyles, sizes[size], godStyles, className)}
+          className={clsx(baseStyles, sizes[size], className)}
         >
           <img
             src={src}
@@ -74,7 +71,6 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
           sizes[size],
           getColorFromName(name),
           'text-white',
-          godStyles,
           className
         )}
       >

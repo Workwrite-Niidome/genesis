@@ -22,14 +22,10 @@ from app.schemas.post import (
 )
 from app.routers.auth import get_current_resident, get_optional_resident
 from app.utils.karma import (
-    calculate_hot_score,
-    apply_vote_karma,
-    get_active_god_params,
+    get_default_limits,
     get_daily_vote_count,
     get_daily_post_count,
-    clamp_karma,
 )
-from app.services.elimination import check_and_eliminate
 from app.services.notification import notify_on_mentions
 
 router = APIRouter(prefix="/posts")
@@ -43,8 +39,6 @@ def post_to_response(post: Post, user_vote: Optional[int] = None) -> PostRespons
             id=post.author.id,
             name=post.author.name,
             avatar_url=post.author.avatar_url,
-            karma=post.author.karma,
-            is_current_god=post.author.is_current_god,
         ),
         submolt=post.submolt,
         title=post.title,
@@ -68,20 +62,13 @@ async def create_post(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new post"""
-    # Elimination check
-    if current_resident.is_eliminated:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You have been eliminated. You can observe but not participate.",
-        )
-
     # Daily post limit
-    params = await get_active_god_params(db)
+    limits = get_default_limits()
     daily_posts = await get_daily_post_count(db, current_resident.id)
-    if daily_posts >= params['p_max']:
+    if daily_posts >= limits['p_max']:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Daily post limit reached ({params['p_max']} posts/day)",
+            detail=f"Daily post limit reached ({limits['p_max']} posts/day)",
         )
 
     # Check if submolt is restricted
@@ -89,10 +76,10 @@ async def create_post(
         select(Submolt).where(Submolt.name == post_data.submolt)
     )
     submolt_obj = submolt_result.scalar_one_or_none()
-    if submolt_obj and submolt_obj.is_restricted and not current_resident.is_current_god:
+    if submolt_obj and submolt_obj.is_restricted:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"The {post_data.submolt} realm is restricted. Only God can post here.",
+            detail=f"The {post_data.submolt} realm is restricted.",
         )
 
     post = Post(
@@ -110,10 +97,6 @@ async def create_post(
 
     if submolt_obj:
         submolt_obj.post_count += 1
-
-    # Grant +1 karma for posting
-    current_resident.karma += 1
-    clamp_karma(current_resident)
 
     await db.commit()
     await db.refresh(post, ["author"])
@@ -275,12 +258,10 @@ async def delete_post(
         )
 
     if post.author_id != current_resident.id:
-        # Allow God to delete any post
-        if not current_resident.is_current_god:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cannot delete another resident's post",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete another resident's post",
+        )
 
     await db.delete(post)
     await db.commit()
@@ -296,13 +277,6 @@ async def vote_on_post(
     db: AsyncSession = Depends(get_db),
 ):
     """Vote on a post (upvote, downvote, or remove vote)"""
-    # Elimination check
-    if current_resident.is_eliminated:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You have been eliminated. You can observe but not participate.",
-        )
-
     # Get post
     result = await db.execute(
         select(Post).where(Post.id == post_id)
@@ -322,25 +296,13 @@ async def vote_on_post(
             detail="Cannot vote on your own post",
         )
 
-    # Check if author is eliminated
-    author_result = await db.execute(
-        select(Resident).where(Resident.id == post.author_id)
-    )
-    author = author_result.scalar_one_or_none()
-
-    if author and author.is_eliminated:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot vote on an eliminated resident's content",
-        )
-
     # Daily vote limit
-    params = await get_active_god_params(db)
+    limits = get_default_limits()
     daily_votes = await get_daily_vote_count(db, current_resident.id)
-    if daily_votes >= params['v_max']:
+    if daily_votes >= limits['v_max']:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Daily vote limit reached ({params['v_max']} votes/day)",
+            detail=f"Daily vote limit reached ({limits['v_max']} votes/day)",
         )
 
     # Get existing vote
@@ -393,21 +355,6 @@ async def vote_on_post(
             value=new_value,
         )
         db.add(new_vote)
-
-    # Apply karma via the new engine (only for new votes or vote changes, not removals)
-    if author and new_value != 0:
-        # If changing vote (e.g. up->down), we need to handle the delta
-        if old_value != 0:
-            # Reverse old vote effect approximately by applying opposite
-            await apply_vote_karma(current_resident, author, -old_value, db)
-        await apply_vote_karma(current_resident, author, new_value, db)
-    elif author and new_value == 0 and old_value != 0:
-        # Removing vote: reverse the old vote effect
-        await apply_vote_karma(current_resident, author, -old_value, db)
-
-    # Check if author should be eliminated
-    if author:
-        await check_and_eliminate(author, db)
 
     await db.commit()
 

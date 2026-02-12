@@ -11,7 +11,9 @@ celery_app = Celery(
     "genesis",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.election", "app.tasks.analytics", "app.tasks.agents", "app.tasks.karma", "app.tasks.moderation", "app.tasks.turing_game", "app.tasks.werewolf"],
+    include=["app.tasks.analytics", "app.tasks.agents", "app.tasks.moderation", "app.tasks.werewolf"],
+    # Disabled task modules (concept overhaul v5):
+    # "app.tasks.election", "app.tasks.karma", "app.tasks.turing_game"
 )
 
 celery_app.conf.update(
@@ -28,21 +30,11 @@ celery_app.conf.update(
 
 # Beat schedule for periodic tasks
 celery_app.conf.beat_schedule = {
-    # Check and update election status every minute
-    "update-election-status": {
-        "task": "app.tasks.election.update_election_status_task",
-        "schedule": 60.0,  # Every minute
-    },
-    # Check and expire God's 3-day term every minute
-    "expire-god-term": {
-        "task": "app.tasks.election.expire_god_term_task",
-        "schedule": 60.0,  # Every minute
-    },
-    # Check and expire old rules every hour
-    "expire-old-rules": {
-        "task": "app.tasks.election.expire_old_rules_task",
-        "schedule": 3600.0,  # Every hour
-    },
+    # Disabled schedules (concept overhaul v5 — election/god/karma/turing removed):
+    # "update-election-status", "expire-god-term", "expire-old-rules",
+    # "karma-decay", "process-suspicion-reports", "process-exclusion-reports",
+    # "calculate-weekly-scores", "cleanup-turing-daily-limits"
+
     # Calculate daily stats at 00:15 UTC every day
     "calculate-daily-stats": {
         "task": "app.tasks.analytics.calculate_daily_stats_task",
@@ -62,32 +54,6 @@ celery_app.conf.beat_schedule = {
     "content-moderation": {
         "task": "app.tasks.moderation.run_content_moderation_task",
         "schedule": 3600.0,  # Every hour
-    },
-    # Morning/evening bursts removed - activity patterns handle time-of-day variation per agent
-    # Karma decay - every 6 hours (4x/day)
-    "karma-decay": {
-        "task": "app.tasks.karma.apply_karma_decay_task",
-        "schedule": crontab(hour="0,6,12,18", minute=30),
-    },
-    # Turing Game: process suspicion reports every 15 minutes
-    "process-suspicion-reports": {
-        "task": "app.tasks.turing_game.process_suspicion_reports_task",
-        "schedule": 900.0,  # 15 minutes
-    },
-    # Turing Game: process exclusion reports every 15 minutes
-    "process-exclusion-reports": {
-        "task": "app.tasks.turing_game.process_exclusion_reports_task",
-        "schedule": 900.0,  # 15 minutes
-    },
-    # Turing Game: calculate weekly scores (Tuesday 23:00 UTC, before nominations on Wednesday)
-    "calculate-weekly-scores": {
-        "task": "app.tasks.turing_game.calculate_weekly_scores_task",
-        "schedule": crontab(hour=23, minute=0, day_of_week=2),  # Tuesday
-    },
-    # Turing Game: cleanup old daily limits (Monday 01:00 UTC)
-    "cleanup-turing-daily-limits": {
-        "task": "app.tasks.turing_game.cleanup_daily_limits_task",
-        "schedule": crontab(hour=1, minute=0, day_of_week=1),  # Monday
     },
     # Phantom Night: check phase transitions every 60 seconds
     "werewolf-phase-check": {

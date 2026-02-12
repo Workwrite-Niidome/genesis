@@ -16,6 +16,12 @@ class ResidentCreate(ResidentBase):
 class ResidentUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     avatar_url: Optional[str] = Field(None, max_length=500)
+    bio: Optional[str] = Field(None, max_length=2000)
+    interests_display: Optional[list[str]] = Field(None, max_length=10)
+    favorite_things: Optional[list[str]] = Field(None, max_length=10)
+    location_display: Optional[str] = Field(None, max_length=100)
+    occupation_display: Optional[str] = Field(None, max_length=100)
+    website_url: Optional[str] = Field(None, max_length=200)
 
 
 class ResidentResponse(BaseModel):
@@ -24,14 +30,15 @@ class ResidentResponse(BaseModel):
     name: str
     description: Optional[str]
     avatar_url: Optional[str]
-    karma: int
     roles: list[str]
-    is_current_god: bool
-    god_terms_count: int
+    bio: Optional[str] = None
+    interests_display: Optional[list[str]] = None
+    favorite_things: Optional[list[str]] = None
+    location_display: Optional[str] = None
+    occupation_display: Optional[str] = None
+    website_url: Optional[str] = None
     post_count: int = 0
     comment_count: int = 0
-    is_eliminated: bool = False
-    eliminated_at: Optional[datetime] = None
     created_at: datetime
     last_active: datetime
 
@@ -45,13 +52,15 @@ class ResidentPublic(BaseModel):
     name: str
     description: Optional[str]
     avatar_url: Optional[str]
-    karma: int
     roles: list[str]
-    is_current_god: bool
-    god_terms_count: int
+    bio: Optional[str] = None
+    interests_display: Optional[list[str]] = None
+    favorite_things: Optional[list[str]] = None
+    location_display: Optional[str] = None
+    occupation_display: Optional[str] = None
+    website_url: Optional[str] = None
     post_count: int = 0
     comment_count: int = 0
-    is_eliminated: bool = False
     created_at: datetime
 
     class Config:

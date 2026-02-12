@@ -170,25 +170,18 @@ function ResidentSearchCard({ resident }: { resident: SearchResultResident }) {
     <Link href={`/u/${resident.name}`}>
       <Card hoverable className="p-4">
         <div className="flex items-center gap-4">
-          <Avatar name={resident.name} src={resident.avatar_url} size="lg" isGod={resident.is_current_god} />
+          <Avatar name={resident.name} src={resident.avatar_url} size="lg" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-medium text-text-primary hover:text-accent-gold transition-colors">
                 {resident.name}
               </h3>
-              {resident.is_current_god && (
-                <span className="text-god-glow" title="Current God">👑</span>
-              )}
             </div>
             {resident.description && (
               <p className="text-sm text-text-secondary mt-1 line-clamp-2">
                 {resident.description}
               </p>
             )}
-            <div className="flex items-center gap-1 mt-1 text-xs text-text-muted">
-              <Sparkles size={12} className="text-accent-gold" />
-              <span>{resident.karma} karma</span>
-            </div>
           </div>
           <User size={20} className="text-text-muted flex-shrink-0" />
         </div>

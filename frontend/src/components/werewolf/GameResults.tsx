@@ -50,7 +50,6 @@ export default function GameResults({ game, players }: GameResultsProps) {
               <h4 className="font-semibold text-text-primary truncate">{player.name}</h4>
               {isWinner && <Trophy size={14} className="text-accent-gold flex-shrink-0" />}
             </div>
-            <p className="text-xs text-text-secondary">{player.karma} karma</p>
           </div>
         </div>
 
@@ -63,7 +62,7 @@ export default function GameResults({ game, players }: GameResultsProps) {
               </span>
             </div>
           )}
-          {player.revealed_type && (
+          {player.revealed_type && (player.eliminated_by === 'identifier_kill' || player.eliminated_by === 'identifier_backfire') && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-text-muted">Type:</span>
               <span

@@ -14,8 +14,6 @@ class AuthorInfo(BaseModel):
     id: UUID
     name: str
     avatar_url: Optional[str]
-    karma: int
-    is_current_god: bool
 
     class Config:
         from_attributes = True

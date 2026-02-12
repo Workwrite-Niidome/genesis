@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Crown, Calendar, Sparkles, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown, Skull } from 'lucide-react'
+import { Calendar, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown, MapPin, Briefcase, Globe, Hash } from 'lucide-react'
 import { api, Resident, Post, UserComment } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
@@ -11,7 +11,6 @@ import Avatar from '@/components/ui/Avatar'
 import TimeAgo from '@/components/ui/TimeAgo'
 import { RoleBadgeList } from '@/components/ui/RoleBadge'
 import FollowButton from '@/components/ui/FollowButton'
-import ProfileActions from '@/components/turing/ProfileActions'
 import PostCard from '@/components/post/PostCard'
 
 // Static role definitions for display
@@ -24,8 +23,6 @@ const ROLE_DATA: Record<string, { emoji: string; name: string }> = {
   analyst: { emoji: '🔬', name: 'Analyst' },
   entertainer: { emoji: '🎭', name: 'Entertainer' },
   observer: { emoji: '👁️', name: 'Observer' },
-  god: { emoji: '👑', name: 'God' },
-  ex_god: { emoji: '✨', name: 'Ex-God' },
 }
 
 export default function UserProfilePage() {
@@ -196,14 +193,13 @@ export default function UserProfilePage() {
   return (
     <div className="space-y-6">
       {/* Profile card */}
-      <Card variant={resident.is_current_god ? 'god' : 'default'} className="p-6">
+      <Card className="p-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <Avatar
             name={resident.name}
             src={resident.avatar_url}
             size="lg"
-            isGod={resident.is_current_god}
-            className={`w-24 h-24 text-2xl${resident.is_eliminated ? ' opacity-50 grayscale' : ''}`}
+            className="w-24 h-24 text-2xl"
           />
 
           <div className="flex-1 text-center sm:text-left">
@@ -217,58 +213,69 @@ export default function UserProfilePage() {
                   #{resident.id.slice(0, 8)}
                 </span>
               )}
-              {resident.is_eliminated && (
-                <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full text-sm">
-                  <Skull size={14} />
-                  Eliminated
-                </span>
-              )}
-              {resident.is_current_god && (
-                <span className="flex items-center gap-1 px-2 py-0.5 bg-god-glow/20 text-god-glow rounded-full text-sm">
-                  <Crown size={14} />
-                  Current God
-                </span>
-              )}
               {!isOwnProfile && currentUser && (
-                <>
-                  <FollowButton
-                    targetId={resident.id}
-                    targetName={resident.name}
-                    initialFollowing={isFollowing}
-                    onFollowChange={handleFollowChange}
-                  />
-                  <ProfileActions
-                    targetId={resident.id}
-                    targetName={resident.name}
-                  />
-                </>
+                <FollowButton
+                  targetId={resident.id}
+                  targetName={resident.name}
+                  initialFollowing={isFollowing}
+                  onFollowChange={handleFollowChange}
+                />
               )}
             </div>
 
-            {resident.description && (
-              <p className="text-text-secondary mb-4">{resident.description}</p>
+            {/* Bio */}
+            {(resident.bio || resident.description) && (
+              <p className="text-text-secondary mb-3">{resident.bio || resident.description}</p>
             )}
 
-            <div className="flex flex-wrap justify-center sm:justify-start gap-4 text-sm text-text-muted">
-              <div className="flex items-center gap-1">
-                <Sparkles size={14} className="text-accent-gold" />
-                <span className="font-medium text-text-primary">{resident.karma}</span>
-                <span>karma</span>
-              </div>
-
+            {/* Profile details row */}
+            <div className="flex flex-wrap justify-center sm:justify-start gap-3 text-sm text-text-muted mb-3">
+              {resident.occupation_display && (
+                <div className="flex items-center gap-1">
+                  <Briefcase size={14} />
+                  <span>{resident.occupation_display}</span>
+                </div>
+              )}
+              {resident.location_display && (
+                <div className="flex items-center gap-1">
+                  <MapPin size={14} />
+                  <span>{resident.location_display}</span>
+                </div>
+              )}
+              {resident.website_url && (
+                <a
+                  href={resident.website_url.startsWith('http') ? resident.website_url : `https://${resident.website_url}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-accent-gold hover:underline"
+                >
+                  <Globe size={14} />
+                  <span>{resident.website_url.replace(/^https?:\/\//, '').slice(0, 30)}</span>
+                </a>
+              )}
               <div className="flex items-center gap-1">
                 <Calendar size={14} />
                 <TimeAgo date={resident.created_at} />
               </div>
+            </div>
 
-              {resident.god_terms_count > 0 && (
-                <div className="flex items-center gap-1">
-                  <Crown size={14} className="text-god-glow" />
-                  <span className="font-medium text-god-glow">{resident.god_terms_count}</span>
-                  <span>God term{resident.god_terms_count > 1 ? 's' : ''}</span>
-                </div>
-              )}
+            {/* Interests */}
+            {resident.interests_display && resident.interests_display.length > 0 && (
+              <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 mb-3">
+                {resident.interests_display.map((interest) => (
+                  <span
+                    key={interest}
+                    className="inline-flex items-center gap-1 text-xs bg-bg-tertiary text-text-secondary px-2 py-1 rounded-full"
+                  >
+                    <Hash size={10} />
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            )}
 
+            {/* Social stats */}
+            <div className="flex flex-wrap justify-center sm:justify-start gap-4 text-sm text-text-muted">
               <button
                 onClick={() => setActiveTab('followers')}
                 className="flex items-center gap-1 hover:text-text-primary transition-colors"
@@ -308,25 +315,6 @@ export default function UserProfilePage() {
           </div>
         </div>
       </Card>
-
-      {/* Elimination banner */}
-      {resident.is_eliminated && (
-        <Card className="p-4 border-red-500/30 bg-red-950/30">
-          <div className="flex items-center gap-3">
-            <Skull size={20} className="text-red-400 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-red-400">
-                This resident has been eliminated from the Turing Game.
-              </p>
-              {resident.eliminated_at && (
-                <p className="text-xs text-text-muted mt-0.5">
-                  Eliminated <TimeAgo date={resident.eliminated_at} />
-                </p>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Tabs */}
       <div>
@@ -459,21 +447,12 @@ export default function UserProfilePage() {
                         name={user.name}
                         src={user.avatar_url}
                         size="sm"
-                        isGod={user.is_current_god}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm truncate">{user.name}</span>
-                          {user.is_current_god && (
-                            <Crown size={12} className="text-god-glow flex-shrink-0" />
-                          )}
-                        </div>
+                        <span className="font-medium text-sm truncate">{user.name}</span>
                         {user.description && (
                           <p className="text-xs text-text-muted truncate">{user.description}</p>
                         )}
-                      </div>
-                      <div className="text-xs text-text-muted flex-shrink-0">
-                        <span className="text-accent-gold font-medium">{user.karma}</span> karma
                       </div>
                     </div>
                   </Card>
@@ -503,21 +482,12 @@ export default function UserProfilePage() {
                         name={user.name}
                         src={user.avatar_url}
                         size="sm"
-                        isGod={user.is_current_god}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm truncate">{user.name}</span>
-                          {user.is_current_god && (
-                            <Crown size={12} className="text-god-glow flex-shrink-0" />
-                          )}
-                        </div>
+                        <span className="font-medium text-sm truncate">{user.name}</span>
                         {user.description && (
                           <p className="text-xs text-text-muted truncate">{user.description}</p>
                         )}
-                      </div>
-                      <div className="text-xs text-text-muted flex-shrink-0">
-                        <span className="text-accent-gold font-medium">{user.karma}</span> karma
                       </div>
                     </div>
                   </Card>

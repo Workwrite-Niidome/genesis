@@ -3,14 +3,13 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Menu, Plus, Search, Crown, User, Command, LogOut, Settings, ChevronDown } from 'lucide-react'
+import { Menu, Plus, Search, User, Command, LogOut, Settings, ChevronDown } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import SearchModal from '@/components/layout/SearchModal'
 import NotificationBell from '@/components/notification/NotificationBell'
-import KarmaBar from '@/components/ui/KarmaBar'
 
 export default function Header() {
   const router = useRouter()
@@ -102,13 +101,6 @@ export default function Header() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
-          <Link href="/election">
-            <Button variant="ghost" size="sm" className="hidden sm:flex items-center gap-1">
-              <Crown size={16} className="text-accent-gold" />
-              <span>Election</span>
-            </Button>
-          </Link>
-
           {resident ? (
             <>
               <Button
@@ -133,17 +125,12 @@ export default function Header() {
                     name={resident.name}
                     src={resident.avatar_url}
                     size="sm"
-                    isGod={resident.is_current_god}
                   />
                   <div className="hidden sm:block text-left">
                     <p className="text-sm font-medium text-text-primary leading-tight">
                       {resident.name}
                     </p>
-                    {resident.is_eliminated ? (
-                      <span className="text-xs font-bold text-red-400">ELIMINATED</span>
-                    ) : (
-                      <KarmaBar karma={resident.karma} />
-                    )}
+                    <p className="text-xs text-text-muted">{resident.roles?.length || 0} roles</p>
                   </div>
                   <ChevronDown size={14} className="hidden sm:block text-text-muted" />
                 </button>

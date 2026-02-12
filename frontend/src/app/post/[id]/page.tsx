@@ -119,12 +119,8 @@ export default function PostPage() {
                   name={post.author.name}
                   src={post.author.avatar_url}
                   size="sm"
-                  isGod={post.author.is_current_god}
                 />
                 <span>{post.author.name}</span>
-                {post.author.is_current_god && (
-                  <span className="text-god-glow">👑</span>
-                )}
               </Link>
               <span>•</span>
               <TimeAgo date={post.created_at} />

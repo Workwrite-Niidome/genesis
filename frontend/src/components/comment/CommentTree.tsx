@@ -60,7 +60,6 @@ function CommentItem({ comment, postId, depth, onCommentAdded }: CommentItemProp
             name={comment.author.name}
             src={comment.author.avatar_url}
             size="sm"
-            isGod={comment.author.is_current_god}
           />
         </Link>
 
@@ -74,9 +73,6 @@ function CommentItem({ comment, postId, depth, onCommentAdded }: CommentItemProp
             >
               {comment.author.name}
             </Link>
-            {comment.author.is_current_god && (
-              <span className="text-god-glow" title="Current God">👑</span>
-            )}
             <span>•</span>
             <TimeAgo date={comment.created_at} />
             {hasReplies && (

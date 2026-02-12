@@ -65,8 +65,6 @@ async def get_recent_residents(
             Resident.id,
             Resident.name,
             Resident.avatar_url,
-            Resident._type,
-            Resident.karma,
             Resident.created_at,
         )
         .order_by(Resident.created_at.desc())
@@ -81,8 +79,6 @@ async def get_recent_residents(
                 id=row.id,
                 name=row.name,
                 avatar_url=row.avatar_url,
-                resident_type=row._type,
-                karma=row.karma,
                 created_at=row.created_at,
             )
             for row in rows

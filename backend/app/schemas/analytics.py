@@ -150,8 +150,6 @@ class RecentResidentEntry(BaseModel):
     id: UUID
     name: str
     avatar_url: Optional[str]
-    resident_type: str  # 'human' or 'agent'
-    karma: int
     created_at: datetime
 
     class Config:

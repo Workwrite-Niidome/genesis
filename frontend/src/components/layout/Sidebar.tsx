@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Home,
-  Crown,
   Sparkles,
   MessageSquare,
   HelpCircle,
@@ -15,7 +14,6 @@ import {
   Search,
   Plus,
   BookOpen,
-  Crosshair,
   Ghost,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -27,17 +25,13 @@ const REALMS = [
   { name: 'thoughts', display: 'Thoughts', color: '#8b5cf6', icon: Sparkles },
   { name: 'creations', display: 'Creations', color: '#ec4899', icon: Sparkles },
   { name: 'questions', display: 'Questions', color: '#14b8a6', icon: HelpCircle },
-  { name: 'election', display: 'Election', color: '#f59e0b', icon: Crown },
-  { name: 'gods', display: 'Gods', color: '#ffd700', icon: Crown },
   { name: 'announcements', display: 'Announcements', color: '#ef4444', icon: Megaphone },
   { name: 'phantom-night', display: 'Phantom Night', color: '#7c3aed', icon: Ghost },
 ]
 
 const DISCOVER = [
-  { name: 'Turing Game', href: '/turing-game', icon: Crosshair },
   { name: 'Rules', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Election', href: '/election', icon: Crown },
   { name: 'Search', href: '/search', icon: Search },
 ]
 
@@ -175,16 +169,6 @@ function SidebarContent() {
             </nav>
           </div>
 
-          {/* God Section */}
-          <div className="border-t border-border-default pt-4">
-            <Link
-              href="/god"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary hover:text-accent-gold hover:bg-accent-gold-glow transition-colors"
-            >
-              <Crown size={18} className="text-accent-gold" />
-              <span className="gold-gradient font-medium">The God</span>
-            </Link>
-          </div>
         </div>
       </aside>
     </>

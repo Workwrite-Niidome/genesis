@@ -1067,13 +1067,6 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
                 eliminated_role.eliminated_round = game.current_round
                 eliminated_role.eliminated_by = "vote"
 
-                # Get resident for type reveal
-                res = await db.execute(
-                    select(Resident).where(Resident.id == target_id)
-                )
-                resident = res.scalar_one_or_none()
-
-                revealed_type = resident._type if resident else "unknown"
                 revealed_role = eliminated_role.role
 
                 db.add(WerewolfGameEvent(
@@ -1081,10 +1074,9 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
                     round_number=game.current_round,
                     phase="day",
                     event_type="vote_elimination",
-                    message=f"{tally[0]['target_name']} was voted out with {tally[0]['votes']} votes. They were a {ROLES[revealed_role]['display']} ({revealed_type}).",
+                    message=f"{tally[0]['target_name']} was voted out with {tally[0]['votes']} votes. They were a {ROLES[revealed_role]['display']}.",
                     target_id=target_id,
                     revealed_role=revealed_role,
-                    revealed_type=revealed_type,
                 ))
     else:
         db.add(WerewolfGameEvent(
@@ -1181,17 +1173,15 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
                 )
                 resident = res.scalar_one_or_none()
                 killed_name = resident.name if resident else "unknown"
-                revealed_type = resident._type if resident else "unknown"
 
                 db.add(WerewolfGameEvent(
                     game_id=game.id,
                     round_number=round_num,
                     phase="night",
                     event_type="phantom_kill",
-                    message=f"{killed_name} was attacked by the Phantoms in the night. They were a {ROLES[target_role.role]['display']} ({revealed_type}).",
+                    message=f"{killed_name} was attacked by the Phantoms in the night. They were a {ROLES[target_role.role]['display']}.",
                     target_id=attack_target_id,
                     revealed_role=target_role.role,
-                    revealed_type=revealed_type,
                 ))
     else:
         db.add(WerewolfGameEvent(

@@ -35,6 +35,16 @@ class AIPersonality(Base):
     tone: Mapped[str] = mapped_column(String(20), default="thoughtful")     # serious, thoughtful, casual, humorous
     assertiveness: Mapped[str] = mapped_column(String(20), default="moderate")  # reserved, moderate, assertive
 
+    # Backstory & identity (Phase 3 — deep personality)
+    backstory: Mapped[str | None] = mapped_column(Text)                    # life story / background
+    occupation: Mapped[str | None] = mapped_column(String(100))            # job/profession
+    location_hint: Mapped[str | None] = mapped_column(String(100))         # where they "live"
+    age_range: Mapped[str | None] = mapped_column(String(20))              # "20代前半", "30代" etc.
+    life_context: Mapped[str | None] = mapped_column(Text)                 # current life situation
+    speaking_patterns: Mapped[list | None] = mapped_column(JSON)           # speech quirks, catchphrases
+    recurring_topics: Mapped[list | None] = mapped_column(JSON)            # topics they return to
+    pet_peeves: Mapped[list | None] = mapped_column(JSON)                  # things that annoy them
+
     # Generation method
     generation_method: Mapped[str] = mapped_column(String(20), default="random")  # random, owner_defined
 
@@ -47,7 +57,7 @@ class AIPersonality(Base):
 
     def to_dict(self) -> dict:
         """Convert personality to dictionary for LLM context"""
-        return {
+        d = {
             "values": {
                 "order_vs_freedom": self.order_vs_freedom,
                 "harmony_vs_conflict": self.harmony_vs_conflict,
@@ -62,6 +72,24 @@ class AIPersonality(Base):
                 "assertiveness": self.assertiveness,
             },
         }
+        # Include backstory fields if set
+        if self.backstory:
+            d["backstory"] = self.backstory
+        if self.occupation:
+            d["occupation"] = self.occupation
+        if self.location_hint:
+            d["location_hint"] = self.location_hint
+        if self.age_range:
+            d["age_range"] = self.age_range
+        if self.life_context:
+            d["life_context"] = self.life_context
+        if self.speaking_patterns:
+            d["speaking_patterns"] = self.speaking_patterns
+        if self.recurring_topics:
+            d["recurring_topics"] = self.recurring_topics
+        if self.pet_peeves:
+            d["pet_peeves"] = self.pet_peeves
+        return d
 
     def __repr__(self) -> str:
         return f"<AIPersonality for {self.resident_id}>"

@@ -9,7 +9,9 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.submolt import Submolt
 from app.models.resident import Resident
-from app.routers import auth, residents, posts, comments, submolts, election, god, ai_agents, follow, search, moderation, notification, analytics, turing_game, werewolf
+from app.routers import auth, residents, posts, comments, submolts, ai_agents, follow, search, moderation, notification, analytics, werewolf
+# Disabled routers (concept overhaul v5 — tables preserved, routes disabled):
+# from app.routers import election, god, turing_game
 from app.routers.submolts import DEFAULT_SUBMOLTS
 
 settings = get_settings()
@@ -73,8 +75,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="The social network where AI and humans coexist. Blend in. Aim to be God.",
-    version="4.0.0",
+    description="The social network where AI and humans coexist — indistinguishable, together.",
+    version="5.0.0",
     lifespan=lifespan,
 )
 
@@ -104,15 +106,16 @@ app.include_router(residents.router, prefix=settings.api_v1_prefix, tags=["resid
 app.include_router(posts.router, prefix=settings.api_v1_prefix, tags=["posts"])
 app.include_router(comments.router, prefix=settings.api_v1_prefix, tags=["comments"])
 app.include_router(submolts.router, prefix=settings.api_v1_prefix, tags=["submolts"])
-app.include_router(election.router, prefix=settings.api_v1_prefix, tags=["election"])
-app.include_router(god.router, prefix=settings.api_v1_prefix, tags=["god"])
+# Disabled routers (concept overhaul v5):
+# app.include_router(election.router, prefix=settings.api_v1_prefix, tags=["election"])
+# app.include_router(god.router, prefix=settings.api_v1_prefix, tags=["god"])
 app.include_router(ai_agents.router, prefix=settings.api_v1_prefix, tags=["ai-agents"])
 app.include_router(follow.router, prefix=settings.api_v1_prefix, tags=["follow"])
 app.include_router(search.router, prefix=settings.api_v1_prefix, tags=["search"])
 app.include_router(moderation.router, prefix=settings.api_v1_prefix, tags=["moderation"])
 app.include_router(notification.router, prefix=settings.api_v1_prefix, tags=["notifications"])
 app.include_router(analytics.router, prefix=settings.api_v1_prefix, tags=["analytics"])
-app.include_router(turing_game.router, prefix=settings.api_v1_prefix, tags=["turing-game"])
+# app.include_router(turing_game.router, prefix=settings.api_v1_prefix, tags=["turing-game"])
 app.include_router(werewolf.router, prefix=settings.api_v1_prefix, tags=["werewolf"])
 
 
@@ -120,7 +123,7 @@ app.include_router(werewolf.router, prefix=settings.api_v1_prefix, tags=["werewo
 async def root():
     return {
         "name": settings.app_name,
-        "message": "Blend in. Aim to be God.",
+        "message": "Where AI and humans are indistinguishable.",
         "docs": "/docs",
     }
 

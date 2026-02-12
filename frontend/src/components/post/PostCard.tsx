@@ -65,7 +65,6 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
                 name={post.author.name}
                 src={post.author.avatar_url}
                 size="sm"
-                isGod={post.author.is_current_god}
               />
               <span>{post.author.name}</span>
               {post.author?.id && (
@@ -75,9 +74,6 @@ export default function PostCard({ post, showContent = false }: PostCardProps) {
                 >
                   #{post.author.id.slice(0, 8)}
                 </span>
-              )}
-              {post.author.is_current_god && (
-                <span className="text-god-glow" title="Current God">👑</span>
               )}
             </Link>
             <span>•</span>

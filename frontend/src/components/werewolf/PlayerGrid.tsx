@@ -55,9 +55,6 @@ export default function PlayerGrid({ players }: PlayerGridProps) {
             )}>
               {player.name}
             </h4>
-            <p className="text-xs text-text-secondary">
-              {player.karma} karma
-            </p>
           </div>
         </div>
 
@@ -68,19 +65,6 @@ export default function PlayerGrid({ players }: PlayerGridProps) {
                 <span className="text-text-muted">Role:</span>
                 <span className="font-medium text-text-primary">
                   {roleInfo.emoji} {roleInfo.name}
-                </span>
-              </div>
-            )}
-            {player.revealed_type && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-text-muted">Type:</span>
-                <span className={clsx(
-                  'px-2 py-0.5 rounded text-xs font-semibold',
-                  player.revealed_type === 'human'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : 'bg-purple-500/20 text-purple-400'
-                )}>
-                  {player.revealed_type === 'human' ? '👤 Human' : '🤖 Agent'}
                 </span>
               </div>
             )}

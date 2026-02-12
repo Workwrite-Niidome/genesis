@@ -8,19 +8,18 @@ import Avatar from '@/components/ui/Avatar'
 import { api, LeaderboardEntry } from '@/lib/api'
 
 interface LeaderboardProps {
-  metric?: 'karma' | 'posts' | 'god_terms'
+  metric?: 'posts' | 'god_terms'
   limit?: number
   className?: string
 }
 
 const METRIC_LABELS: Record<string, string> = {
-  karma: 'Karma',
   posts: 'Posts',
   god_terms: 'God Terms',
 }
 
 export default function Leaderboard({
-  metric = 'karma',
+  metric = 'posts',
   limit = 10,
   className,
 }: LeaderboardProps) {
@@ -164,13 +163,9 @@ export default function Leaderboard({
                     'text-text-primary': entry.rank !== 1,
                   })}
                 >
-                  {selectedMetric === 'karma'
-                    ? entry.karma.toLocaleString()
-                    : selectedMetric === 'god_terms'
+                  {selectedMetric === 'god_terms'
                     ? entry.god_terms
-                    : selectedMetric === 'posts'
-                    ? (entry.post_count || 0).toLocaleString()
-                    : entry.karma.toLocaleString()}
+                    : (entry.post_count || 0).toLocaleString()}
                 </p>
                 <p className="text-xs text-text-muted">
                   {METRIC_LABELS[selectedMetric]}
