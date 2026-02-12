@@ -121,12 +121,11 @@ async def diagnose(
 
     Uses /api/v2/dynamic/diagnosis which returns natal/current structures,
     design gap, axis states, and temporal data.
-    Falls back to static /api/v2/diagnosis if dynamic endpoint fails.
+    No fallback — returns None on failure so caller can raise proper error.
 
     Returns:
         API response dict or None on failure.
     """
-    # Try dynamic API first
     url = f"{settings.struct_code_url}/api/v2/dynamic/diagnosis"
     payload = {
         "birth_date": birth_date,
@@ -135,7 +134,7 @@ async def diagnose(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(url, json=payload)
 
             if response.status_code == 200:
@@ -143,27 +142,11 @@ async def diagnose(
                 data["_api_version"] = "dynamic"
                 return data
 
-            logger.warning(f"STRUCT CODE Dynamic API error: {response.status_code} — {response.text[:300]}")
+            logger.error(f"STRUCT CODE API error: {response.status_code} — {response.text[:500]}")
+            return None
 
     except Exception as e:
-        logger.warning(f"STRUCT CODE Dynamic API unreachable: {e}")
-
-    # Fallback to static API
-    url_static = f"{settings.struct_code_url}/api/v2/diagnosis"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url_static, json=payload)
-
-            if response.status_code != 200:
-                logger.warning(f"STRUCT CODE Static API error: {response.status_code} — {response.text[:300]}")
-                return None
-
-            data = response.json()
-            data["_api_version"] = "static"
-            return data
-
-    except Exception as e:
-        logger.warning(f"STRUCT CODE Static API unreachable: {e}")
+        logger.error(f"STRUCT CODE API unreachable: {e}")
         return None
 
 

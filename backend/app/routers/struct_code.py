@@ -137,62 +137,6 @@ def _parse_dynamic_response(result: dict) -> dict:
     }
 
 
-def _parse_static_response(result: dict) -> dict:
-    """Parse static API response into normalized fields."""
-    struct_type = result.get("struct_type", "")
-    raw_axes = result.get("axes", {})
-    if isinstance(raw_axes, dict):
-        axes = [
-            raw_axes.get("起動軸", 0.5),
-            raw_axes.get("判断軸", 0.5),
-            raw_axes.get("選択軸", 0.5),
-            raw_axes.get("共鳴軸", 0.5),
-            raw_axes.get("自覚軸", 0.5),
-        ]
-    elif isinstance(raw_axes, list) and len(raw_axes) >= 5:
-        axes = raw_axes[:5]
-    else:
-        axes = [0.5] * 5
-
-    similarity = result.get("confidence", 0.0)
-
-    # Build top candidates from metadata
-    raw_candidates = result.get("metadata", {}).get("top_candidates", [])
-    top_candidates = []
-    for c in raw_candidates[:3]:
-        if isinstance(c, dict):
-            code = c.get("code", c.get("type", ""))
-            type_data = sc_service.get_type_info(code)
-            archetype = type_data.get("archetype", "") if type_data else ""
-            top_candidates.append(CandidateInfo(
-                code=code,
-                name=c.get("name", c.get("label", "")),
-                archetype=archetype,
-                score=c.get("score", c.get("similarity", 0.0)),
-            ))
-
-    # Generate struct_code string
-    axis_scores = "-".join(str(round(a * 1000)) for a in axes)
-    struct_code = result.get("struct_code") or f"{struct_type}-{axis_scores}"
-
-    return {
-        "current_type": struct_type,
-        "current_type_name": "",
-        "current_axes": axes,
-        "natal_type": struct_type,
-        "natal_type_name": "",
-        "natal_axes": axes,
-        "struct_code": struct_code,
-        "similarity": similarity,
-        "top_candidates": top_candidates,
-        "design_gap": {},
-        "axis_states": [],
-        "temporal": None,
-        "natal_description": "",
-        "current_description": "",
-    }
-
-
 @router.get("/questions")
 async def get_questions(lang: str = Query("ja", regex="^(ja|en)$")):
     """Get all 25 diagnostic questions."""
@@ -205,44 +149,20 @@ async def diagnose(
     current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Run STRUCT CODE diagnosis. Saves result to resident profile."""
-    # Call STRUCT CODE API (dynamic with static fallback)
+    """Run STRUCT CODE diagnosis via Dynamic API. No fallback — errors if API unavailable."""
     result = await sc_service.diagnose(
         birth_date=request.birth_date,
         birth_location=request.birth_location,
         answers=[a.model_dump() for a in request.answers],
     )
 
-    if result:
-        api_version = result.get("_api_version", "static")
-        if api_version == "dynamic":
-            parsed = _parse_dynamic_response(result)
-        else:
-            parsed = _parse_static_response(result)
-    else:
-        # Fallback to local classification
-        local = sc_service.classify_locally(
-            [a.model_dump() for a in request.answers]
+    if not result:
+        raise HTTPException(
+            status_code=503,
+            detail="STRUCT CODE diagnosis engine is temporarily unavailable. Please try again.",
         )
-        axes = local["axes"]
-        struct_type = local["struct_type"]
-        axis_scores = "-".join(str(round(a * 1000)) for a in axes)
-        parsed = {
-            "current_type": struct_type,
-            "current_type_name": "",
-            "current_axes": axes,
-            "natal_type": struct_type,
-            "natal_type_name": "",
-            "natal_axes": axes,
-            "struct_code": f"{struct_type}-{axis_scores}",
-            "similarity": local["similarity"],
-            "top_candidates": [],
-            "design_gap": {},
-            "axis_states": [],
-            "temporal": None,
-            "natal_description": "",
-            "current_description": "",
-        }
+
+    parsed = _parse_dynamic_response(result)
 
     # Current type is the primary type
     struct_type = parsed["current_type"]
