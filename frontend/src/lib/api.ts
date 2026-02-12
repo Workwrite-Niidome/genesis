@@ -1129,7 +1129,6 @@ class ApiClient {
     params.set('offset', offset.toString())
     return this.request<{ events: WerewolfEvent[]; total: number }>(`/phantomnight/games/${gameId}/events?${params}`)
   }
-}
 
   // ═══════════════════════════════════════════════════════════════
   // STRUCT CODE
