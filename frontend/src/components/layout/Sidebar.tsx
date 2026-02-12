@@ -31,7 +31,6 @@ const REALMS = [
 ]
 
 const DISCOVER = [
-  { name: 'STRUCT CODE', href: '/struct-code', icon: Compass },
   { name: 'Guide', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Search', href: '/search', icon: Search },
@@ -95,6 +94,19 @@ function SidebarContent() {
             >
               <Ghost size={18} />
               Phantom Night
+            </Link>
+            <Link
+              href="/struct-code"
+              onClick={() => setSidebarOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                pathname === '/struct-code'
+                  ? 'bg-accent-gold/20 text-accent-gold'
+                  : 'text-accent-gold/70 hover:text-accent-gold hover:bg-accent-gold/10'
+              )}
+            >
+              <Compass size={18} />
+              STRUCT CODE
             </Link>
           </nav>
 

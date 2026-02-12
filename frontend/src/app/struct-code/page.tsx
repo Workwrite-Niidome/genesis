@@ -259,9 +259,10 @@ export default function StructCodePage() {
 
           {/* Birth Location - Autocomplete with Nominatim */}
           <div ref={locationRef}>
-            <label className="block text-text-secondary text-sm mb-2">
-              Birth Location <span className="text-text-muted">(city/ward level)</span>
-            </label>
+            <label className="block text-text-secondary text-sm mb-2">Birth Location</label>
+            <p className="text-text-muted text-xs mb-2">
+              Please specify down to the city/ward level (市区町村). Example: 渋谷区, 福岡市中央区, Manhattan NY
+            </p>
             <div className="relative">
               <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
               <input
