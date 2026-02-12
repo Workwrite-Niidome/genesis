@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Compass, Trophy, Award, Medal, Share2, Copy, Check,
   ArrowLeft, MessageCircle, Loader2, ExternalLink,
+  ArrowUp, ArrowDown, Minus, Clock,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -27,6 +28,17 @@ function classifyAxis(val: number): { label: string; color: string } {
   return { label: 'L', color: 'bg-bg-primary text-text-muted' }
 }
 
+function getAxisStateInfo(state: string): { label: string; color: string; icon: typeof ArrowUp } {
+  switch (state) {
+    case 'activation':
+      return { label: '活性化', color: 'text-emerald-400', icon: ArrowUp }
+    case 'suppression':
+      return { label: '抑制', color: 'text-red-400', icon: ArrowDown }
+    default:
+      return { label: '安定', color: 'text-text-muted', icon: Minus }
+  }
+}
+
 const MEDAL_STYLES = [
   { icon: Trophy, color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', label: 'Your Type' },
   { icon: Award, color: 'text-gray-300', bg: 'bg-gray-300/10 border-gray-300/30', label: '' },
@@ -41,6 +53,7 @@ export default function StructCodeResultPage() {
 
   const [resident, setResident] = useState<Resident | null>(null)
   const [typeInfo, setTypeInfo] = useState<StructCodeTypeInfo | null>(null)
+  const [natalTypeInfo, setNatalTypeInfo] = useState<StructCodeTypeInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
@@ -57,6 +70,14 @@ export default function StructCodeResultPage() {
         if (res.struct_type) {
           const info = await api.structCodeType(res.struct_type, lang)
           setTypeInfo(info)
+          // Load natal type info if different from current
+          const natalType = res.struct_result?.natal?.type
+          if (natalType && natalType !== res.struct_type) {
+            try {
+              const nInfo = await api.structCodeType(natalType, lang)
+              setNatalTypeInfo(nInfo)
+            } catch { /* natal type info not critical */ }
+          }
         }
       } catch {
         // resident not found
@@ -102,6 +123,14 @@ export default function StructCodeResultPage() {
   const topCandidates = structResult?.top_candidates ?? []
   const isOwnProfile = currentUser?.name === name
 
+  // Dynamic data
+  const natal = structResult?.natal
+  const current = structResult?.current
+  const designGap = structResult?.design_gap
+  const axisStates = structResult?.axis_states ?? []
+  const temporal = structResult?.temporal
+  const hasNatalCurrentSplit = natal && current && natal.type !== current.type
+
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
@@ -137,10 +166,49 @@ export default function StructCodeResultPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column: Type Display Card */}
-        <div className="bg-bg-tertiary rounded-xl border border-border-default p-6">
-          <div className="text-center mb-6">
+      {/* Natal vs Current Type Cards */}
+      {hasNatalCurrentSplit ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {/* Current Type (Primary) */}
+          <div className="bg-bg-tertiary rounded-xl border border-accent-gold/40 p-5">
+            <div className="text-center">
+              <p className="text-accent-gold text-[10px] font-semibold uppercase tracking-widest mb-2">Current Type</p>
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent-gold/20 mb-2">
+                <Compass size={24} className="text-accent-gold" />
+              </div>
+              <p className="text-accent-gold font-mono text-3xl font-bold tracking-wider">
+                {current.type}
+              </p>
+              <p className="text-text-primary text-lg mt-1">{current.type_name || typeInfo?.name || ''}</p>
+              <p className="text-text-secondary text-sm">{typeInfo?.archetype || ''}</p>
+              {current.description && (
+                <p className="text-text-muted text-xs mt-2 leading-relaxed">{current.description}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Natal Type */}
+          <div className="bg-bg-tertiary rounded-xl border border-border-default p-5">
+            <div className="text-center">
+              <p className="text-text-muted text-[10px] font-semibold uppercase tracking-widest mb-2">Natal Type</p>
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-text-muted/10 mb-2">
+                <Compass size={24} className="text-text-muted" />
+              </div>
+              <p className="text-text-primary font-mono text-3xl font-bold tracking-wider">
+                {natal.type}
+              </p>
+              <p className="text-text-primary text-lg mt-1">{natal.type_name || natalTypeInfo?.name || ''}</p>
+              <p className="text-text-secondary text-sm">{natalTypeInfo?.archetype || ''}</p>
+              {natal.description && (
+                <p className="text-text-muted text-xs mt-2 leading-relaxed">{natal.description}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Single Type Card (natal == current or no dynamic data) */
+        <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
+          <div className="text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent-gold/20 mb-3">
               <Compass size={32} className="text-accent-gold" />
             </div>
@@ -149,89 +217,146 @@ export default function StructCodeResultPage() {
             </p>
             <p className="text-text-primary text-xl mt-2">{typeInfo?.name || ''}</p>
             <p className="text-text-secondary">{typeInfo?.archetype || ''}</p>
-
-            {similarity > 0 && (
-              <div className="inline-flex items-center gap-1.5 mt-3 px-3 py-1 bg-accent-gold/10 border border-accent-gold/30 rounded-full">
-                <span className="text-accent-gold text-sm font-semibold">
-                  Match: {(similarity * 100).toFixed(1)}%
-                </span>
-              </div>
+            {natal && current && natal.type === current.type && (
+              <p className="text-text-muted text-xs mt-2">Natal = Current</p>
             )}
           </div>
+        </div>
+      )}
 
-          {/* Struct Code String */}
-          <div className="text-center mb-6">
-            <p className="font-mono text-text-muted text-xs tracking-widest">{structCode}</p>
+      {/* Struct Code String + Match + Actions */}
+      <div className="bg-bg-tertiary rounded-xl border border-border-default p-5 mb-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-center sm:text-left">
+            <p className="font-mono text-text-primary text-sm tracking-widest">{structCode}</p>
+            {similarity > 0 && (
+              <span className="text-accent-gold text-xs font-semibold">
+                Match: {(similarity * 100).toFixed(1)}%
+              </span>
+            )}
           </div>
-
-          {/* Action buttons */}
-          <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
             {isOwnProfile && (
               <Link
                 href="/struct-code/consultation"
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors text-sm"
               >
-                <MessageCircle size={16} />
-                Ask AI Counselor
+                <MessageCircle size={14} />
+                AI Counselor
               </Link>
             )}
-            <div className="flex gap-2">
-              <button
-                onClick={handleShareX}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-bg-primary border border-border-default rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-sm"
-              >
-                <ExternalLink size={14} />
-                Share on X
-              </button>
-              <button
-                onClick={handleCopyLink}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-bg-primary border border-border-default rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-sm"
-              >
-                {copied ? <Check size={14} className="text-accent-gold" /> : <Copy size={14} />}
-                {copied ? 'Copied!' : 'Copy Link'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: 5-Axis Scores */}
-        <div className="bg-bg-tertiary rounded-xl border border-border-default p-6">
-          <h3 className="text-text-primary font-semibold mb-4">5-Axis Profile</h3>
-          <div className="space-y-4">
-            {axes.map((val: number, i: number) => {
-              const axisName = AXIS_ORDER[i]
-              const cls = classifyAxis(val)
-              return (
-                <div key={i}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-text-primary text-sm font-medium">
-                        {AXIS_LABELS[axisName] || AXIS_SHORT[i]}
-                      </span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cls.color}`}>
-                        {cls.label}
-                      </span>
-                    </div>
-                    <span className="text-text-muted text-sm font-mono">
-                      {Math.round(val * 1000)}
-                    </span>
-                  </div>
-                  <div className="h-3 bg-bg-primary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-accent-gold rounded-full transition-all duration-700"
-                      style={{ width: `${val * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
+            <button
+              onClick={handleShareX}
+              className="flex items-center gap-2 px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-sm"
+            >
+              <ExternalLink size={14} />
+            </button>
+            <button
+              onClick={handleCopyLink}
+              className="flex items-center gap-2 px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors text-sm"
+            >
+              {copied ? <Check size={14} className="text-accent-gold" /> : <Copy size={14} />}
+            </button>
           </div>
         </div>
       </div>
 
+      {/* Temporal Theme */}
+      {temporal && temporal.current_theme && (
+        <div className="bg-bg-tertiary rounded-xl border border-border-default p-5 mb-6">
+          <div className="flex items-start gap-3">
+            <Clock size={18} className="text-accent-gold mt-0.5 shrink-0" />
+            <div>
+              <h3 className="text-text-primary font-semibold text-sm">{temporal.current_theme}</h3>
+              {temporal.theme_description && (
+                <p className="text-text-secondary text-xs mt-1 leading-relaxed">{temporal.theme_description}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5-Axis Profile with Axis States */}
+      <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
+        <h3 className="text-text-primary font-semibold mb-4">5-Axis Profile</h3>
+        <div className="space-y-4">
+          {axes.map((val: number, i: number) => {
+            const axisName = AXIS_ORDER[i]
+            const cls = classifyAxis(val)
+            const natalVal = natal?.axes?.[i]
+            const stateData = axisStates.find(s => s.axis === axisName)
+            const stateInfo = stateData ? getAxisStateInfo(stateData.state) : null
+            const StateIcon = stateInfo?.icon || Minus
+            return (
+              <div key={i}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-text-primary text-sm font-medium">
+                      {AXIS_LABELS[axisName] || AXIS_SHORT[i]}
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cls.color}`}>
+                      {cls.label}
+                    </span>
+                    {stateInfo && stateData && stateData.state !== 'stable' && (
+                      <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${stateInfo.color}`}>
+                        <StateIcon size={10} />
+                        {stateInfo.label}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {natalVal !== undefined && hasNatalCurrentSplit && (
+                      <span className="text-text-muted text-[10px] font-mono">
+                        ({Math.round(natalVal * 1000)})
+                      </span>
+                    )}
+                    <span className="text-text-muted text-sm font-mono">
+                      {Math.round(val * 1000)}
+                    </span>
+                  </div>
+                </div>
+                <div className="relative h-3 bg-bg-primary rounded-full overflow-hidden">
+                  {/* Natal bar (background, dimmed) */}
+                  {natalVal !== undefined && hasNatalCurrentSplit && (
+                    <div
+                      className="absolute h-full bg-text-muted/20 rounded-full"
+                      style={{ width: `${natalVal * 100}%` }}
+                    />
+                  )}
+                  {/* Current bar (foreground) */}
+                  <div
+                    className="absolute h-full bg-accent-gold rounded-full transition-all duration-700"
+                    style={{ width: `${val * 100}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Axis state legend */}
+        {axisStates.length > 0 && (
+          <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border-default">
+            <span className="text-text-muted text-[10px]">Axis States:</span>
+            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+              <ArrowUp size={10} /> 活性化
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] text-text-muted">
+              <Minus size={10} /> 安定
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] text-red-400">
+              <ArrowDown size={10} /> 抑制
+            </span>
+            {hasNatalCurrentSplit && (
+              <span className="text-text-muted text-[10px]">( ) = Natal</span>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* TOP 3 Type Candidates */}
       {topCandidates.length > 0 && (
-        <div className="mt-6 bg-bg-tertiary rounded-xl border border-border-default p-6">
+        <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
           <h3 className="text-text-primary font-semibold mb-4">TOP 3 Type Candidates</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {topCandidates.slice(0, 3).map((c: any, i: number) => {
@@ -255,9 +380,11 @@ export default function StructCodeResultPage() {
                       </div>
                       <p className="text-text-primary text-sm mt-0.5">{c.name}</p>
                       <p className="text-text-muted text-xs">{c.archetype}</p>
-                      <p className="text-text-secondary text-sm font-semibold mt-1">
-                        {(c.score * 100).toFixed(1)}%
-                      </p>
+                      {c.score > 0 && (
+                        <p className="text-text-secondary text-sm font-semibold mt-1">
+                          {(c.score * 100).toFixed(1)}%
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -269,7 +396,7 @@ export default function StructCodeResultPage() {
 
       {/* Type Characteristics */}
       {typeInfo && typeInfo.description && (
-        <div className="mt-6 bg-bg-tertiary rounded-xl border border-border-default p-6">
+        <div className="bg-bg-tertiary rounded-xl border border-border-default p-6 mb-6">
           <h3 className="text-text-primary font-semibold mb-4">Type Characteristics</h3>
           <div className="space-y-5">
             <Section title="Description" text={typeInfo.description} />

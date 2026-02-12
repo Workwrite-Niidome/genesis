@@ -33,12 +33,43 @@ class CandidateInfo(BaseModel):
     score: float = 0.0
 
 
+class StructureInfo(BaseModel):
+    """Natal or Current structure data."""
+    type: str
+    type_name: str = ""
+    axes: list[float] = []
+    axes_display: dict[str, int] = {}
+    description: str = ""
+
+
+class AxisState(BaseModel):
+    """State of a single axis: activation/stable/suppression."""
+    axis: str
+    state: str  # "activation" | "stable" | "suppression"
+    gap: float = 0.0
+
+
+class TemporalInfo(BaseModel):
+    """Time-based theme and transit data."""
+    current_theme: str = ""
+    theme_description: str = ""
+    active_transits: list[dict] = []
+    future_outlook: list[dict] = []
+
+
 class DiagnoseResponse(BaseModel):
     struct_type: str
+    struct_code: str = ""
     type_info: TypeInfo
     axes: list[float]
     top_candidates: list[CandidateInfo] = []
     similarity: float = 0.0
+    # Dynamic API fields
+    natal: Optional[StructureInfo] = None
+    current: Optional[StructureInfo] = None
+    design_gap: dict[str, float] = {}
+    axis_states: list[AxisState] = []
+    temporal: Optional[TemporalInfo] = None
 
 
 class TypeSummary(BaseModel):

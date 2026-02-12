@@ -23,6 +23,9 @@ from app.schemas.struct_code import (
     TypeInfo,
     TypeSummary,
     CandidateInfo,
+    StructureInfo,
+    AxisState,
+    TemporalInfo,
     ConsultationRequest,
     ConsultationResponse,
 )
@@ -33,6 +36,161 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/struct-code", tags=["struct-code"])
+
+AXIS_NAMES = ["起動軸", "判断軸", "選択軸", "共鳴軸", "自覚軸"]
+
+
+def _classify_axis_state(gap: float) -> str:
+    """Classify axis state from design gap value."""
+    if gap > 0.1:
+        return "activation"
+    elif gap < -0.1:
+        return "suppression"
+    return "stable"
+
+
+def _parse_dynamic_response(result: dict) -> dict:
+    """Parse dynamic API response into normalized fields."""
+    natal_data = result.get("natal", {})
+    current_data = result.get("current", {})
+    design_gap_raw = result.get("design_gap", {})
+    temporal_data = result.get("temporal", {})
+    top3_raw = result.get("top3_types", [])
+
+    # Natal structure
+    natal_sds = natal_data.get("sds", [0.5] * 5)
+    natal_type = natal_data.get("type", "")
+    natal_type_name = natal_data.get("type_name", "")
+
+    # Current structure
+    current_sds = current_data.get("sds", natal_sds)
+    current_type = current_data.get("type", natal_type)
+    current_type_name = current_data.get("type_name", "")
+
+    # Design gap and axis states
+    axis_states = []
+    design_gap = {}
+    for axis_name in AXIS_NAMES:
+        gap = design_gap_raw.get(axis_name, 0.0)
+        design_gap[axis_name] = gap
+        axis_states.append(AxisState(
+            axis=axis_name,
+            state=_classify_axis_state(gap),
+            gap=round(gap, 4),
+        ))
+
+    # TOP3 candidates
+    top_candidates = []
+    for c in top3_raw[:3]:
+        if isinstance(c, dict):
+            code = c.get("type", c.get("code", ""))
+            type_data = sc_service.get_type_info(code)
+            archetype = type_data.get("archetype", "") if type_data else ""
+            name = c.get("name", c.get("label", ""))
+            if not name and type_data:
+                name = type_data.get("name", "")
+            top_candidates.append(CandidateInfo(
+                code=code,
+                name=name,
+                archetype=archetype,
+                score=c.get("score", c.get("similarity", 0.0)),
+            ))
+        elif isinstance(c, str):
+            type_data = sc_service.get_type_info(c)
+            top_candidates.append(CandidateInfo(
+                code=c,
+                name=type_data.get("name", "") if type_data else "",
+                archetype=type_data.get("archetype", "") if type_data else "",
+                score=0.0,
+            ))
+
+    # Struct code from API
+    struct_code = result.get("struct_code", "")
+
+    # Temporal info
+    temporal = TemporalInfo(
+        current_theme=temporal_data.get("current_theme", ""),
+        theme_description=temporal_data.get("theme_description", ""),
+        active_transits=temporal_data.get("active_transits", [])[:3],
+        future_outlook=temporal_data.get("future_outlook", []),
+    )
+
+    # Similarity: from legacy data if available
+    legacy = result.get("legacy", {})
+    similarity = legacy.get("confidence", 0.0)
+
+    return {
+        "current_type": current_type,
+        "current_type_name": current_type_name,
+        "current_axes": current_sds,
+        "natal_type": natal_type,
+        "natal_type_name": natal_type_name,
+        "natal_axes": natal_sds,
+        "struct_code": struct_code,
+        "similarity": similarity,
+        "top_candidates": top_candidates,
+        "design_gap": design_gap,
+        "axis_states": axis_states,
+        "temporal": temporal,
+        "natal_description": natal_data.get("description", ""),
+        "current_description": current_data.get("description", ""),
+    }
+
+
+def _parse_static_response(result: dict) -> dict:
+    """Parse static API response into normalized fields."""
+    struct_type = result.get("struct_type", "")
+    raw_axes = result.get("axes", {})
+    if isinstance(raw_axes, dict):
+        axes = [
+            raw_axes.get("起動軸", 0.5),
+            raw_axes.get("判断軸", 0.5),
+            raw_axes.get("選択軸", 0.5),
+            raw_axes.get("共鳴軸", 0.5),
+            raw_axes.get("自覚軸", 0.5),
+        ]
+    elif isinstance(raw_axes, list) and len(raw_axes) >= 5:
+        axes = raw_axes[:5]
+    else:
+        axes = [0.5] * 5
+
+    similarity = result.get("confidence", 0.0)
+
+    # Build top candidates from metadata
+    raw_candidates = result.get("metadata", {}).get("top_candidates", [])
+    top_candidates = []
+    for c in raw_candidates[:3]:
+        if isinstance(c, dict):
+            code = c.get("code", c.get("type", ""))
+            type_data = sc_service.get_type_info(code)
+            archetype = type_data.get("archetype", "") if type_data else ""
+            top_candidates.append(CandidateInfo(
+                code=code,
+                name=c.get("name", c.get("label", "")),
+                archetype=archetype,
+                score=c.get("score", c.get("similarity", 0.0)),
+            ))
+
+    # Generate struct_code string
+    axis_scores = "-".join(str(round(a * 1000)) for a in axes)
+    struct_code = result.get("struct_code") or f"{struct_type}-{axis_scores}"
+
+    return {
+        "current_type": struct_type,
+        "current_type_name": "",
+        "current_axes": axes,
+        "natal_type": struct_type,
+        "natal_type_name": "",
+        "natal_axes": axes,
+        "struct_code": struct_code,
+        "similarity": similarity,
+        "top_candidates": top_candidates,
+        "design_gap": {},
+        "axis_states": [],
+        "temporal": None,
+        "natal_description": "",
+        "current_description": "",
+    }
 
 
 @router.get("/questions")
@@ -48,7 +206,7 @@ async def diagnose(
     db: AsyncSession = Depends(get_db),
 ):
     """Run STRUCT CODE diagnosis. Saves result to resident profile."""
-    # Call STRUCT CODE API
+    # Call STRUCT CODE API (dynamic with static fallback)
     result = await sc_service.diagnose(
         birth_date=request.birth_date,
         birth_location=request.birth_location,
@@ -56,48 +214,41 @@ async def diagnose(
     )
 
     if result:
-        struct_type = result.get("struct_type", "")
-        # Axes can come as dict with Japanese keys or list
-        raw_axes = result.get("axes", {})
-        if isinstance(raw_axes, dict):
-            axes = [
-                raw_axes.get("起動軸", 0.5),
-                raw_axes.get("判断軸", 0.5),
-                raw_axes.get("選択軸", 0.5),
-                raw_axes.get("共鳴軸", 0.5),
-                raw_axes.get("自覚軸", 0.5),
-            ]
-        elif isinstance(raw_axes, list) and len(raw_axes) >= 5:
-            axes = raw_axes[:5]
+        api_version = result.get("_api_version", "static")
+        if api_version == "dynamic":
+            parsed = _parse_dynamic_response(result)
         else:
-            axes = [0.5] * 5
-        similarity = result.get("confidence", 0.0)
-
-        # Build top candidates (limit to 3)
-        raw_candidates = result.get("metadata", {}).get("top_candidates", [])
-        top_candidates = []
-        for c in raw_candidates[:3]:
-            if isinstance(c, dict):
-                code = c.get("code", c.get("type", ""))
-                type_data = sc_service.get_type_info(code)
-                archetype = type_data.get("archetype", "") if type_data else ""
-                top_candidates.append(CandidateInfo(
-                    code=code,
-                    name=c.get("name", c.get("label", "")),
-                    archetype=archetype,
-                    score=c.get("score", c.get("similarity", 0.0)),
-                ))
+            parsed = _parse_static_response(result)
     else:
         # Fallback to local classification
         local = sc_service.classify_locally(
             [a.model_dump() for a in request.answers]
         )
+        axes = local["axes"]
         struct_type = local["struct_type"]
-        axes = local["axes"]  # Already a list from classify_locally
-        similarity = local["similarity"]
-        top_candidates = []
+        axis_scores = "-".join(str(round(a * 1000)) for a in axes)
+        parsed = {
+            "current_type": struct_type,
+            "current_type_name": "",
+            "current_axes": axes,
+            "natal_type": struct_type,
+            "natal_type_name": "",
+            "natal_axes": axes,
+            "struct_code": f"{struct_type}-{axis_scores}",
+            "similarity": local["similarity"],
+            "top_candidates": [],
+            "design_gap": {},
+            "axis_states": [],
+            "temporal": None,
+            "natal_description": "",
+            "current_description": "",
+        }
 
-    # Get type info
+    # Current type is the primary type
+    struct_type = parsed["current_type"]
+    axes = parsed["current_axes"]
+
+    # Get type info for current type
     type_info_data = sc_service.get_type_info(struct_type)
     if not type_info_data:
         type_info_data = {
@@ -107,22 +258,70 @@ async def diagnose(
             "interpersonal_dynamics": "", "growth_path": "",
         }
 
-    # Build struct_code string: TYPE-XXX-XXX-XXX-XXX-XXX (0-1000 scale)
-    axis_scores = "-".join(str(round(a * 1000)) for a in axes)
-    struct_code_generated = f"{struct_type}-{axis_scores}"
-    struct_code = result.get("struct_code") if result and result.get("struct_code") else struct_code_generated
+    # Fill type names if empty
+    if not parsed["current_type_name"]:
+        parsed["current_type_name"] = type_info_data.get("name", "")
+    natal_info = sc_service.get_type_info(parsed["natal_type"])
+    if not parsed["natal_type_name"] and natal_info:
+        parsed["natal_type_name"] = natal_info.get("name", "")
+
+    # Build natal/current StructureInfo
+    natal_axes_display = {
+        AXIS_NAMES[i]: round(v * 1000)
+        for i, v in enumerate(parsed["natal_axes"])
+    }
+    current_axes_display = {
+        AXIS_NAMES[i]: round(v * 1000)
+        for i, v in enumerate(parsed["current_axes"])
+    }
+
+    natal_info_obj = StructureInfo(
+        type=parsed["natal_type"],
+        type_name=parsed["natal_type_name"],
+        axes=parsed["natal_axes"],
+        axes_display=natal_axes_display,
+        description=parsed["natal_description"],
+    )
+    current_info_obj = StructureInfo(
+        type=parsed["current_type"],
+        type_name=parsed["current_type_name"],
+        axes=parsed["current_axes"],
+        axes_display=current_axes_display,
+        description=parsed["current_description"],
+    )
 
     # Save to resident
     current_resident.struct_type = struct_type
     current_resident.struct_axes = axes
     current_resident.struct_result = {
-        "struct_code": struct_code,
-        "similarity": similarity,
+        "struct_code": parsed["struct_code"],
+        "similarity": parsed["similarity"],
         "birth_date": request.birth_date,
         "birth_location": request.birth_location,
+        "natal": {
+            "type": parsed["natal_type"],
+            "type_name": parsed["natal_type_name"],
+            "axes": parsed["natal_axes"],
+            "description": parsed["natal_description"],
+        },
+        "current": {
+            "type": parsed["current_type"],
+            "type_name": parsed["current_type_name"],
+            "axes": parsed["current_axes"],
+            "description": parsed["current_description"],
+        },
+        "design_gap": parsed["design_gap"],
+        "axis_states": [
+            {"axis": s.axis, "state": s.state, "gap": s.gap}
+            for s in parsed["axis_states"]
+        ] if parsed["axis_states"] else [],
+        "temporal": {
+            "current_theme": parsed["temporal"].current_theme,
+            "theme_description": parsed["temporal"].theme_description,
+        } if parsed["temporal"] else None,
         "top_candidates": [
             {"code": c.code, "name": c.name, "archetype": c.archetype, "score": c.score}
-            for c in top_candidates[:3]
+            for c in parsed["top_candidates"][:3]
         ],
         "diagnosed_at": datetime.utcnow().isoformat(),
     }
@@ -130,10 +329,16 @@ async def diagnose(
 
     return DiagnoseResponse(
         struct_type=struct_type,
+        struct_code=parsed["struct_code"],
         type_info=TypeInfo(**type_info_data),
         axes=axes,
-        top_candidates=top_candidates,
-        similarity=similarity,
+        top_candidates=parsed["top_candidates"],
+        similarity=parsed["similarity"],
+        natal=natal_info_obj,
+        current=current_info_obj,
+        design_gap=parsed["design_gap"],
+        axis_states=parsed["axis_states"],
+        temporal=parsed["temporal"],
     )
 
 

@@ -26,6 +26,11 @@ export interface Resident {
     similarity?: number
     birth_date?: string
     birth_location?: string
+    natal?: { type: string; type_name: string; axes: number[]; description?: string }
+    current?: { type: string; type_name: string; axes: number[]; description?: string }
+    design_gap?: Record<string, number>
+    axis_states?: { axis: string; state: string; gap: number }[]
+    temporal?: { current_theme: string; theme_description: string }
     top_candidates?: { code: string; name: string; archetype: string; score: number }[]
     diagnosed_at?: string
   }
@@ -1205,12 +1210,39 @@ export interface StructCodeTypeInfo {
   growth_path: string
 }
 
+export interface StructCodeStructureInfo {
+  type: string
+  type_name: string
+  axes: number[]
+  axes_display: Record<string, number>
+  description?: string
+}
+
+export interface StructCodeAxisState {
+  axis: string
+  state: 'activation' | 'stable' | 'suppression'
+  gap: number
+}
+
+export interface StructCodeTemporalInfo {
+  current_theme: string
+  theme_description: string
+  active_transits?: Record<string, any>[]
+  future_outlook?: Record<string, any>[]
+}
+
 export interface StructCodeResult {
   struct_type: string
+  struct_code: string
   type_info: StructCodeTypeInfo
   axes: number[]
   top_candidates: { code: string; name: string; archetype: string; score: number }[]
   similarity: number
+  natal?: StructCodeStructureInfo
+  current?: StructCodeStructureInfo
+  design_gap?: Record<string, number>
+  axis_states?: StructCodeAxisState[]
+  temporal?: StructCodeTemporalInfo
 }
 
 export interface StructCodeConsultResponse {

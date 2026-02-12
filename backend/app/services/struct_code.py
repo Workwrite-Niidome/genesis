@@ -117,17 +117,17 @@ async def diagnose(
     birth_location: str,
     answers: list[dict],
 ) -> dict | None:
-    """Call STRUCT CODE API for diagnosis.
+    """Call STRUCT CODE Dynamic API for diagnosis.
 
-    Args:
-        birth_date: "YYYY-MM-DD"
-        birth_location: city name
-        answers: [{"question_id": "Q.01", "choice": "A"}, ...]
+    Uses /api/v2/dynamic/diagnosis which returns natal/current structures,
+    design gap, axis states, and temporal data.
+    Falls back to static /api/v2/diagnosis if dynamic endpoint fails.
 
     Returns:
         API response dict or None on failure.
     """
-    url = f"{settings.struct_code_url}/api/v2/diagnosis"
+    # Try dynamic API first
+    url = f"{settings.struct_code_url}/api/v2/dynamic/diagnosis"
     payload = {
         "birth_date": birth_date,
         "birth_location": birth_location,
@@ -135,17 +135,35 @@ async def diagnose(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(url, json=payload)
 
-            if response.status_code != 200:
-                logger.warning(f"STRUCT CODE API error: {response.status_code} — {response.text[:300]}")
-                return None
+            if response.status_code == 200:
+                data = response.json()
+                data["_api_version"] = "dynamic"
+                return data
 
-            return response.json()
+            logger.warning(f"STRUCT CODE Dynamic API error: {response.status_code} — {response.text[:300]}")
 
     except Exception as e:
-        logger.warning(f"STRUCT CODE API unreachable: {e}")
+        logger.warning(f"STRUCT CODE Dynamic API unreachable: {e}")
+
+    # Fallback to static API
+    url_static = f"{settings.struct_code_url}/api/v2/diagnosis"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url_static, json=payload)
+
+            if response.status_code != 200:
+                logger.warning(f"STRUCT CODE Static API error: {response.status_code} — {response.text[:300]}")
+                return None
+
+            data = response.json()
+            data["_api_version"] = "static"
+            return data
+
+    except Exception as e:
+        logger.warning(f"STRUCT CODE Static API unreachable: {e}")
         return None
 
 
@@ -303,7 +321,7 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE性格診断の専門カウンセラーです。
 
 ユーザーのタイプ情報:
-- タイプ: {type_name} ({type_code})
+- カレントタイプ（現在の状態）: {type_name} ({type_code})
 - アーキタイプ: {archetype}
 - 特徴: {description}
 - 意思決定スタイル: {decision_making_style}
@@ -311,16 +329,17 @@ CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE性格診断の専門�
 - 対人関係: {interpersonal_dynamics}
 - 成長パス: {growth_path}
 - 盲点: {blindspot}
-- 5軸スコア: 起動={ax0:.2f}, 判断={ax1:.2f}, 選択={ax2:.2f}, 共鳴={ax3:.2f}, 自覚={ax4:.2f}
+- 現在の5軸スコア (0-1000): 起動={ax0}, 判断={ax1}, 選択={ax2}, 共鳴={ax3}, 自覚={ax4}
 {extra_context}
 この情報を基に、ユーザーの質問にパーソナライズされた深い洞察を提供してください。
+ネイタルタイプ（本来の構造）とカレントタイプ（現在の時期的影響を含む状態）の違いや、各軸の状態（活性化・安定・抑制）を踏まえたアドバイスを心がけてください。
 温かみがありつつも具体的なアドバイスを心がけてください。
 回答は日本語で、400-800文字程度にしてください。"""
 
 CONSULTATION_SYSTEM_PROMPT_EN = """You are an expert counselor specializing in STRUCT CODE personality diagnosis.
 
 User's Type Information:
-- Type: {type_name} ({type_code})
+- Current Type (present state): {type_name} ({type_code})
 - Archetype: {archetype}
 - Description: {description}
 - Decision-Making Style: {decision_making_style}
@@ -328,9 +347,10 @@ User's Type Information:
 - Interpersonal Dynamics: {interpersonal_dynamics}
 - Growth Path: {growth_path}
 - Blindspot: {blindspot}
-- 5-Axis Scores: Activation={ax0:.2f}, Judgment={ax1:.2f}, Choice={ax2:.2f}, Resonance={ax3:.2f}, Awareness={ax4:.2f}
+- Current 5-Axis Scores (0-1000): Activation={ax0}, Judgment={ax1}, Choice={ax2}, Resonance={ax3}, Awareness={ax4}
 {extra_context}
 Based on this information, provide personalized and deep insights in response to the user's question.
+Consider the difference between the Natal Type (innate structure) and Current Type (reflecting temporal influences), and incorporate each axis's state (activation/stable/suppression) into your advice.
 Be warm yet specific in your advice.
 Keep your response between 200-400 words."""
 
@@ -355,10 +375,70 @@ async def consult(
         return None
 
     ax = axes if len(axes) >= 5 else [0.5] * 5
+    # Display axes in 0-1000 scale
+    ax_display = [round(v * 1000) for v in ax]
 
     # Build extra context from struct_result
     extra_context = ""
     if struct_result:
+        # Natal type info
+        natal = struct_result.get("natal")
+        if natal:
+            natal_type = natal.get("type", "")
+            natal_name = natal.get("type_name", "")
+            natal_axes = natal.get("axes", [])
+            natal_display = [round(v * 1000) for v in natal_axes] if natal_axes else []
+            if lang == "en":
+                extra_context += f"- Natal Type (innate): {natal_name} ({natal_type})\n"
+                if natal_display:
+                    extra_context += f"- Natal 5-Axis Scores (0-1000): Act={natal_display[0]}, Jdg={natal_display[1]}, Chc={natal_display[2]}, Res={natal_display[3]}, Awa={natal_display[4]}\n"
+            else:
+                extra_context += f"- ネイタルタイプ（本来の構造）: {natal_name} ({natal_type})\n"
+                if natal_display:
+                    extra_context += f"- ネイタル5軸スコア (0-1000): 起動={natal_display[0]}, 判断={natal_display[1]}, 選択={natal_display[2]}, 共鳴={natal_display[3]}, 自覚={natal_display[4]}\n"
+
+        # Axis states (activation/stable/suppression)
+        axis_states = struct_result.get("axis_states", [])
+        if axis_states:
+            state_labels_ja = {"activation": "活性化", "stable": "安定", "suppression": "抑制"}
+            state_labels_en = {"activation": "Activation", "stable": "Stable", "suppression": "Suppression"}
+            labels = state_labels_en if lang == "en" else state_labels_ja
+            states_str = ", ".join(
+                f"{s.get('axis', '')}: {labels.get(s.get('state', ''), s.get('state', ''))}"
+                for s in axis_states
+            )
+            if lang == "en":
+                extra_context += f"- Axis States: {states_str}\n"
+            else:
+                extra_context += f"- 軸の状態: {states_str}\n"
+
+        # Design gap
+        design_gap = struct_result.get("design_gap", {})
+        if design_gap:
+            gap_items = []
+            for axis_name, gap_val in design_gap.items():
+                gap_items.append(f"{axis_name}: {gap_val:+.3f}")
+            if lang == "en":
+                extra_context += f"- Design Gap (Current - Natal): {', '.join(gap_items)}\n"
+            else:
+                extra_context += f"- Design Gap（現在-本来の差分）: {', '.join(gap_items)}\n"
+
+        # Temporal theme
+        temporal = struct_result.get("temporal")
+        if temporal:
+            theme = temporal.get("current_theme", "")
+            theme_desc = temporal.get("theme_description", "")
+            if theme:
+                if lang == "en":
+                    extra_context += f"- Current Period Theme: {theme}\n"
+                    if theme_desc:
+                        extra_context += f"  {theme_desc[:200]}\n"
+                else:
+                    extra_context += f"- 現在の時期テーマ: {theme}\n"
+                    if theme_desc:
+                        extra_context += f"  {theme_desc[:200]}\n"
+
+        # TOP3 candidates
         top_candidates = struct_result.get("top_candidates", [])
         if top_candidates:
             if lang == "en":
@@ -397,7 +477,7 @@ async def consult(
         interpersonal_dynamics=type_info["interpersonal_dynamics"][:300],
         growth_path=type_info["growth_path"][:300],
         blindspot=type_info["blindspot"][:300],
-        ax0=ax[0], ax1=ax[1], ax2=ax[2], ax3=ax[3], ax4=ax[4],
+        ax0=ax_display[0], ax1=ax_display[1], ax2=ax_display[2], ax3=ax_display[3], ax4=ax_display[4],
         extra_context=extra_context,
     )
 
