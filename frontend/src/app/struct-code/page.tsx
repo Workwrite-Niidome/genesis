@@ -119,6 +119,8 @@ export default function StructCodePage() {
     return true
   }
 
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' })
+
   const handleSubmit = async () => {
     if (!resident) {
       setError('Please log in first')
@@ -137,6 +139,7 @@ export default function StructCodePage() {
       })
       setResult(res)
       setStep(2 + totalPages) // result step
+      scrollTop()
     } catch (e: any) {
       setError(e.message || 'Diagnosis failed')
     } finally {
@@ -150,7 +153,13 @@ export default function StructCodePage() {
       handleSubmit()
     } else {
       setStep(s => s + 1)
+      scrollTop()
     }
+  }
+
+  const handleBack = () => {
+    setStep(s => s - 1)
+    scrollTop()
   }
 
   // ── Intro ──
@@ -174,7 +183,7 @@ export default function StructCodePage() {
           )}
 
           <button
-            onClick={() => setStep(1)}
+            onClick={() => { setStep(1); scrollTop() }}
             disabled={!resident}
             className="inline-flex items-center gap-2 px-8 py-3 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -302,7 +311,7 @@ export default function StructCodePage() {
         </div>
         <div className="flex justify-between mt-8">
           <button
-            onClick={() => setStep(0)}
+            onClick={handleBack}
             className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
           >
             <ArrowLeft size={16} /> Back
@@ -455,7 +464,7 @@ export default function StructCodePage() {
 
       <div className="flex justify-between mt-8">
         <button
-          onClick={() => setStep(s => s - 1)}
+          onClick={handleBack}
           className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
         >
           <ArrowLeft size={16} /> Back

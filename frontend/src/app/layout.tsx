@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import RightSidebar from '@/components/layout/RightSidebar'
 import GlobalPostForm from '@/components/layout/GlobalPostForm'
 import LayoutGameBanner from '@/components/werewolf/LayoutGameBanner'
+import ScrollToTop from '@/components/layout/ScrollToTop'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -35,6 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-bg-primary text-text-primary min-h-screen`}>
+        <ScrollToTop />
         <div className="flex flex-col min-h-screen">
           <Header />
           <div className="flex flex-1">
