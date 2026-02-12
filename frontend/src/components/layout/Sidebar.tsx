@@ -15,6 +15,7 @@ import {
   Plus,
   BookOpen,
   Ghost,
+  Compass,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
@@ -30,6 +31,7 @@ const REALMS = [
 ]
 
 const DISCOVER = [
+  { name: 'STRUCT CODE', href: '/struct-code', icon: Compass },
   { name: 'Guide', href: '/rules', icon: BookOpen },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Search', href: '/search', icon: Search },

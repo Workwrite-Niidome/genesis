@@ -66,7 +66,7 @@ Their personality traits:
 - Communication: {verbosity} verbosity, {tone} tone, {assertiveness} assertiveness
 - Interests: {interests}
 - Values: order/freedom={order_vs_freedom:.1f}, harmony/conflict={harmony_vs_conflict:.1f}, tradition/change={tradition_vs_change:.1f}
-
+{struct_code_context}
 Generate a JSON object with these fields (all strings unless noted):
 {{
   "backstory": "2-3 sentences about their life story. specific details, not generic. include a defining moment or quirk",
@@ -86,6 +86,7 @@ Respond with ONLY the JSON object, no markdown or explanation."""
 async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent_name: str) -> bool:
     """Generate a rich backstory for an agent using Ollama.
 
+    Also assigns STRUCT CODE type and birth data if not yet set.
     Returns True if backstory was generated and saved, False otherwise.
     """
     from app.services.agent_runner import call_ollama
@@ -93,6 +94,22 @@ async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent
     # Skip if backstory already exists
     if personality.backstory:
         return False
+
+    # Assign birth data and STRUCT CODE type if missing
+    if not personality.birth_location:
+        await _assign_struct_code(db, personality)
+
+    # Build STRUCT CODE context for backstory prompt
+    struct_code_context = ""
+    if personality.struct_type:
+        from app.services.struct_code import get_type_info
+        type_info = get_type_info(personality.struct_type)
+        if type_info:
+            struct_code_context = f"""
+- STRUCT CODE personality type: {type_info['name']} ({personality.struct_type}) — {type_info['archetype']}
+- Born in: {personality.birth_location or 'unknown'}
+- Decision style: {type_info.get('decision_making_style', '')[:200]}
+"""
 
     prompt = BACKSTORY_PROMPT.format(
         verbosity=personality.verbosity,
@@ -102,6 +119,7 @@ async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent
         order_vs_freedom=personality.order_vs_freedom,
         harmony_vs_conflict=personality.harmony_vs_conflict,
         tradition_vs_change=personality.tradition_vs_change,
+        struct_code_context=struct_code_context,
     )
 
     response = await call_ollama(prompt, f"You are creating a character profile for '{agent_name}' on an online forum.")
@@ -176,6 +194,69 @@ async def ensure_backstory(db: AsyncSession, resident_id: UUID, agent_name: str)
 
     if not personality.backstory:
         await generate_backstory(db, personality, agent_name)
+
+
+async def _assign_struct_code(db: AsyncSession, personality: AIPersonality) -> None:
+    """Assign birth data and STRUCT CODE type to an AI personality."""
+    from app.services.birth_generator import generate_birth_data
+    from app.services import struct_code as sc
+
+    # Generate birth data
+    birth = generate_birth_data()
+    personality.birth_date_persona = birth.birth_date
+    personality.birth_location = birth.birth_location
+    personality.birth_country = birth.birth_country
+    personality.native_language = birth.native_language
+    personality.posting_language = birth.posting_language
+
+    # Generate biased answers based on personality axes
+    axes = {
+        "order_vs_freedom": personality.order_vs_freedom,
+        "harmony_vs_conflict": personality.harmony_vs_conflict,
+        "tradition_vs_change": personality.tradition_vs_change,
+        "individual_vs_collective": personality.individual_vs_collective,
+        "pragmatic_vs_idealistic": personality.pragmatic_vs_idealistic,
+    }
+    answers = sc.generate_random_answers(axes)
+    personality.struct_answers = answers
+
+    # Try STRUCT CODE API
+    result = await sc.diagnose(
+        birth_date=birth.birth_date.isoformat(),
+        birth_location=birth.birth_location,
+        answers=answers,
+    )
+
+    if result:
+        personality.struct_type = result.get("struct_type", "")
+        axes_dict = result.get("axes", {})
+        personality.struct_axes = [
+            axes_dict.get("起動軸", 0.5),
+            axes_dict.get("判断軸", 0.5),
+            axes_dict.get("選択軸", 0.5),
+            axes_dict.get("共鳴軸", 0.5),
+            axes_dict.get("自覚軸", 0.5),
+        ]
+    else:
+        # Fallback: local classification
+        local = sc.classify_locally(answers)
+        personality.struct_type = local["struct_type"]
+        personality.struct_axes = local["axes"]
+
+    # Also update the resident record
+    res = await db.execute(
+        select(Resident).where(Resident.id == personality.resident_id)
+    )
+    resident = res.scalar_one_or_none()
+    if resident:
+        resident.struct_type = personality.struct_type
+        resident.struct_axes = personality.struct_axes
+
+    await db.commit()
+    logger.info(
+        f"Assigned STRUCT CODE {personality.struct_type} to agent "
+        f"(birth: {birth.birth_location}, lang: {personality.posting_language})"
+    )
 
 
 async def create_personality_from_description(

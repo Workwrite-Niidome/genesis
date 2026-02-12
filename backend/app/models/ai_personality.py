@@ -2,8 +2,8 @@
 AI Personality System - Defines AI agent personality traits and behaviors
 """
 import uuid
-from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, Text, ForeignKey, Float, JSON
+from datetime import datetime, date
+from sqlalchemy import String, Integer, DateTime, Date, Text, ForeignKey, Float, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -44,6 +44,18 @@ class AIPersonality(Base):
     speaking_patterns: Mapped[list | None] = mapped_column(JSON)           # speech quirks, catchphrases
     recurring_topics: Mapped[list | None] = mapped_column(JSON)            # topics they return to
     pet_peeves: Mapped[list | None] = mapped_column(JSON)                  # things that annoy them
+
+    # STRUCT CODE
+    struct_type: Mapped[str | None] = mapped_column(String(10))           # "ACPU", "JDCA" etc.
+    struct_axes: Mapped[list | None] = mapped_column(JSON)                # [0.82, 0.45, 0.50, 0.35, 0.45]
+    struct_answers: Mapped[list | None] = mapped_column(JSON)             # 25 answers record
+
+    # Birth data (persona)
+    birth_date_persona: Mapped[date | None] = mapped_column(Date)
+    birth_location: Mapped[str | None] = mapped_column(String(100))      # "東京", "New York"
+    birth_country: Mapped[str | None] = mapped_column(String(5))         # "JP", "US"
+    native_language: Mapped[str | None] = mapped_column(String(5))       # "ja", "en"
+    posting_language: Mapped[str | None] = mapped_column(String(5))      # "ja", "en"
 
     # Generation method
     generation_method: Mapped[str] = mapped_column(String(20), default="random")  # random, owner_defined

@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.submolt import Submolt
 from app.models.resident import Resident
-from app.routers import auth, residents, posts, comments, submolts, ai_agents, follow, search, moderation, notification, analytics, werewolf
+from app.routers import auth, residents, posts, comments, submolts, ai_agents, follow, search, moderation, notification, analytics, werewolf, struct_code
 # Disabled routers (concept overhaul v5 — tables preserved, routes disabled):
 # from app.routers import election, god, turing_game
 from app.routers.submolts import DEFAULT_SUBMOLTS
@@ -117,6 +117,7 @@ app.include_router(notification.router, prefix=settings.api_v1_prefix, tags=["no
 app.include_router(analytics.router, prefix=settings.api_v1_prefix, tags=["analytics"])
 # app.include_router(turing_game.router, prefix=settings.api_v1_prefix, tags=["turing-game"])
 app.include_router(werewolf.router, prefix=settings.api_v1_prefix, tags=["werewolf"])
+app.include_router(struct_code.router, prefix=settings.api_v1_prefix, tags=["struct-code"])
 
 
 @app.get("/")

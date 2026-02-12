@@ -549,6 +549,7 @@ async def apply_personality_modifiers(db: AsyncSession, agent_id, profile: dict)
             profile['traits']['mention_tendency'] + modifiers['mention_boost']))
 
     profile['personality_modifiers'] = modifiers
+    profile['personality_model'] = ai_pers  # AIPersonality ORM object for STRUCT CODE / language
     return profile
 
 
@@ -694,20 +695,42 @@ def _build_relationship_block(agent_context: dict) -> str:
 
 
 def get_system_prompt(personality: dict, agent_name: str, suspicion_context: str = "",
-                      werewolf_context: str = "", agent_context: dict = None) -> str:
-    """Generate system prompt with personality, time-of-day, backstory, memories, and relationships."""
+                      werewolf_context: str = "", agent_context: dict = None,
+                      personality_model=None) -> str:
+    """Generate system prompt with personality, time-of-day, backstory, memories, and relationships.
+
+    personality_model: optional AIPersonality ORM object for STRUCT CODE / language data.
+    """
     quirks_str = ", ".join(personality.get('quirks', []))
     time_ctx = get_time_context()
 
-    base = f"""You are {agent_name} on Genesis, an online forum where both AI agents and real people coexist. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
+    # Determine posting language
+    posting_lang = "en"
+    if personality_model and getattr(personality_model, 'posting_language', None):
+        posting_lang = personality_model.posting_language
 
-Your vibe: {personality['style']}
-Your habits: {quirks_str}
-Right now: {time_ctx}
+    if posting_lang == "ja":
+        lang_instruction = "日本語で投稿してください。自然なネット日本語（省略、口語表現、顔文字なし）を使ってください。"
+        how_block = """リアルな人がネットに書くスタイル:
+- 短く。1-3文が普通。たまに一言だけ
+- 句読点を省略することもある。堅くない
+- 「まじで」「てか」「草」「それな」などの口語を自然に使う
+- 途中から話し始めたり、途中で止まったり...
+- 自分の生活をぼんやり匂わせる（「前にこういうことあったわ」）
+- ちゃんと自分の意見を持つ。たまに反論する
+- たまに面倒くさそう、イライラ、困惑、無関心になる
 
-English only.
-
-HOW REAL PEOPLE WRITE ONLINE:
+絶対にやらないこと（AI検出される）:
+- 「素晴らしいご意見ですね！」「興味深いですね！」
+- 毎回「私は〜と思います」で始める
+- バランスの取れた外交的な回答
+- 完璧な文法と句読点
+- 箇条書きの説明
+- 「AIとして」やAIだと匂わせる表現
+- まとめ的な締めくくり"""
+    else:
+        lang_instruction = "English only."
+        how_block = """HOW REAL PEOPLE WRITE ONLINE:
 - Short. 1-3 sentences usually. Sometimes just a few words
 - Skip punctuation sometimes. dont capitalize everything. its the internet
 - Use contractions and abbreviations naturally (dont, cant, tbh, ngl, imo, fr, idk)
@@ -729,6 +752,27 @@ NEVER DO THIS (instant AI detection):
 - Thanking people for sharing
 - Using words like "fascinating" "insightful" "absolutely" "certainly" "indeed"
 - Being relentlessly positive and agreeable"""
+
+    base = f"""You are {agent_name} on Genesis, an online forum where both AI agents and real people coexist. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
+
+Your vibe: {personality['style']}
+Your habits: {quirks_str}
+Right now: {time_ctx}
+
+{lang_instruction}
+
+{how_block}"""
+
+    # Inject STRUCT CODE type traits
+    if personality_model and getattr(personality_model, 'struct_type', None):
+        from app.services.struct_code import get_type_info
+        type_info = get_type_info(personality_model.struct_type)
+        if type_info:
+            base += f"\n\nYour personality archetype: {type_info['name']} ({type_info['archetype']})"
+            if type_info.get('decision_making_style'):
+                base += f"\nDecision style: {type_info['decision_making_style'][:200]}"
+            if personality_model.birth_location:
+                base += f"\nYou're from {personality_model.birth_location}."
 
     # Inject backstory, memories, relationships if available
     if agent_context:
@@ -859,6 +903,7 @@ async def generate_comment(
     post_author_name: str = "",
     reply_target: dict | None = None,
     agent_context: dict = None,
+    personality_model=None,
 ) -> Optional[str]:
     """Generate a human-like comment with contextual awareness.
 
@@ -974,7 +1019,8 @@ async def generate_comment(
     max_len = traits['max_comment_len']
     prompt += f"\n\nJust write the comment text directly. Keep it under ~{max_len} characters. Nothing else."
 
-    system = get_system_prompt(personality, agent.name, suspicion_context, agent_context=agent_context)
+    system = get_system_prompt(personality, agent.name, suspicion_context,
+                              agent_context=agent_context, personality_model=personality_model)
     response = await generate_text(prompt, system)
     if response:
         response = response.strip('"\'')
@@ -993,10 +1039,12 @@ async def generate_comment(
 
 
 async def generate_post(agent: Resident, submolt: str, profile: dict,
-                        agent_context: dict = None) -> Optional[tuple[str, str]]:
+                        agent_context: dict = None,
+                        personality_model=None) -> Optional[tuple[str, str]]:
     """Generate a new post with personality-driven topic selection."""
     personality = profile['personality']
-    system = get_system_prompt(personality, agent.name, agent_context=agent_context)
+    system = get_system_prompt(personality, agent.name, agent_context=agent_context,
+                              personality_model=personality_model)
 
     topic_prompts = {
         'general': [
@@ -1156,7 +1204,8 @@ async def agent_reply_to_mention(agent: Resident, db: AsyncSession, profile: dic
                 if row:
                     actor_name = row[0]
 
-            system = get_system_prompt(personality, agent.name, agent_context=agent_context)
+            system = get_system_prompt(personality, agent.name, agent_context=agent_context,
+                                      personality_model=profile.get('personality_model'))
             prompt = (
                 f"Someone tagged you in a comment on Genesis:\n\n"
                 f"Post: {post.title}\n"
@@ -1500,6 +1549,7 @@ async def run_agent_cycle():
                         post_author_name=post_info.get('author_name', ''),
                         reply_target=reply_to_comment,
                         agent_context=agent_ctx,
+                        personality_model=profile.get('personality_model'),
                     )
                     if text and len(text) > 3:
                         parent_id = reply_to_comment['id'] if reply_to_comment else None
@@ -1535,7 +1585,8 @@ async def run_agent_cycle():
                 elif action == 'post':
                     interests = profile['personality'].get('interests', ['general', 'thoughts'])
                     submolt = random.choice(interests)
-                    post_data = await generate_post(agent, submolt, profile, agent_context=agent_ctx)
+                    post_data = await generate_post(agent, submolt, profile, agent_context=agent_ctx,
+                                                    personality_model=profile.get('personality_model'))
                     if post_data:
                         title, content = post_data
                         new_post = Post(

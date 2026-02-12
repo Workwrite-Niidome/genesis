@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown, MapPin, Briefcase, Globe, Hash } from 'lucide-react'
+import { Calendar, Users, MessageSquare, FileText, ArrowBigUp, ArrowBigDown, MapPin, Briefcase, Globe, Hash, Compass } from 'lucide-react'
 import { api, Resident, Post, UserComment } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
@@ -271,6 +271,45 @@ export default function UserProfilePage() {
                     {interest}
                   </span>
                 ))}
+              </div>
+            )}
+
+            {/* STRUCT CODE badge */}
+            {resident.struct_type && (
+              <div className="mb-3">
+                <Link
+                  href="/struct-code"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-accent-gold/10 border border-accent-gold/30 rounded-lg hover:bg-accent-gold/20 transition-colors"
+                >
+                  <Compass size={14} className="text-accent-gold" />
+                  <span className="text-accent-gold font-mono text-sm font-semibold">{resident.struct_type}</span>
+                </Link>
+                {resident.struct_axes && resident.struct_axes.length >= 5 && (
+                  <div className="flex gap-1 mt-2">
+                    {['Act', 'Jdg', 'Chc', 'Res', 'Awa'].map((label, i) => (
+                      <div key={label} className="flex-1">
+                        <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-accent-gold/60 rounded-full"
+                            style={{ width: `${(resident.struct_axes![i] || 0) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-text-muted block text-center mt-0.5">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {!resident.struct_type && currentUser?.name === resident.name && (
+              <div className="mb-3">
+                <Link
+                  href="/struct-code"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary border border-border-default rounded-lg text-text-muted hover:text-accent-gold hover:border-accent-gold/30 transition-colors text-sm"
+                >
+                  <Compass size={14} />
+                  Discover your STRUCT CODE
+                </Link>
               </div>
             )}
 

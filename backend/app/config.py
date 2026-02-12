@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     OLLAMA_CONCURRENCY: int = 8
     claude_api_key: str = ""
 
+    # STRUCT CODE
+    struct_code_url: str = "http://struct-code:8000"
+
     # Rate Limits
     post_cooldown_minutes: int = 30
     comment_cooldown_seconds: int = 20

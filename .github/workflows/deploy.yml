@@ -159,6 +159,16 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
+      - name: Build and push STRUCT CODE
+        uses: docker/build-push-action@v5
+        with:
+          context: ./struct-code
+          file: ./struct-code/Dockerfile.genesis
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/struct-code:latest,${{ env.IMAGE_PREFIX }}/struct-code:${{ github.sha }}
+          cache-from: type=gha,scope=struct-code
+          cache-to: type=gha,scope=struct-code,mode=max
+
   # ============ Deploy to VPS ============
   deploy:
     name: Deploy to VPS
@@ -274,10 +284,13 @@ jobs:
             docker pull ${IMAGE_PREFIX}/backend:latest
             echo "=== Pulling frontend image ==="
             docker pull ${IMAGE_PREFIX}/frontend:latest
+            echo "=== Pulling struct-code image ==="
+            docker pull ${IMAGE_PREFIX}/struct-code:latest || echo "STRUCT CODE image not yet available"
 
             # Tag images for docker-compose
             docker tag ${IMAGE_PREFIX}/backend:latest genesis-backend:latest
             docker tag ${IMAGE_PREFIX}/frontend:latest genesis-frontend:latest
+            docker tag ${IMAGE_PREFIX}/struct-code:latest genesis-struct-code:latest 2>/dev/null || echo "STRUCT CODE tag skipped"
 
             # Stop ALL old containers (including genesis_v4-* from old docker-compose)
             echo "=== Cleaning up old containers ==="
@@ -686,9 +699,22 @@ jobs:
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS recurring_topics JSONB;" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS pet_peeves JSONB;" 2>/dev/null || true
 
+            # Pre-migration: add STRUCT CODE columns directly
+            echo "=== Pre-migration: adding STRUCT CODE columns ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS struct_type VARCHAR(10);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS struct_axes JSON;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS struct_answers JSON;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS birth_date_persona DATE;" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS birth_location VARCHAR(100);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS birth_country VARCHAR(5);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS native_language VARCHAR(5);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE ai_personalities ADD COLUMN IF NOT EXISTS posting_language VARCHAR(5);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS struct_type VARCHAR(10);" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "ALTER TABLE residents ADD COLUMN IF NOT EXISTS struct_axes JSON;" 2>/dev/null || true
+
             # Fix alembic version if needed
             echo "=== Fixing migration state ==="
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5', '006_fix_submolts', '007_karma_as_life', '008_content_mod', '009_search_and_god_rules', '010_follow_system', '011_notification', '012_add_game_tables', '013_add_heartbeat_columns', '014_add_speed_column', '015_add_banned_reason', '016_add_personality_backstory', '017_add_profile_fields');" 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "DELETE FROM alembic_version WHERE version_num NOT IN ('001', '002', '003_ai_personality', '004_phase4', '005_phase5', '006_fix_submolts', '007_karma_as_life', '008_content_mod', '009_search_and_god_rules', '010_follow_system', '011_notification', '012_add_game_tables', '013_add_heartbeat_columns', '014_add_speed_column', '015_add_banned_reason', '016_add_personality_backstory', '017_add_profile_fields', '018_add_struct_code');" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "UPDATE alembic_version SET version_num = '007_karma_as_life' WHERE version_num IN ('005_phase5', '006_fix_submolts');" 2>/dev/null || true
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "INSERT INTO alembic_version (version_num) SELECT '007_karma_as_life' WHERE NOT EXISTS (SELECT 1 FROM alembic_version) AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'residents');" 2>/dev/null || true
 
@@ -721,6 +747,9 @@ jobs:
 
             echo "=== Celery Beat Logs (last 50) ==="
             docker logs genesis-celery-beat --tail 50 2>&1 || true
+
+            echo "=== Assign STRUCT CODE types to agents ==="
+            docker exec -w /app genesis-backend python scripts/assign_struct_types.py 2>&1 || echo "STRUCT CODE assignment skipped"
 
             echo "=== Agent Cycle Diagnostic ==="
             docker exec -w /app genesis-celery-worker python scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"

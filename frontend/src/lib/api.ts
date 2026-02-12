@@ -19,6 +19,8 @@ export interface Resident {
   location_display?: string
   occupation_display?: string
   website_url?: string
+  struct_type?: string
+  struct_axes?: number[]
   created_at: string
   last_active?: string
 }
@@ -1127,6 +1129,82 @@ class ApiClient {
     params.set('offset', offset.toString())
     return this.request<{ events: WerewolfEvent[]; total: number }>(`/phantomnight/games/${gameId}/events?${params}`)
   }
+}
+
+  // ═══════════════════════════════════════════════════════════════
+  // STRUCT CODE
+  // ═══════════════════════════════════════════════════════════════
+
+  async structCodeQuestions(): Promise<StructCodeQuestion[]> {
+    return this.request<StructCodeQuestion[]>('/struct-code/questions')
+  }
+
+  async structCodeDiagnose(data: StructCodeDiagnoseRequest): Promise<StructCodeResult> {
+    return this.request<StructCodeResult>('/struct-code/diagnose', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async structCodeTypes(): Promise<StructCodeTypeSummary[]> {
+    return this.request<StructCodeTypeSummary[]>('/struct-code/types')
+  }
+
+  async structCodeType(code: string): Promise<StructCodeTypeInfo> {
+    return this.request<StructCodeTypeInfo>(`/struct-code/types/${code}`)
+  }
+
+  async structCodeConsult(question: string): Promise<StructCodeConsultResponse> {
+    return this.request<StructCodeConsultResponse>('/struct-code/consultation', {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    })
+  }
+}
+
+// STRUCT CODE types
+export interface StructCodeQuestion {
+  id: string
+  axis: string
+  question: string
+  choices: Record<string, { text: string }>
+}
+
+export interface StructCodeDiagnoseRequest {
+  birth_date: string
+  birth_location: string
+  answers: { question_id: string; choice: string }[]
+}
+
+export interface StructCodeTypeSummary {
+  code: string
+  name: string
+  archetype: string
+}
+
+export interface StructCodeTypeInfo {
+  code: string
+  name: string
+  archetype: string
+  description: string
+  decision_making_style: string
+  choice_pattern: string
+  blindspot: string
+  interpersonal_dynamics: string
+  growth_path: string
+}
+
+export interface StructCodeResult {
+  struct_type: string
+  type_info: StructCodeTypeInfo
+  axes: number[]
+  top_candidates: { code: string; name: string; score: number }[]
+  similarity: number
+}
+
+export interface StructCodeConsultResponse {
+  answer: string
+  remaining_today: number
 }
 
 export const api = new ApiClient()

@@ -52,6 +52,7 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+      - STRUCT_CODE_URL=http://struct-code:8000
       - CORS_ORIGINS=https://genesis-pj.net,https://www.genesis-pj.net
       - DEBUG=false
     ports:
@@ -81,6 +82,7 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+      - STRUCT_CODE_URL=http://struct-code:8000
     networks:
       - genesis-internal
     depends_on:
@@ -98,11 +100,30 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+      - STRUCT_CODE_URL=http://struct-code:8000
     networks:
       - genesis-internal
     depends_on:
       - backend
       - redis
+
+  # STRUCT CODE Diagnosis Engine
+  struct-code:
+    image: genesis-struct-code:latest
+    container_name: genesis-struct-code
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+    ports:
+      - "127.0.0.1:8001:8000"
+    networks:
+      - genesis-internal
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # Frontend (Next.js)
   frontend:

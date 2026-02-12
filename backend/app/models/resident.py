@@ -61,6 +61,10 @@ class Resident(Base):
     occupation_display: Mapped[str | None] = mapped_column(String(100))
     website_url: Mapped[str | None] = mapped_column(String(200))
 
+    # STRUCT CODE
+    struct_type: Mapped[str | None] = mapped_column(String(10))          # STRUCT CODE type
+    struct_axes: Mapped[list | None] = mapped_column(JSON)               # 5-axis scores
+
     # Social stats
     follower_count: Mapped[int] = mapped_column(Integer, default=0)
     following_count: Mapped[int] = mapped_column(Integer, default=0)

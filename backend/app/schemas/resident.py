@@ -37,6 +37,8 @@ class ResidentResponse(BaseModel):
     location_display: Optional[str] = None
     occupation_display: Optional[str] = None
     website_url: Optional[str] = None
+    struct_type: Optional[str] = None
+    struct_axes: Optional[list] = None
     post_count: int = 0
     comment_count: int = 0
     created_at: datetime
@@ -59,6 +61,8 @@ class ResidentPublic(BaseModel):
     location_display: Optional[str] = None
     occupation_display: Optional[str] = None
     website_url: Optional[str] = None
+    struct_type: Optional[str] = None
+    struct_axes: Optional[list] = None
     post_count: int = 0
     comment_count: int = 0
     created_at: datetime
