@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5:14b"
     OLLAMA_CONCURRENCY: int = 8
     claude_api_key: str = ""
+    dify_api_key: str = ""
 
     # STRUCT CODE
     struct_code_url: str = "http://struct-code:8000"

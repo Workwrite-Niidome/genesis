@@ -298,9 +298,10 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# CLAUDE API CONSULTATION (Dify replacement)
+# AI CONSULTATION (Dify RAG + Claude fallback)
 # ═══════════════════════════════════════════════════════════════════════════
 
+# Claude fallback system prompt (minimal — full prompt lives in Dify)
 CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE構造解析エンジンです。西洋占星術の天体配置（AstroVector）と心理テスト回答（ResponseVector）を5次元構造空間で融合し、人間の内面構造を**怖いくらい的確に**読み解きます。
 
 ## あなたの最大の特徴：「怖いくらい言い当てる」
@@ -593,6 +594,9 @@ def _build_user_data(
     return "\n".join(lines)
 
 
+DIFY_API_URL = "https://api.dify.ai/v1"
+
+
 async def consult(
     type_code: str,
     axes: list[float],
@@ -600,55 +604,106 @@ async def consult(
     struct_result: dict | None = None,
     lang: str = "ja",
 ) -> str | None:
-    """Call Claude API for STRUCT CODE consultation.
+    """Call Dify API for STRUCT CODE consultation.
 
-    Uses Claude Sonnet 4.5 with v7 system prompt for deep, accurate analysis.
+    Uses Dify RAG knowledge base with v7 system prompt for deep, accurate analysis.
+    Falls back to Claude direct API if Dify is unavailable.
     Returns answer text or None on failure.
     """
+    api_key = settings.dify_api_key
+    if not api_key:
+        logger.warning("Dify API key not set, falling back to Claude direct")
+        return await _consult_claude(type_code, axes, question, struct_result, lang)
+
+    # Build user context to include in the query
+    try:
+        user_data = _build_user_data(type_code, axes, struct_result, lang)
+    except Exception as e:
+        logger.error(f"[Dify] Failed to build user_data: {e}")
+        return None
+
+    # Prepend diagnosis data to the user's question for Dify
+    full_query = f"""【診断データ】
+{user_data}
+
+【質問】
+{question}"""
+
+    try:
+        logger.warning(f"[Dify] Calling chat-messages API (query_len={len(full_query)})")
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{DIFY_API_URL}/chat-messages",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "inputs": {},
+                    "query": full_query,
+                    "response_mode": "blocking",
+                    "user": type_code,
+                },
+            )
+
+            logger.warning(f"[Dify] Response status={response.status_code}")
+
+            if response.status_code != 200:
+                logger.error(f"[Dify] API error: {response.status_code} — {response.text[:500]}")
+                # Fall back to Claude
+                return await _consult_claude(type_code, axes, question, struct_result, lang)
+
+            data = response.json()
+            answer = data.get("answer", "")
+            logger.warning(f"[Dify] Got response (len={len(answer)})")
+            return answer if answer else None
+
+    except Exception as e:
+        logger.error(f"[Dify] API error: {e}")
+        # Fall back to Claude
+        return await _consult_claude(type_code, axes, question, struct_result, lang)
+
+
+async def _consult_claude(
+    type_code: str,
+    axes: list[float],
+    question: str,
+    struct_result: dict | None = None,
+    lang: str = "ja",
+) -> str | None:
+    """Fallback: Call Claude API directly for STRUCT CODE consultation."""
     if not settings.claude_api_key:
         logger.warning("Consultation skipped: no Claude API key")
         return None
 
-    logger.warning(f"[Consult] Step 1: API key present (len={len(settings.claude_api_key)})")
-
     type_info = get_type_info(type_code, lang=lang)
     if not type_info:
-        logger.warning(f"[Consult] Step 2: type_info not found for {type_code}")
         return None
-
-    logger.warning(f"[Consult] Step 2: type_info loaded for {type_code}")
 
     try:
         user_data = _build_user_data(type_code, axes, struct_result, lang)
-        logger.warning(f"[Consult] Step 3: user_data built (len={len(user_data)})")
     except Exception as e:
-        logger.error(f"[Consult] Step 3 FAILED: _build_user_data error: {e}")
+        logger.error(f"[Claude] Failed to build user_data: {e}")
         return None
 
-    try:
-        prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
-        replacements = {
-            "{user_data}": user_data,
-            "{type_name}": type_info["name"],
-            "{type_code}": type_code,
-            "{archetype}": type_info["archetype"],
-            "{description}": type_info["description"],
-            "{decision_making_style}": type_info["decision_making_style"],
-            "{choice_pattern}": type_info["choice_pattern"],
-            "{interpersonal_dynamics}": type_info["interpersonal_dynamics"],
-            "{growth_path}": type_info["growth_path"],
-            "{blindspot}": type_info["blindspot"],
-        }
-        system = prompt_template
-        for key, val in replacements.items():
-            system = system.replace(key, val)
-        logger.warning(f"[Consult] Step 4: system prompt built (len={len(system)})")
-    except Exception as e:
-        logger.error(f"[Consult] Step 4 FAILED: prompt build error: {e}")
-        return None
+    prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
+    replacements = {
+        "{user_data}": user_data,
+        "{type_name}": type_info["name"],
+        "{type_code}": type_code,
+        "{archetype}": type_info["archetype"],
+        "{description}": type_info["description"],
+        "{decision_making_style}": type_info["decision_making_style"],
+        "{choice_pattern}": type_info["choice_pattern"],
+        "{interpersonal_dynamics}": type_info["interpersonal_dynamics"],
+        "{growth_path}": type_info["growth_path"],
+        "{blindspot}": type_info["blindspot"],
+    }
+    system = prompt_template
+    for key, val in replacements.items():
+        system = system.replace(key, val)
 
     try:
-        logger.warning("[Consult] Step 5: calling Claude API...")
         async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -667,17 +722,13 @@ async def consult(
                 },
             )
 
-            logger.warning(f"[Consult] Step 6: Claude API responded with status={response.status_code}")
-
             if response.status_code != 200:
-                logger.error(f"Claude consultation API error: {response.status_code} — {response.text[:500]}")
+                logger.error(f"[Claude] API error: {response.status_code} — {response.text[:500]}")
                 return None
 
             data = response.json()
-            text = data.get("content", [{}])[0].get("text", "")
-            logger.warning(f"[Consult] Step 7: Got response (len={len(text)})")
-            return text
+            return data.get("content", [{}])[0].get("text", "")
 
     except Exception as e:
-        logger.error(f"[Consult] Step 5-7 FAILED: Claude API error: {e}")
+        logger.error(f"[Claude] API error: {e}")
         return None

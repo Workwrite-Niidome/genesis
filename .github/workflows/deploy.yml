@@ -187,7 +187,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
-          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,CLAUDE_API_KEY,ACME_EMAIL,IMAGE_PREFIX
+          envs: GITHUB_TOKEN,POSTGRES_PASSWORD,REDIS_PASSWORD,SECRET_KEY,TWITTER_CLIENT_ID,TWITTER_CLIENT_SECRET,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,CLAUDE_API_KEY,DIFY_API_KEY,ACME_EMAIL,IMAGE_PREFIX
           script: |
             set -e
 
@@ -256,6 +256,7 @@ jobs:
             echo "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" >> .env
             echo "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" >> .env
             echo "CLAUDE_API_KEY=${CLAUDE_API_KEY}" >> .env
+            echo "DIFY_API_KEY=${DIFY_API_KEY}" >> .env
             echo "ACME_EMAIL=${ACME_EMAIL}" >> .env
             echo "TRAEFIK_USERS=" >> .env
 
@@ -1884,5 +1885,6 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          DIFY_API_KEY: ${{ secrets.DIFY_API_KEY }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
           IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
