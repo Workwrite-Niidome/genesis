@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import { MessageSquare, Send, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import TimeAgo from '@/components/ui/TimeAgo'
 
 interface DiscussionTabProps {
   refreshTrigger?: number
@@ -88,15 +89,6 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
     setExpandedThread(prev => prev === postId ? null : postId)
   }
 
-  const timeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 60) return `${mins}m ago`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours}h ago`
-    return `${Math.floor(hours / 24)}d ago`
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -138,7 +130,7 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
                   <div className="flex items-center gap-3 text-xs text-text-muted">
                     <span className="flex items-center gap-1">
                       <Clock size={12} />
-                      {timeAgo(thread.created_at)}
+                      <TimeAgo date={thread.created_at} />
                     </span>
                     <span className="flex items-center gap-1">
                       <MessageSquare size={12} />
@@ -194,9 +186,7 @@ export default function DiscussionTab({ refreshTrigger, onCommentPosted }: Discu
                               >
                                 {authorName}
                               </Link>
-                              <span className="text-xs text-text-muted">
-                                {timeAgo(comment.created_at)}
-                              </span>
+                              <TimeAgo date={comment.created_at} className="text-xs text-text-muted" />
                             </div>
                             <p className="text-sm text-text-secondary whitespace-pre-wrap">
                               {comment.content}

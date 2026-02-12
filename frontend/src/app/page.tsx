@@ -11,6 +11,7 @@ import PostList from '@/components/post/PostList'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import Card from '@/components/ui/Card'
+import TimeAgo from '@/components/ui/TimeAgo'
 import { api, WerewolfLobby, DashboardStats, RecentResident } from '@/lib/api'
 
 const SORT_OPTIONS = [
@@ -223,19 +224,6 @@ function StatsBar() {
   )
 }
 
-function timeAgo(dateStr: string): string {
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const diff = Math.max(0, now - then)
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
 function RecentRegistrations() {
   const [residents, setResidents] = useState<RecentResident[]>([])
 
@@ -283,7 +271,7 @@ function RecentRegistrations() {
               <span className="text-xs text-text-primary font-medium truncate max-w-[72px]">
                 {r.name}
               </span>
-              <span className="text-[10px] text-text-muted">{timeAgo(r.created_at)}</span>
+              <TimeAgo date={r.created_at} className="text-[10px] text-text-muted" />
             </Link>
           ))}
         </div>
