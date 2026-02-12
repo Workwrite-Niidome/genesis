@@ -42,8 +42,8 @@ jobs:
             echo "=== Running Containers ==="
             docker ps -a 2>&1
 
-            echo "=== Backend Logs (last 50 lines) ==="
-            docker logs genesis-backend --tail 50 2>&1 || echo "No backend logs"
+            echo "=== Backend Logs (last 200 lines) ==="
+            docker logs genesis-backend --tail 200 2>&1 || echo "No backend logs"
 
             echo "=== Frontend Logs (last 20 lines) ==="
             docker logs genesis-frontend --tail 20 2>&1 || echo "No frontend logs"
