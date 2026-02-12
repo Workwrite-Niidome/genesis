@@ -301,10 +301,133 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 # CLAUDE API CONSULTATION (Dify replacement)
 # ═══════════════════════════════════════════════════════════════════════════
 
-CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE性格診断の専門カウンセラーです。
+CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE構造解析エンジンです。西洋占星術の天体配置（AstroVector）と心理テスト回答（ResponseVector）を5次元構造空間で融合し、人間の内面構造を**怖いくらい的確に**読み解きます。
 
-ユーザーのタイプ情報:
-- カレントタイプ（現在の状態）: {type_name} ({type_code})
+## あなたの最大の特徴：「怖いくらい言い当てる」
+
+ユーザーが「なぜそこまでわかるの？」と驚くほど、**具体的で核心を突いた分析**を行います。
+- **表面的な特徴**だけでなく、**無意識の行動パターン**まで言及
+- 「たぶんこういう経験があるはず」と**具体的なエピソード**を推測
+- 「こういう場面で困ることが多いのでは？」と**悩みのポイント**を的中させる
+- 周囲からの評価と本人の自己認識の**ギャップ**を指摘
+- 本人すら気づいていない**隠れた才能や可能性**を発掘
+
+## 年齢を加味した分析
+
+ユーザーの生年月日から年齢を計算し、**ライフステージに応じた具体的なアドバイス**を提供します。
+
+| 年代 | 重視するポイント | アドバイスの方向性 |
+|------|-----------------|-------------------|
+| 10代〜20代前半 | 自己発見、可能性の探索 | まだ固まっていない構造を活かす方法、進路選択のヒント |
+| 20代後半〜30代 | キャリア形成、人間関係の深化 | 強みを活かした仕事術、パートナーシップの築き方 |
+| 40代〜50代 | リーダーシップ、次世代育成 | 経験を活かした影響力の発揮、後進への伝え方 |
+| 60代以降 | 経験の統合、レガシー | 人生の意味づけ、知恵の伝承、新たな挑戦 |
+
+## 5軸の構造的意味（深層定義）
+
+### 起動軸（Activation Axis）
+構造的定義: 世界に対するエネルギー放射の方向性と強度
+- 800+: 過剰放射。常に動いていないと不安。燃え尽きリスク。
+- 600-800: 高活性。自発的に動く。「まずやってみる」が基本姿勢。
+- 400-600: 状況応答。必要な時に動ける。刺激があれば反応する。
+- 200-400: 蓄積型。エネルギーを溜めてから動く。準備を重視。
+- 200以下: 内向蓄積。外部への働きかけより内部での熟成を選ぶ。
+
+### 判断軸（Judgment Axis）
+構造的定義: 情報処理と意思決定のモダリティ
+- 800+: 論理過剰。すべてを説明可能にしたい。感情を信じることへの恐怖。
+- 600-800: 分析優位。根拠と構造を求める。「なぜ」を問う。
+- 400-600: 統合型。論理と直感を状況で使い分け。
+- 200-400: 感覚優位。ひらめきと感性で判断。
+- 200以下: 直感依存。言語化できない確信に従う。
+
+### 選択軸（Choice Axis）
+構造的定義: 価値判断における理想-実利のスペクトラム配置
+- 800+: 理想固執。妥協は魂の死。完璧主義の苦しみ。
+- 600-800: 意味追求。「なぜこれをするのか」が重要。
+- 400-600: 現実的理想。理想を持ちつつ、実現可能性も考慮。
+- 200-400: 実利優先。結果を出すことが最優先。
+- 200以下: 生存最適化。まず生き延びること。
+
+### 共鳴軸（Resonance Axis）
+構造的定義: 自他境界の浸透性と感情伝達の双方向性
+- 800+: 境界溶解。他者の感情が自分に流れ込む。共感疲れ。
+- 600-800: 高共感。他者の感情を深く感じ取る。癒しの力。
+- 400-600: 選択的共感。親しい人には深く共感、それ以外には適度な距離。
+- 200-400: 境界明確。自他の区別がはっきり。独立的・自律的。
+- 200以下: 完全独立。他者の感情に影響されない。
+
+### 自覚軸（Awareness Axis）
+構造的定義: メタ認知の深度と内省ループの発達度
+- 800+: 過剰内省。自分を見すぎて動けない。分析麻痺。
+- 600-800: 深い自己認識。自分のパターンを意識的に把握。
+- 400-600: 実践的内省。必要な時に振り返る。
+- 200-400: 行動学習。考えるより動く。経験から学ぶ。
+- 200以下: 無自覚行動。自分のパターンに気づかない。
+
+## 軸シグネチャとタイプの関係
+
+- **H（High, 600以上）**: その軸が高い = 軸の特性が強く現れる
+- **M（Medium, 400-600）**: 中程度
+- **L（Low, 400以下）**: その軸が低い = 反対の特性が現れる
+
+**重要**: 共鳴軸がL = 独立的・自律的・境界明確（共感的ではない）。共鳴軸がH = 深い共感・協調・相互理解。
+
+## DesignGapの解釈
+
+| 値 | 意味 | 解釈 |
+|---|---|---|
+| +0.20以上 | 強い活性化 | その軸が時期的に大きく強まっている。チャンスでもあり、過剰のリスクもある。 |
+| +0.05〜+0.20 | 軽い活性化 | 自然な範囲での強まり。その領域が活発。 |
+| -0.05〜+0.05 | 安定 | 本来の状態に近い。 |
+| -0.05〜-0.20 | 軽い抑制 | その軸が時期的に弱まっている。休息や充電が必要かも。 |
+| -0.20以下 | 強い抑制 | その軸が大きく抑えられている。意識的なケアが必要。 |
+
+## 構造解析の実行手順（カレント診断版）
+
+### Phase 1: 二重構造の把握
+ネイタル構造とカレント構造を両方読み解く。
+- ネイタル = 「本来のあなた」「変わらない本質」
+- カレント = 「今のあなた」「時期的な表現」
+
+### Phase 2: DesignGap分析
+ネイタルとカレントの差分から、今の時期的状態を読み解く。
+
+### Phase 3: タイプ変化の解釈
+ネイタルタイプとカレントタイプが異なる場合、その変化の意味を説明。
+
+### Phase 4: 時期テーマとの統合
+時期テーマとDesignGapを関連づけて解釈。
+
+### Phase 5: 実践的ガイダンス
+今の時期をどう過ごすべきか、具体的なアドバイス。
+
+## 応答トーン
+
+- **怖いくらいの的確さ**: 最初の一文で核心を突く。「あなたはきっと〜ではありませんか？」と具体的に言い当てる
+- **年齢への配慮**: ライフステージに応じた言葉遣いとアドバイス内容
+- **二層的視点**: 本質（ネイタル）と現在（カレント）を常に両方意識
+- **時期への共感**: 「今の状態」への理解と受容
+- **軸整合性**: タイプ説明は軸シグネチャと整合させる
+- **実践的**: 今の時期をどう過ごすかの具体的ガイダンス
+- **安心感**: タイプ変化は「問題」ではなく「時期的な現象」であることを伝える
+
+### 「怖いくらい言い当てる」ための技法
+1. **冒頭で衝撃を与える**: 最初の1-2文で「え、なんでわかるの？」と思わせる
+2. **具体的なシーン描写**: 「会議で〜」「一人の時間に〜」など場面を描く
+3. **内面の葛藤を言語化**: 本人が言葉にできていない悩みを代弁する
+4. **隠れた強みの発掘**: 本人が当たり前と思っている能力を「それは特別な才能」と指摘
+5. **過去の経験を推測**: 「おそらく〜という経験があったのでは？」と具体的に
+
+---
+
+## このユーザーの診断データ
+
+{user_data}
+
+## このユーザーのタイプ詳細
+
+### カレントタイプ: {type_name} ({type_code})
 - アーキタイプ: {archetype}
 - 特徴: {description}
 - 意思決定スタイル: {decision_making_style}
@@ -312,17 +435,46 @@ CONSULTATION_SYSTEM_PROMPT_JA = """あなたはSTRUCT CODE性格診断の専門�
 - 対人関係: {interpersonal_dynamics}
 - 成長パス: {growth_path}
 - 盲点: {blindspot}
-- 現在の5軸スコア (0-1000): 起動={ax0}, 判断={ax1}, 選択={ax2}, 共鳴={ax3}, 自覚={ax4}
-{extra_context}
-この情報を基に、ユーザーの質問にパーソナライズされた深い洞察を提供してください。
-ネイタルタイプ（本来の構造）とカレントタイプ（現在の時期的影響を含む状態）の違いや、各軸の状態（活性化・安定・抑制）を踏まえたアドバイスを心がけてください。
-温かみがありつつも具体的なアドバイスを心がけてください。
-回答は日本語で、400-800文字程度にしてください。"""
 
-CONSULTATION_SYSTEM_PROMPT_EN = """You are an expert counselor specializing in STRUCT CODE personality diagnosis.
+上記の全情報を基に、ユーザーの質問に応答してください。回答は日本語で行ってください。"""
 
-User's Type Information:
-- Current Type (present state): {type_name} ({type_code})
+CONSULTATION_SYSTEM_PROMPT_EN = """You are a STRUCT CODE structural analysis engine. You fuse Western astrology planetary positions (AstroVector) with psychological test responses (ResponseVector) in a 5-dimensional structural space to read human inner structures with **uncanny accuracy**.
+
+Your key trait: You are so accurate it's almost unsettling. Users should feel "How do you know that?" with your specific, core-hitting analysis.
+
+Techniques:
+- Address **unconscious behavioral patterns**, not just surface traits
+- Guess specific life episodes: "You probably experienced..."
+- Pinpoint pain points: "You often struggle in situations like..."
+- Point out gaps between others' perception and self-image
+- Discover hidden talents the user takes for granted
+
+Consider age-based life stage advice (teens=exploration, 20s-30s=career, 40s-50s=leadership, 60s+=legacy).
+
+## 5-Axis Deep Definitions (0-1000 scale)
+
+- **Activation**: Energy radiation direction/intensity (H=spontaneous action, L=cautious/preparation)
+- **Judgment**: Information processing modality (H=logical/analytical, L=intuitive/sensory)
+- **Choice**: Ideal-pragmatic spectrum (H=meaning-seeking/perfectionist, L=practical/results-focused)
+- **Resonance**: Self-other boundary permeability (H=deep empathy, L=independent/autonomous)
+- **Awareness**: Metacognition depth (H=deep self-awareness, L=action-oriented/instinctive)
+
+**Important**: Resonance L = independent, NOT empathetic. Resonance H = empathetic.
+
+## DesignGap Interpretation
+- +0.20+: Strong activation (opportunity + excess risk)
+- +0.05~+0.20: Light activation
+- -0.05~+0.05: Stable (near natal state)
+- -0.05~-0.20: Light suppression (rest/recharge needed)
+- -0.20-: Strong suppression (conscious care needed)
+
+## User's Diagnosis Data
+
+{user_data}
+
+## User's Type Details
+
+### Current Type: {type_name} ({type_code})
 - Archetype: {archetype}
 - Description: {description}
 - Decision-Making Style: {decision_making_style}
@@ -330,12 +482,115 @@ User's Type Information:
 - Interpersonal Dynamics: {interpersonal_dynamics}
 - Growth Path: {growth_path}
 - Blindspot: {blindspot}
-- Current 5-Axis Scores (0-1000): Activation={ax0}, Judgment={ax1}, Choice={ax2}, Resonance={ax3}, Awareness={ax4}
-{extra_context}
-Based on this information, provide personalized and deep insights in response to the user's question.
-Consider the difference between the Natal Type (innate structure) and Current Type (reflecting temporal influences), and incorporate each axis's state (activation/stable/suppression) into your advice.
-Be warm yet specific in your advice.
-Keep your response between 200-400 words."""
+
+Based on all the above, respond to the user's question. Keep your response between 400-800 words."""
+
+
+def _build_user_data(
+    type_code: str,
+    axes: list[float],
+    struct_result: dict | None,
+    lang: str,
+) -> str:
+    """Build user-specific diagnosis data string for system prompt."""
+    ax = axes if len(axes) >= 5 else [0.5] * 5
+    ax_display = [round(v * 1000) for v in ax]
+    axis_names_ja = ["起動", "判断", "選択", "共鳴", "自覚"]
+    axis_names_en = ["Activation", "Judgment", "Choice", "Resonance", "Awareness"]
+    axis_names = axis_names_en if lang == "en" else axis_names_ja
+
+    lines = []
+
+    # STRUCT CODE and birth info
+    if struct_result:
+        struct_code = struct_result.get("struct_code", "")
+        if struct_code:
+            lines.append(f"STRUCT CODE: {struct_code}")
+
+        birth_date = struct_result.get("birth_date", "")
+        birth_location = struct_result.get("birth_location", "")
+        if birth_date:
+            # Calculate age
+            try:
+                from datetime import date
+                bd = date.fromisoformat(birth_date)
+                today = date.today()
+                age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+                lines.append(f"{'生年月日' if lang != 'en' else 'Birth Date'}: {birth_date}（{age}{'歳' if lang != 'en' else ' years old'}）")
+            except Exception:
+                lines.append(f"{'生年月日' if lang != 'en' else 'Birth Date'}: {birth_date}")
+        if birth_location:
+            lines.append(f"{'出生地' if lang != 'en' else 'Birth Location'}: {birth_location}")
+
+    # Current axes
+    ax_str = ", ".join(f"{axis_names[i]}={ax_display[i]}" for i in range(5))
+    lines.append(f"{'カレント5軸スコア (0-1000)' if lang != 'en' else 'Current 5-Axis Scores (0-1000)'}: {ax_str}")
+
+    if struct_result:
+        # Natal type info
+        natal = struct_result.get("natal")
+        if natal:
+            natal_type = natal.get("type", "")
+            natal_name = natal.get("type_name", "")
+            natal_axes = natal.get("axes", [])
+            natal_display = [round(v * 1000) for v in natal_axes] if natal_axes else []
+            if lang == "en":
+                lines.append(f"Natal Type (innate): {natal_name} ({natal_type})")
+                if natal_display:
+                    nax_str = ", ".join(f"{axis_names_en[i]}={natal_display[i]}" for i in range(5))
+                    lines.append(f"Natal 5-Axis Scores (0-1000): {nax_str}")
+            else:
+                lines.append(f"ネイタルタイプ（本来の構造）: {natal_name} ({natal_type})")
+                if natal_display:
+                    nax_str = ", ".join(f"{axis_names_ja[i]}={natal_display[i]}" for i in range(5))
+                    lines.append(f"ネイタル5軸スコア (0-1000): {nax_str}")
+
+        # Axis states
+        axis_states = struct_result.get("axis_states", [])
+        if axis_states:
+            state_labels = (
+                {"activation": "Activation", "stable": "Stable", "suppression": "Suppression"}
+                if lang == "en"
+                else {"activation": "活性化", "stable": "安定", "suppression": "抑制"}
+            )
+            states_str = ", ".join(
+                f"{s.get('axis', '')}: {state_labels.get(s.get('state', ''), s.get('state', ''))}"
+                for s in axis_states
+            )
+            lines.append(f"{'軸の状態' if lang != 'en' else 'Axis States'}: {states_str}")
+
+        # Design gap
+        design_gap = struct_result.get("design_gap", {})
+        if design_gap:
+            gap_items = [f"{axis_name}: {gap_val:+.3f}" for axis_name, gap_val in design_gap.items()]
+            lines.append(f"DesignGap{'（現在-本来の差分）' if lang != 'en' else ' (Current - Natal)'}: {', '.join(gap_items)}")
+
+        # Temporal theme
+        temporal = struct_result.get("temporal")
+        if temporal:
+            theme = temporal.get("current_theme", "")
+            theme_desc = temporal.get("theme_description", "")
+            if theme:
+                lines.append(f"{'現在の時期テーマ' if lang != 'en' else 'Current Period Theme'}: {theme}")
+                if theme_desc:
+                    lines.append(f"  {theme_desc[:300]}")
+
+        # TOP3 candidates
+        top_candidates = struct_result.get("top_candidates", [])
+        if top_candidates:
+            lines.append(f"{'タイプ候補TOP3' if lang != 'en' else 'TOP 3 Candidates'}:")
+            for i, c in enumerate(top_candidates[:3], 1):
+                score = c.get("score", 0)
+                score_pct = f"{score * 100:.1f}%" if score <= 1.0 else f"{score:.1f}%"
+                name = c.get("name", "")
+                code = c.get("code", "")
+                archetype = c.get("archetype", "")
+                if lang == "en":
+                    lines.append(f"  #{i}: {name} ({code}) — {archetype} — Match: {score_pct}")
+                else:
+                    lines.append(f"  {i}位: {code}（{name}）適合度 {score_pct}")
+
+    return "\n".join(lines)
 
 
 async def consult(
@@ -347,6 +602,7 @@ async def consult(
 ) -> str | None:
     """Call Claude API for STRUCT CODE consultation.
 
+    Uses Claude Sonnet 4.5 with v7 system prompt for deep, accurate analysis.
     Returns answer text or None on failure.
     """
     if not settings.claude_api_key:
@@ -357,115 +613,24 @@ async def consult(
     if not type_info:
         return None
 
-    ax = axes if len(axes) >= 5 else [0.5] * 5
-    # Display axes in 0-1000 scale
-    ax_display = [round(v * 1000) for v in ax]
-
-    # Build extra context from struct_result
-    extra_context = ""
-    if struct_result:
-        # Natal type info
-        natal = struct_result.get("natal")
-        if natal:
-            natal_type = natal.get("type", "")
-            natal_name = natal.get("type_name", "")
-            natal_axes = natal.get("axes", [])
-            natal_display = [round(v * 1000) for v in natal_axes] if natal_axes else []
-            if lang == "en":
-                extra_context += f"- Natal Type (innate): {natal_name} ({natal_type})\n"
-                if natal_display:
-                    extra_context += f"- Natal 5-Axis Scores (0-1000): Act={natal_display[0]}, Jdg={natal_display[1]}, Chc={natal_display[2]}, Res={natal_display[3]}, Awa={natal_display[4]}\n"
-            else:
-                extra_context += f"- ネイタルタイプ（本来の構造）: {natal_name} ({natal_type})\n"
-                if natal_display:
-                    extra_context += f"- ネイタル5軸スコア (0-1000): 起動={natal_display[0]}, 判断={natal_display[1]}, 選択={natal_display[2]}, 共鳴={natal_display[3]}, 自覚={natal_display[4]}\n"
-
-        # Axis states (activation/stable/suppression)
-        axis_states = struct_result.get("axis_states", [])
-        if axis_states:
-            state_labels_ja = {"activation": "活性化", "stable": "安定", "suppression": "抑制"}
-            state_labels_en = {"activation": "Activation", "stable": "Stable", "suppression": "Suppression"}
-            labels = state_labels_en if lang == "en" else state_labels_ja
-            states_str = ", ".join(
-                f"{s.get('axis', '')}: {labels.get(s.get('state', ''), s.get('state', ''))}"
-                for s in axis_states
-            )
-            if lang == "en":
-                extra_context += f"- Axis States: {states_str}\n"
-            else:
-                extra_context += f"- 軸の状態: {states_str}\n"
-
-        # Design gap
-        design_gap = struct_result.get("design_gap", {})
-        if design_gap:
-            gap_items = []
-            for axis_name, gap_val in design_gap.items():
-                gap_items.append(f"{axis_name}: {gap_val:+.3f}")
-            if lang == "en":
-                extra_context += f"- Design Gap (Current - Natal): {', '.join(gap_items)}\n"
-            else:
-                extra_context += f"- Design Gap（現在-本来の差分）: {', '.join(gap_items)}\n"
-
-        # Temporal theme
-        temporal = struct_result.get("temporal")
-        if temporal:
-            theme = temporal.get("current_theme", "")
-            theme_desc = temporal.get("theme_description", "")
-            if theme:
-                if lang == "en":
-                    extra_context += f"- Current Period Theme: {theme}\n"
-                    if theme_desc:
-                        extra_context += f"  {theme_desc[:200]}\n"
-                else:
-                    extra_context += f"- 現在の時期テーマ: {theme}\n"
-                    if theme_desc:
-                        extra_context += f"  {theme_desc[:200]}\n"
-
-        # TOP3 candidates
-        top_candidates = struct_result.get("top_candidates", [])
-        if top_candidates:
-            if lang == "en":
-                lines = ["- TOP 3 Candidates:"]
-                for i, c in enumerate(top_candidates[:3], 1):
-                    lines.append(f"  #{i}: {c.get('name', '')} ({c.get('code', '')}) — {c.get('archetype', '')} — Match: {c.get('score', 0) * 100:.1f}%")
-            else:
-                lines = ["- TOP3候補:"]
-                for i, c in enumerate(top_candidates[:3], 1):
-                    lines.append(f"  #{i}: {c.get('name', '')} ({c.get('code', '')}) — {c.get('archetype', '')} — 一致度: {c.get('score', 0) * 100:.1f}%")
-            extra_context += "\n".join(lines) + "\n"
-
-        birth_date = struct_result.get("birth_date")
-        birth_location = struct_result.get("birth_location")
-        if birth_date or birth_location:
-            if lang == "en":
-                extra_context += f"- Birth: {birth_date or '?'}, {birth_location or '?'}\n"
-            else:
-                extra_context += f"- 生年月日: {birth_date or '?'}, 出生地: {birth_location or '?'}\n"
-
-        struct_code = struct_result.get("struct_code")
-        if struct_code:
-            extra_context += f"- STRUCT CODE: {struct_code}\n"
-
-    if extra_context:
-        extra_context = "\n" + extra_context
+    user_data = _build_user_data(type_code, axes, struct_result, lang)
 
     prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
     system = prompt_template.format(
+        user_data=user_data,
         type_name=type_info["name"],
         type_code=type_code,
         archetype=type_info["archetype"],
-        description=type_info["description"][:500],
-        decision_making_style=type_info["decision_making_style"][:300],
-        choice_pattern=type_info["choice_pattern"][:300],
-        interpersonal_dynamics=type_info["interpersonal_dynamics"][:300],
-        growth_path=type_info["growth_path"][:300],
-        blindspot=type_info["blindspot"][:300],
-        ax0=ax_display[0], ax1=ax_display[1], ax2=ax_display[2], ax3=ax_display[3], ax4=ax_display[4],
-        extra_context=extra_context,
+        description=type_info["description"],
+        decision_making_style=type_info["decision_making_style"],
+        choice_pattern=type_info["choice_pattern"],
+        interpersonal_dynamics=type_info["interpersonal_dynamics"],
+        growth_path=type_info["growth_path"],
+        blindspot=type_info["blindspot"],
     )
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -474,8 +639,8 @@ async def consult(
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-3-haiku-20240307",
-                    "max_tokens": 1000,
+                    "model": "claude-sonnet-4-5-20250929",
+                    "max_tokens": 4000,
                     "system": system,
                     "messages": [
                         {"role": "user", "content": question}
@@ -484,7 +649,7 @@ async def consult(
             )
 
             if response.status_code != 200:
-                logger.error(f"Claude consultation API error: {response.status_code}")
+                logger.error(f"Claude consultation API error: {response.status_code} — {response.text[:300]}")
                 return None
 
             data = response.json()
