@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, StructCodeQuestion, StructCodeResult } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
-import { Compass, ArrowRight, ArrowLeft, Check } from 'lucide-react'
+import { Compass, ArrowRight, ArrowLeft, Check, MapPin, Loader2 } from 'lucide-react'
 
 const AXIS_LABELS: Record<string, string> = {
   '起動軸': 'Activation',
@@ -24,17 +24,83 @@ export default function StructCodePage() {
 
   // Steps: 0=intro, 1=birth info, 2-6=questions, 7=result
   const [step, setStep] = useState(0)
-  const [birthDate, setBirthDate] = useState('')
+  const [birthYear, setBirthYear] = useState('')
+  const [birthMonth, setBirthMonth] = useState('')
+  const [birthDay, setBirthDay] = useState('')
   const [birthLocation, setBirthLocation] = useState('')
+  const [locationQuery, setLocationQuery] = useState('')
+  const [locationSuggestions, setLocationSuggestions] = useState<LocationSuggestion[]>([])
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const [questions, setQuestions] = useState<StructCodeQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [result, setResult] = useState<StructCodeResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const locationRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+
+  const birthDate = birthYear && birthMonth && birthDay
+    ? `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`
+    : ''
 
   useEffect(() => {
     api.structCodeQuestions().then(setQuestions).catch(() => {})
   }, [])
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Geocode location with Nominatim (debounced)
+  const searchLocation = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setLocationSuggestions([])
+      return
+    }
+    setLocationLoading(true)
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&accept-language=ja,en`,
+        { headers: { 'User-Agent': 'Genesis-StructCode/1.0' } }
+      )
+      const data = await res.json()
+      setLocationSuggestions(
+        data.map((item: any) => ({
+          display: item.display_name,
+          short: buildShortName(item),
+          lat: item.lat,
+          lon: item.lon,
+        }))
+      )
+      setShowSuggestions(true)
+    } catch {
+      setLocationSuggestions([])
+    } finally {
+      setLocationLoading(false)
+    }
+  }, [])
+
+  const handleLocationInput = (value: string) => {
+    setLocationQuery(value)
+    setBirthLocation('')  // Clear selection when typing
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => searchLocation(value), 400)
+  }
+
+  const selectLocation = (suggestion: LocationSuggestion) => {
+    setBirthLocation(suggestion.short)
+    setLocationQuery(suggestion.short)
+    setShowSuggestions(false)
+  }
 
   const totalPages = Math.ceil(questions.length / QUESTIONS_PER_PAGE)
   const questionPage = step - 2 // 0-indexed question page
@@ -132,29 +198,105 @@ export default function StructCodePage() {
 
   // ── Birth Info ──
   if (step === 1) {
+    const currentYear = new Date().getFullYear()
+    const years = Array.from({ length: 80 }, (_, i) => currentYear - 10 - i) // 10~89 years ago
+    const months = Array.from({ length: 12 }, (_, i) => i + 1)
+    const daysInMonth = birthYear && birthMonth
+      ? new Date(Number(birthYear), Number(birthMonth), 0).getDate()
+      : 31
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+
     return (
       <div className="max-w-2xl mx-auto p-6">
         <ProgressBar current={0} total={totalPages + 1} />
         <h2 className="text-xl font-bold text-text-primary mb-6">Birth Information</h2>
-        <div className="space-y-4">
+        <p className="text-text-muted text-sm mb-4">
+          Astrological calculation requires accurate birth date and location.
+        </p>
+        <div className="space-y-5">
+          {/* Birth Date - Year/Month/Day selects */}
           <div>
             <label className="block text-text-secondary text-sm mb-2">Birth Date</label>
-            <input
-              type="date"
-              value={birthDate}
-              onChange={e => setBirthDate(e.target.value)}
-              className="w-full px-4 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold"
-            />
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <select
+                  value={birthYear}
+                  onChange={e => { setBirthYear(e.target.value); if (birthDay && Number(birthDay) > new Date(Number(e.target.value), Number(birthMonth), 0).getDate()) setBirthDay('') }}
+                  className="w-full px-3 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold appearance-none cursor-pointer"
+                >
+                  <option value="" className="text-text-muted">Year</option>
+                  {years.map(y => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <select
+                  value={birthMonth}
+                  onChange={e => { setBirthMonth(e.target.value); if (birthDay && Number(birthDay) > new Date(Number(birthYear), Number(e.target.value), 0).getDate()) setBirthDay('') }}
+                  className="w-full px-3 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold appearance-none cursor-pointer"
+                >
+                  <option value="" className="text-text-muted">Month</option>
+                  {months.map(m => (
+                    <option key={m} value={String(m)}>{m}月 / {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <select
+                  value={birthDay}
+                  onChange={e => setBirthDay(e.target.value)}
+                  className="w-full px-3 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary focus:outline-none focus:border-accent-gold appearance-none cursor-pointer"
+                >
+                  <option value="" className="text-text-muted">Day</option>
+                  {days.map(d => (
+                    <option key={d} value={String(d)}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-text-secondary text-sm mb-2">Birth Location</label>
-            <input
-              type="text"
-              value={birthLocation}
-              onChange={e => setBirthLocation(e.target.value)}
-              placeholder="e.g. Tokyo, New York, London..."
-              className="w-full px-4 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold"
-            />
+
+          {/* Birth Location - Autocomplete with Nominatim */}
+          <div ref={locationRef}>
+            <label className="block text-text-secondary text-sm mb-2">
+              Birth Location <span className="text-text-muted">(city/ward level)</span>
+            </label>
+            <div className="relative">
+              <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input
+                type="text"
+                value={locationQuery}
+                onChange={e => handleLocationInput(e.target.value)}
+                onFocus={() => locationSuggestions.length > 0 && setShowSuggestions(true)}
+                placeholder="e.g. 渋谷区, Shibuya, Manhattan, 福岡市..."
+                className="w-full pl-10 pr-10 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold"
+              />
+              {locationLoading && (
+                <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted animate-spin" />
+              )}
+            </div>
+            {birthLocation && (
+              <p className="text-accent-gold text-xs mt-1.5 flex items-center gap-1">
+                <Check size={12} /> {birthLocation}
+              </p>
+            )}
+
+            {/* Suggestions dropdown */}
+            {showSuggestions && locationSuggestions.length > 0 && (
+              <div className="mt-1 bg-bg-secondary border border-border-default rounded-lg shadow-lg overflow-hidden max-h-60 overflow-y-auto z-50 relative">
+                {locationSuggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => selectLocation(s)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-bg-tertiary transition-colors border-b border-border-default last:border-b-0"
+                  >
+                    <p className="text-text-primary text-sm">{s.short}</p>
+                    <p className="text-text-muted text-xs truncate">{s.display}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex justify-between mt-8">
@@ -360,4 +502,33 @@ function Section({ title, text }: { title: string; text: string }) {
       <p className="text-text-primary text-sm leading-relaxed">{text}</p>
     </div>
   )
+}
+
+interface LocationSuggestion {
+  display: string
+  short: string
+  lat: string
+  lon: string
+}
+
+function buildShortName(item: any): string {
+  const addr = item.address || {}
+  // Build a concise but specific location string
+  const parts: string[] = []
+
+  // Most specific: suburb/neighbourhood/quarter
+  const detail = addr.suburb || addr.neighbourhood || addr.quarter || addr.borough || ''
+  // City/town/village
+  const city = addr.city || addr.town || addr.village || addr.municipality || ''
+  // State/prefecture
+  const state = addr.state || addr.province || addr.county || ''
+  // Country
+  const country = addr.country || ''
+
+  if (detail) parts.push(detail)
+  if (city && city !== detail) parts.push(city)
+  if (state && state !== city) parts.push(state)
+  if (country) parts.push(country)
+
+  return parts.join(', ') || item.display_name?.split(',').slice(0, 3).join(',') || ''
 }
