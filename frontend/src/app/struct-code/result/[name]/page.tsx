@@ -213,7 +213,7 @@ export default function StructCodeResultPage() {
                       </span>
                     </div>
                     <span className="text-text-muted text-sm font-mono">
-                      {(val * 100).toFixed(0)}%
+                      {Math.round(val * 1000)}
                     </span>
                   </div>
                   <div className="h-3 bg-bg-primary rounded-full overflow-hidden">

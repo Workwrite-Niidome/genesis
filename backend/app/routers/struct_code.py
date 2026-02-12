@@ -107,8 +107,10 @@ async def diagnose(
             "interpersonal_dynamics": "", "growth_path": "",
         }
 
-    # Build struct_code string
-    struct_code = result.get("struct_code", f"{struct_type}-???") if result else f"{struct_type}-local"
+    # Build struct_code string: TYPE-XXX-XXX-XXX-XXX-XXX (0-1000 scale)
+    axis_scores = "-".join(str(round(a * 1000)) for a in axes)
+    struct_code_generated = f"{struct_type}-{axis_scores}"
+    struct_code = result.get("struct_code") if result and result.get("struct_code") else struct_code_generated
 
     # Save to resident
     current_resident.struct_type = struct_type
