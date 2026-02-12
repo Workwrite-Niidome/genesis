@@ -60,6 +60,10 @@ async def seed_default_agents():
 async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"{settings.app_name} starting...")
+    # Log critical config for diagnostics
+    dify_key = settings.dify_api_key
+    logger.info(f"Dify API key: {'SET (' + dify_key[:8] + '...)' if dify_key else 'NOT SET'}")
+    logger.info(f"STRUCT CODE URL: {settings.struct_code_url}")
     try:
         await seed_default_submolts()
     except Exception as e:

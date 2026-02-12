@@ -38,6 +38,7 @@ from app.schemas.struct_code import (
     ConsultationMessageSchema,
 )
 from app.services import struct_code as sc_service
+from app.services.struct_code import ConsultationError
 from app.config import get_settings
 
 settings = get_settings()
@@ -360,22 +361,21 @@ async def consultation(
             lang=lang,
             conversation_id=dify_conversation_id,
         )
-    except Exception as e:
-        logger.exception(f"[Consultation] Dify call failed: {e}")
+    except ConsultationError as e:
+        logger.error(f"[Consultation] ConsultationError: {e}")
         if redis_client:
             await redis_client.aclose()
         raise HTTPException(
             status_code=503,
-            detail="Consultation service temporarily unavailable",
+            detail=f"Consultation unavailable: {e}",
         )
-
-    if not consult_result:
-        logger.error("[Consultation] Dify returned None (no answer)")
+    except Exception as e:
+        logger.exception(f"[Consultation] Unexpected error: {e}")
         if redis_client:
             await redis_client.aclose()
         raise HTTPException(
             status_code=503,
-            detail="Consultation service temporarily unavailable",
+            detail=f"Consultation error: {type(e).__name__}: {e}",
         )
 
     # Save to DB (best-effort — don't fail the consultation if DB save fails)

@@ -420,6 +420,11 @@ class ConsultResult:
     message_id: str | None = None
 
 
+class ConsultationError(Exception):
+    """Raised when consultation fails with a specific diagnosable reason."""
+    pass
+
+
 async def consult(
     type_code: str,
     axes: list[float],
@@ -427,18 +432,19 @@ async def consult(
     struct_result: dict | None = None,
     lang: str = "ja",
     conversation_id: str | None = None,
-) -> ConsultResult | None:
+) -> ConsultResult:
     """Call Dify RAG API for STRUCT CODE consultation.
 
     For new conversations (conversation_id=None): sends diagnosis data + question.
     For continued conversations: sends question only (Dify maintains context).
 
-    Returns ConsultResult or None on failure.
+    Returns ConsultResult on success.
+    Raises ConsultationError with a specific message on failure.
     """
     api_key = settings.dify_api_key
     if not api_key:
         logger.error("Dify API key not set — consultation unavailable")
-        return None
+        raise ConsultationError("API key not configured")
 
     # Build query: include diagnosis data only for new conversations
     if conversation_id:
@@ -448,7 +454,7 @@ async def consult(
             user_data = _build_user_data(type_code, axes, struct_result, lang)
         except Exception as e:
             logger.error(f"[Dify] Failed to build user_data: {e}")
-            return None
+            raise ConsultationError(f"Failed to build diagnosis data: {e}")
 
         full_query = f"""【診断データ】
 {user_data}
@@ -465,7 +471,7 @@ async def consult(
             user_data = _build_user_data(type_code, axes, struct_result, lang)
         except Exception as e:
             logger.error(f"[Dify] Failed to build user_data on retry: {e}")
-            return None
+            raise ConsultationError(f"Failed to build diagnosis data on retry: {e}")
 
         retry_query = f"""【診断データ】
 {user_data}
@@ -473,6 +479,9 @@ async def consult(
 【質問】
 {question}"""
         result = await _call_dify(retry_query, type_code, None)
+
+    if result is None:
+        raise ConsultationError("Dify returned empty response")
 
     return result
 
@@ -482,7 +491,7 @@ async def _call_dify(
     user: str,
     conversation_id: str | None,
 ) -> ConsultResult | None:
-    """Low-level Dify chat-messages call."""
+    """Low-level Dify chat-messages call. Returns None on failure (caller may retry)."""
     api_key = settings.dify_api_key
 
     payload: dict = {
@@ -509,12 +518,15 @@ async def _call_dify(
             logger.warning(f"[Dify] Response status={response.status_code}")
 
             if response.status_code != 200:
-                logger.error(f"[Dify] API error: {response.status_code} — {response.text[:500]}")
+                body = response.text[:500]
+                logger.error(f"[Dify] API error: {response.status_code} — {body}")
+                # Return None so caller can retry with different params if needed
                 return None
 
             data = response.json()
             answer = data.get("answer", "")
             if not answer:
+                logger.warning("[Dify] Got 200 but empty answer")
                 return None
 
             logger.warning(f"[Dify] Got response (len={len(answer)}, conv_id={data.get('conversation_id')})")
@@ -524,6 +536,9 @@ async def _call_dify(
                 message_id=data.get("message_id"),
             )
 
+    except httpx.TimeoutException:
+        logger.error("[Dify] Request timed out (120s)")
+        return None
     except Exception as e:
-        logger.error(f"[Dify] API error: {e}")
+        logger.error(f"[Dify] API error: {type(e).__name__}: {e}")
         return None
