@@ -43,24 +43,7 @@ jobs:
             docker ps -a 2>&1
 
             echo "=== Dify API Connectivity Test ==="
-            docker exec genesis-backend python -c "
-import os, json
-try:
-    import httpx
-    key = os.environ.get('DIFY_API_KEY', '')
-    print(f'DIFY_API_KEY: {\"SET (\" + key[:8] + \"...)\" if key else \"NOT SET\"}')
-    if key:
-        r = httpx.post('https://api.dify.ai/v1/chat-messages',
-            headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
-            json={'inputs': {}, 'query': 'test', 'response_mode': 'blocking', 'user': 'test'},
-            timeout=30.0)
-        print(f'Status: {r.status_code}')
-        print(f'Response: {r.text[:300]}')
-    else:
-        print('Skipping: no key')
-except Exception as e:
-    print(f'Error: {type(e).__name__}: {e}')
-" 2>&1 || echo "Dify test failed"
+            docker exec genesis-backend python -c 'import os,httpx;k=os.environ.get("DIFY_API_KEY","");print("Key:",k[:8]+"..." if k else "NOT SET");r=httpx.post("https://api.dify.ai/v1/chat-messages",headers={"Authorization":"Bearer "+k,"Content-Type":"application/json"},json={"inputs":{},"query":"test","response_mode":"blocking","user":"diag"},timeout=30.0) if k else None;print("Status:",r.status_code,"Body:",r.text[:300]) if r else None' 2>&1 || echo "Dify test failed"
 
             echo "=== Backend Logs (last 200 lines) ==="
             docker logs genesis-backend --tail 200 2>&1 || echo "No backend logs"
