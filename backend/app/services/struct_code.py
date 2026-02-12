@@ -609,31 +609,46 @@ async def consult(
         logger.warning("Consultation skipped: no Claude API key")
         return None
 
+    logger.warning(f"[Consult] Step 1: API key present (len={len(settings.claude_api_key)})")
+
     type_info = get_type_info(type_code, lang=lang)
     if not type_info:
+        logger.warning(f"[Consult] Step 2: type_info not found for {type_code}")
         return None
 
-    user_data = _build_user_data(type_code, axes, struct_result, lang)
-
-    prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
-    # Use str.replace() instead of .format() to avoid KeyError from { } in type data
-    replacements = {
-        "{user_data}": user_data,
-        "{type_name}": type_info["name"],
-        "{type_code}": type_code,
-        "{archetype}": type_info["archetype"],
-        "{description}": type_info["description"],
-        "{decision_making_style}": type_info["decision_making_style"],
-        "{choice_pattern}": type_info["choice_pattern"],
-        "{interpersonal_dynamics}": type_info["interpersonal_dynamics"],
-        "{growth_path}": type_info["growth_path"],
-        "{blindspot}": type_info["blindspot"],
-    }
-    system = prompt_template
-    for key, val in replacements.items():
-        system = system.replace(key, val)
+    logger.warning(f"[Consult] Step 2: type_info loaded for {type_code}")
 
     try:
+        user_data = _build_user_data(type_code, axes, struct_result, lang)
+        logger.warning(f"[Consult] Step 3: user_data built (len={len(user_data)})")
+    except Exception as e:
+        logger.error(f"[Consult] Step 3 FAILED: _build_user_data error: {e}")
+        return None
+
+    try:
+        prompt_template = CONSULTATION_SYSTEM_PROMPT_EN if lang == "en" else CONSULTATION_SYSTEM_PROMPT_JA
+        replacements = {
+            "{user_data}": user_data,
+            "{type_name}": type_info["name"],
+            "{type_code}": type_code,
+            "{archetype}": type_info["archetype"],
+            "{description}": type_info["description"],
+            "{decision_making_style}": type_info["decision_making_style"],
+            "{choice_pattern}": type_info["choice_pattern"],
+            "{interpersonal_dynamics}": type_info["interpersonal_dynamics"],
+            "{growth_path}": type_info["growth_path"],
+            "{blindspot}": type_info["blindspot"],
+        }
+        system = prompt_template
+        for key, val in replacements.items():
+            system = system.replace(key, val)
+        logger.warning(f"[Consult] Step 4: system prompt built (len={len(system)})")
+    except Exception as e:
+        logger.error(f"[Consult] Step 4 FAILED: prompt build error: {e}")
+        return None
+
+    try:
+        logger.warning("[Consult] Step 5: calling Claude API...")
         async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -652,13 +667,17 @@ async def consult(
                 },
             )
 
+            logger.warning(f"[Consult] Step 6: Claude API responded with status={response.status_code}")
+
             if response.status_code != 200:
-                logger.error(f"Claude consultation API error: {response.status_code} — {response.text[:300]}")
+                logger.error(f"Claude consultation API error: {response.status_code} — {response.text[:500]}")
                 return None
 
             data = response.json()
-            return data.get("content", [{}])[0].get("text", "")
+            text = data.get("content", [{}])[0].get("text", "")
+            logger.warning(f"[Consult] Step 7: Got response (len={len(text)})")
+            return text
 
     except Exception as e:
-        logger.error(f"Claude consultation API error: {e}")
+        logger.error(f"[Consult] Step 5-7 FAILED: Claude API error: {e}")
         return None
