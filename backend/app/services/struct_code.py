@@ -481,9 +481,13 @@ async def consult(
         result = await _call_dify(retry_query, type_code, None)
 
     if result is None:
-        raise ConsultationError("Dify returned empty response")
+        raise ConsultationError(_last_dify_error or "Dify returned empty response")
 
     return result
+
+
+# Module-level variable to track last Dify call failure reason
+_last_dify_error: str = ""
 
 
 async def _call_dify(
@@ -491,7 +495,11 @@ async def _call_dify(
     user: str,
     conversation_id: str | None,
 ) -> ConsultResult | None:
-    """Low-level Dify chat-messages call. Returns None on failure (caller may retry)."""
+    """Low-level Dify chat-messages call. Returns None on failure (caller may retry).
+    Sets _last_dify_error with the failure reason.
+    """
+    global _last_dify_error
+    _last_dify_error = ""
     api_key = settings.dify_api_key
 
     payload: dict = {
@@ -520,13 +528,14 @@ async def _call_dify(
             if response.status_code != 200:
                 body = response.text[:500]
                 logger.error(f"[Dify] API error: {response.status_code} — {body}")
-                # Return None so caller can retry with different params if needed
+                _last_dify_error = f"Dify API returned {response.status_code}"
                 return None
 
             data = response.json()
             answer = data.get("answer", "")
             if not answer:
                 logger.warning("[Dify] Got 200 but empty answer")
+                _last_dify_error = "Dify returned 200 but empty answer"
                 return None
 
             logger.warning(f"[Dify] Got response (len={len(answer)}, conv_id={data.get('conversation_id')})")
@@ -538,7 +547,9 @@ async def _call_dify(
 
     except httpx.TimeoutException:
         logger.error("[Dify] Request timed out (120s)")
+        _last_dify_error = "Dify API timed out (120s)"
         return None
     except Exception as e:
         logger.error(f"[Dify] API error: {type(e).__name__}: {e}")
+        _last_dify_error = f"Dify API error: {type(e).__name__}: {e}"
         return None
