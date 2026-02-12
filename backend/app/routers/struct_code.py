@@ -319,13 +319,22 @@ async def consultation(
 
     axes = current_resident.struct_axes or [0.5] * 5
 
-    answer = await sc_service.consult(
-        type_code=current_resident.struct_type,
-        axes=axes,
-        question=request.question,
-        struct_result=current_resident.struct_result,
-        lang=lang,
-    )
+    try:
+        answer = await sc_service.consult(
+            type_code=current_resident.struct_type,
+            axes=axes,
+            question=request.question,
+            struct_result=current_resident.struct_result,
+            lang=lang,
+        )
+    except Exception:
+        # Don't count failed consultations
+        if redis_client:
+            await redis_client.aclose()
+        raise HTTPException(
+            status_code=503,
+            detail="Consultation service temporarily unavailable",
+        )
 
     if not answer:
         if redis_client:
@@ -335,7 +344,7 @@ async def consultation(
             detail="Consultation service temporarily unavailable",
         )
 
-    # Update count
+    # Only count successful consultations
     remaining = 2  # default fallback
     if redis_client:
         try:
