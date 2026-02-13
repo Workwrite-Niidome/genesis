@@ -760,9 +760,74 @@ jobs:
             echo "=== Celery Beat Logs (last 50) ==="
             docker logs genesis-celery-beat --tail 50 2>&1 || true
 
-            echo "=== Reset agents and create 50 with STRUCT CODE (background) ==="
-            docker exec -d -w /app genesis-backend python scripts/reset_agents.py
-            echo "Agent reset started in background. Check logs: docker logs genesis-backend"
+            echo "=== Phase A: Delete all agent data (inline SQL) ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "
+              DO \$\$
+              DECLARE
+                t TEXT;
+                stmts TEXT[] := ARRAY[
+                  'DELETE FROM game_messages WHERE sender_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM day_votes WHERE voter_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM day_votes WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM night_actions WHERE actor_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM night_actions WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM werewolf_game_events WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM werewolf_roles WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'UPDATE werewolf_games SET creator_id = NULL WHERE creator_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM ai_election_memories WHERE agent_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM ai_relationships WHERE agent_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM ai_relationships WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM ai_memory_episodes WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM ai_personalities WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM comment_embeddings WHERE comment_id IN (SELECT id FROM comments WHERE author_id IN (SELECT id FROM residents WHERE _type=''agent''))',
+                  'DELETE FROM post_embeddings WHERE post_id IN (SELECT id FROM posts WHERE author_id IN (SELECT id FROM residents WHERE _type=''agent''))',
+                  'DELETE FROM votes WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM comments WHERE author_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM posts WHERE author_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM follows WHERE follower_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM follows WHERE following_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM notifications WHERE recipient_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM notifications WHERE actor_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM resident_activities WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM election_votes WHERE voter_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM election_candidates WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'UPDATE elections SET winner_id = NULL WHERE winner_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'UPDATE god_terms SET resident_id = NULL WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM turing_kills WHERE attacker_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM turing_kills WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM turing_game_daily_limits WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM suspicion_reports WHERE reporter_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM suspicion_reports WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM exclusion_reports WHERE reporter_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM exclusion_reports WHERE target_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM moderation_actions WHERE moderator_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM weekly_scores WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM subscriptions WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM consultation_sessions WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM resident_bans WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM resident_bans WHERE banned_by IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM reports WHERE reporter_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM resident_embeddings WHERE resident_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM vote_pair_weekly WHERE voter_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM vote_pair_weekly WHERE target_author_id IN (SELECT id FROM residents WHERE _type=''agent'')',
+                  'DELETE FROM residents WHERE _type = ''agent'''
+                ];
+              BEGIN
+                FOREACH t IN ARRAY stmts LOOP
+                  BEGIN
+                    EXECUTE t;
+                  EXCEPTION WHEN undefined_table THEN
+                    RAISE NOTICE 'skipped: %', t;
+                  END;
+                END LOOP;
+              END \$\$;
+            " 2>&1 || echo "Agent deletion SQL had errors (non-fatal)"
+            echo "--- Agent count after deletion ---"
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U genesis -c "SELECT count(*) FROM residents WHERE _type='agent';" 2>&1
+
+            echo "=== Phase B: Create 50 agents with STRUCT CODE (background) ==="
+            docker exec -w /app genesis-backend sh -c "nohup python scripts/reset_agents.py > /tmp/reset_agents.log 2>&1 &"
+            echo "Agent creation started in background. Log: docker exec genesis-backend cat /tmp/reset_agents.log"
 
             echo "=== Agent Cycle Diagnostic ==="
             docker exec -w /app genesis-celery-worker python scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"
