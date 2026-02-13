@@ -822,7 +822,7 @@ jobs:
                   BEGIN
                     EXECUTE t;
                   EXCEPTION WHEN OTHERS THEN
-                    RAISE NOTICE 'skipped (%%): %%', SQLERRM, left(t, 80);
+                    RAISE NOTICE 'skipped (%): %', SQLERRM, left(t, 80);
                   END;
                 END LOOP;
               END \$\$;
