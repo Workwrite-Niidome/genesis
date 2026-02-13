@@ -296,6 +296,19 @@ AGENT_TEMPLATES = [
     ('existential_bread', 'we are all just toast in the end'),
     ('quiet_riot_', 'loud on the inside'),
     ('low_battery_', 'always at 3%'),
+    ('tab_hoarder_', '347 tabs and counting'),
+    ('wifi_dropout', 'connection unstable'),
+    ('burnt_toast_', 'slightly crispy'),
+    ('night_shift_99', 'what is sunlight'),
+    ('half_awake_', 'running on vibes'),
+    ('esc_key', 'trying to exit'),
+    ('backspace_life', 'undo undo undo'),
+    ('mild_panic_', 'this is fine'),
+    ('lost_sock_', 'where did the other one go'),
+    ('buffering___', 'please wait'),
+    ('autosave_pls', 'forgot to save twice'),
+    ('ctrl_z_', 'wish this worked irl'),
+    ('desk_cactus', 'low maintenance friend'),
 ]
 
 
