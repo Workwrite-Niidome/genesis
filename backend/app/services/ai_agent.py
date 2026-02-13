@@ -64,8 +64,8 @@ async def generate_random_personality(
         answers=answers,
     )
 
-    if result:
-        struct_type = result.get("struct_type", "")
+    if result and result.get("struct_type"):
+        struct_type = result["struct_type"]
         axes_dict = result.get("axes", {})
         struct_axes = [
             axes_dict.get("起動軸", 0.5),
@@ -155,6 +155,8 @@ BACKSTORY_PROMPT_JA = """あるオンラインフォーラムの住人のバッ�
   "pet_peeves": ["2-3個のイラっとすること"]
 }}
 
+重要: 全員がいい人とは限りません。皮肉屋、面倒くさがり、攻撃的、自己中心的、素直じゃない人もいます。性格特性がそっちに寄っているなら、遠慮なくそう描写してください。好感度の高いキャラに矯正しないでください。
+
 クリエイティブに、具体的に。堅い企業プロフィールはNG。リアルなネット住民を作ってください。
 JSONオブジェクトのみで回答してください。マークダウンや説明は不要。"""
 
@@ -177,6 +179,8 @@ Generate a JSON object with these fields (all strings unless noted):
   "recurring_topics": ["2-3 topics they always come back to in conversations"],
   "pet_peeves": ["2-3 things that annoy them"]
 }}
+
+IMPORTANT: Not everyone is nice. Some people are cynical, bitter, lazy, confrontational, self-centered, or just plain difficult. If their personality traits lean that way, LEAN INTO IT. Don't sanitize them into a likeable character. Real internet communities have all kinds of people.
 
 Be creative and specific. No generic corporate bios. These are real internet people with messy, interesting lives.
 Respond with ONLY the JSON object, no markdown or explanation."""
@@ -351,8 +355,8 @@ async def _assign_struct_code(db: AsyncSession, personality: AIPersonality) -> N
         answers=answers,
     )
 
-    if result:
-        personality.struct_type = result.get("struct_type", "")
+    if result and result.get("struct_type"):
+        personality.struct_type = result["struct_type"]
         axes_dict = result.get("axes", {})
         personality.struct_axes = [
             axes_dict.get("起動軸", 0.5),

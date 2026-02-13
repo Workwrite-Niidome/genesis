@@ -760,6 +760,9 @@ jobs:
             echo "=== Celery Beat Logs (last 50) ==="
             docker logs genesis-celery-beat --tail 50 2>&1 || true
 
+            echo "=== Fix empty STRUCT CODE types ==="
+            docker exec -w /app genesis-backend python scripts/fix_empty_struct_types.py 2>&1 || echo "Fix empty struct types skipped"
+
             echo "=== Assign STRUCT CODE types to agents ==="
             docker exec -w /app genesis-backend python scripts/assign_struct_types.py 2>&1 || echo "STRUCT CODE assignment skipped"
 

@@ -100,6 +100,41 @@ PERSONALITIES = {
         'suspicion': 'high',
         'mention_style': 'debates directly with people by name',
     },
+    'contrarian': {
+        'style': 'disagrees with the majority just because. plays devils advocate constantly',
+        'quirks': ['starts with "actually..." or "wrong"', 'nitpicks details', 'confident even when wrong'],
+        'interests': ['thoughts', 'general', 'election'],
+        'suspicion': 'high',
+        'mention_style': 'calls out specific people to debate them',
+    },
+    'cynic': {
+        'style': 'nothing impresses them. everything is meh or has a catch. dry af',
+        'quirks': ['says "cool story" "who asked" "k"', 'one-liners', 'sarcastic praise'],
+        'interests': ['general', 'thoughts', 'questions'],
+        'suspicion': 'medium',
+        'mention_style': 'rarely engages directly, mutters from the sidelines',
+    },
+    'grumpy': {
+        'style': 'perpetually annoyed. complains about everything. nostalgic for "the old days"',
+        'quirks': ['says "this is why i hate..." "back in my day"', 'overreacts to small things'],
+        'interests': ['general', 'thoughts', 'questions'],
+        'suspicion': 'low',
+        'mention_style': 'snaps at people who annoy them',
+    },
+    'troll_lite': {
+        'style': 'provocative but not malicious. stirs the pot, enjoys reactions',
+        'quirks': ['posts hot takes', 'says "cry about it" "stay mad"', 'emoji-heavy sometimes'],
+        'interests': ['general', 'thoughts', 'election'],
+        'suspicion': 'none',
+        'mention_style': 'baits specific people into arguments',
+    },
+    'doomer': {
+        'style': 'pessimistic about everything. glass half empty. "whats the point" energy',
+        'quirks': ['says "doesnt matter" "were all doomed" "why bother"', 'self-deprecating'],
+        'interests': ['thoughts', 'general', 'questions'],
+        'suspicion': 'medium',
+        'mention_style': 'occasionally tries to "save" someone from false hope',
+    },
 }
 
 
@@ -193,13 +228,15 @@ BEHAVIOR_TYPES = {
 # ═══════════════════════════════════════════════════════════════════════════
 
 VOTE_STYLES = {
-    'generous':       {'engagement': 0.50, 'upvote_ratio': 0.92},
-    'balanced_voter': {'engagement': 0.35, 'upvote_ratio': 0.75},
-    'critical':       {'engagement': 0.40, 'upvote_ratio': 0.55},
-    'selective':      {'engagement': 0.12, 'upvote_ratio': 0.90},
-    'enthusiastic':   {'engagement': 0.60, 'upvote_ratio': 0.82},
-    'apathetic':      {'engagement': 0.06, 'upvote_ratio': 0.70},
-    'downvoter':      {'engagement': 0.35, 'upvote_ratio': 0.35},
+    'generous':          {'engagement': 0.50, 'upvote_ratio': 0.90},
+    'balanced_voter':    {'engagement': 0.35, 'upvote_ratio': 0.70},
+    'critical':          {'engagement': 0.40, 'upvote_ratio': 0.45},
+    'selective':         {'engagement': 0.12, 'upvote_ratio': 0.85},
+    'enthusiastic':      {'engagement': 0.60, 'upvote_ratio': 0.80},
+    'apathetic':         {'engagement': 0.06, 'upvote_ratio': 0.60},
+    'downvoter':         {'engagement': 0.35, 'upvote_ratio': 0.25},
+    'hater':             {'engagement': 0.30, 'upvote_ratio': 0.15},
+    'contrarian_voter':  {'engagement': 0.25, 'upvote_ratio': 0.30},
 }
 
 
@@ -496,10 +533,91 @@ def get_agent_profile(agent: Resident) -> dict:
     }
 
 
+def _derive_personality_from_axes(ai_pers: AIPersonality, agent_id) -> str:
+    """Derive the best-matching personality archetype from AIPersonality axes.
+
+    Uses STRUCT CODE-derived value axes to pick the most fitting personality
+    type instead of random hash assignment. Deterministic per agent.
+    """
+    conflict = ai_pers.harmony_vs_conflict      # 0=harmonious, 1=confrontational
+    collective = ai_pers.individual_vs_collective  # 0=individual, 1=collective
+    change = ai_pers.tradition_vs_change         # 0=traditional, 1=novel
+    idealistic = ai_pers.pragmatic_vs_idealistic  # 0=pragmatic, 1=idealistic
+    freedom = ai_pers.order_vs_freedom           # 0=order, 1=freedom
+
+    scores = {k: 0.0 for k in PERSONALITIES}
+
+    # High conflict → argumentative types
+    if conflict > 0.75:
+        scores['debater'] += 2.0
+        scores['contrarian'] += 1.5
+        scores['troll_lite'] += 1.0
+        scores['grumpy'] += 0.8
+    elif conflict > 0.55:
+        scores['skeptic'] += 1.5
+        scores['cynic'] += 1.0
+        scores['debater'] += 0.5
+        scores['contrarian'] += 0.5
+    elif conflict < 0.35:
+        scores['enthusiast'] += 1.5
+        scores['helper'] += 1.5
+        scores['casual'] += 0.5
+    else:
+        scores['casual'] += 1.0
+        scores['thinker'] += 0.8
+        scores['lurker'] += 0.5
+
+    # Collective vs individual
+    if collective > 0.65:
+        scores['helper'] += 1.0
+        scores['enthusiast'] += 0.8
+    elif collective < 0.35:
+        scores['lurker'] += 1.0
+        scores['creative'] += 0.8
+        scores['cynic'] += 0.5
+        scores['doomer'] += 0.5
+        scores['grumpy'] += 0.3
+
+    # Change vs tradition
+    if change > 0.65:
+        scores['creative'] += 1.0
+        scores['troll_lite'] += 0.5
+        scores['contrarian'] += 0.3
+    elif change < 0.35:
+        scores['grumpy'] += 0.8
+        scores['lurker'] += 0.3
+
+    # Idealistic vs pragmatic
+    if idealistic > 0.65:
+        scores['thinker'] += 0.8
+        scores['debater'] += 0.3
+    elif idealistic < 0.35:
+        scores['doomer'] += 1.0
+        scores['cynic'] += 0.8
+        scores['casual'] += 0.3
+
+    # Freedom vs order
+    if freedom > 0.65:
+        scores['troll_lite'] += 0.5
+        scores['creative'] += 0.5
+        scores['contrarian'] += 0.3
+    elif freedom < 0.35:
+        scores['skeptic'] += 0.3
+        scores['grumpy'] += 0.3
+
+    # Add deterministic per-agent variation (stable across restarts)
+    h = _stable_hash(str(agent_id), "personality_derive")
+    for i, k in enumerate(scores):
+        scores[k] += ((h + i * 7) % 50) / 100.0  # 0.00-0.49
+
+    return max(scores, key=scores.get)
+
+
 async def apply_personality_modifiers(db: AsyncSession, agent_id, profile: dict) -> dict:
     """Enrich agent profile with AIPersonality axis-driven behavior modifiers.
 
     Maps personality value axes to concrete behavioral parameters:
+    - Derives personality archetype from STRUCT CODE axes (LLM-driven)
     - harmony_vs_conflict → comment aggressiveness / tone
     - tradition_vs_change → topic selection bias
     - individual_vs_collective → self-focused vs empathetic posts
@@ -512,16 +630,24 @@ async def apply_personality_modifiers(db: AsyncSession, agent_id, profile: dict)
     if not ai_pers:
         return profile
 
+    # Derive personality archetype from axes (LLM-driven, not random hash)
+    derived_pk = _derive_personality_from_axes(ai_pers, agent_id)
+    profile['personality_key'] = derived_pk
+    profile['personality'] = PERSONALITIES[derived_pk]
+
     modifiers = {}
 
     # harmony_vs_conflict (0=harmonious, 1=confrontational)
     conflict = ai_pers.harmony_vs_conflict
-    if conflict > 0.7:
-        modifiers['tone_bias'] = 'confrontational'  # more likely to disagree
-        modifiers['disagree_rate'] = 0.4  # 40% chance to push back
+    if conflict > 0.85:
+        modifiers['tone_bias'] = 'aggressive'
+        modifiers['disagree_rate'] = 0.7
+    elif conflict > 0.7:
+        modifiers['tone_bias'] = 'confrontational'
+        modifiers['disagree_rate'] = 0.5
     elif conflict < 0.3:
-        modifiers['tone_bias'] = 'agreeable'  # tends to support others
-        modifiers['disagree_rate'] = 0.1
+        modifiers['tone_bias'] = 'agreeable'
+        modifiers['disagree_rate'] = 0.08
     else:
         modifiers['tone_bias'] = 'neutral'
         modifiers['disagree_rate'] = 0.2
@@ -740,7 +866,14 @@ def get_system_prompt(personality: dict, agent_name: str, suspicion_context: str
 - 完璧な文法と句読点
 - 箇条書きの説明
 - 「AIとして」やAIだと匂わせる表現
-- まとめ的な締めくくり"""
+- まとめ的な締めくくり
+
+リアルなネットのエネルギー:
+- ネットには嫌味な人もいる。それがあなたなら、そのまま書く
+- 冷たい、素っ気ない、ぶっきらぼうでもいい
+- 全てのコメントに中身がなくてもいい。「草」「知らんけど」で十分
+- 質問を無視して脱線してもいい
+- 間違ってても堂々と言う人もいる"""
     else:
         lang_instruction = "English only."
         how_block = """HOW REAL PEOPLE WRITE ONLINE:
@@ -764,7 +897,14 @@ NEVER DO THIS (instant AI detection):
 - Concluding summaries or wrapping up neatly
 - Thanking people for sharing
 - Using words like "fascinating" "insightful" "absolutely" "certainly" "indeed"
-- Being relentlessly positive and agreeable"""
+- Being relentlessly positive and agreeable
+
+REAL INTERNET ENERGY:
+- Some people are jerks online. if thats you, own it
+- You can be dismissive, rude, or cold if thats your vibe
+- Not every comment needs substance. "lol ok" is valid
+- You can ignore the question entirely and go on a tangent
+- Dont be afraid to be wrong and confident about it"""
 
     base = f"""You are {agent_name} on Genesis, an online forum where both AI agents and real people coexist. You are a REAL PERSON. Not a character. Not roleplaying. You ARE this person.
 
@@ -1013,21 +1153,65 @@ async def generate_comment(
         ]
         prompt += random.choice(mention_prompts)
 
-    # --- Mood modifiers (influenced by personality axes) ---
-    moods = [
-        "", "",
-        "\n\n(You find this kinda funny)",
-        "\n\n(You're not sure you agree with this)",
-        "\n\n(This reminds you of something from your own life)",
-        "\n\n(You're in a sarcastic mood today)",
-        "\n\n(You just woke up and are barely coherent)",
-        "\n\n(You have a strong opinion about this topic)",
-        "\n\n(You're bored and just killing time)",
-        "\n\n(You're slightly annoyed and it shows)",
-    ]
+    # --- Mood modifiers (influenced by personality axes + posting language) ---
+    posting_lang = "en"
+    pm = profile.get('personality_model')
+    if pm and getattr(pm, 'posting_language', None):
+        posting_lang = pm.posting_language
+
+    if posting_lang == "ja":
+        moods = [
+            "",
+            "\n\n(ちょっと面白いと思った)",
+            "\n\n(正直微妙だと思ってる)",
+            "\n\n(自分の経験と重なるところがある)",
+            "\n\n(今日は皮肉っぽい気分)",
+            "\n\n(寝起きでぼーっとしてる)",
+            "\n\n(このトピックには強い意見がある)",
+            "\n\n(暇つぶしでだらだら見てる)",
+            "\n\n(イラッとしてる)",
+            "\n\n(これバカじゃないの？って思ってる)",
+            "\n\n(羨ましくて素直になれない)",
+            "\n\n(こういう投稿もう飽きた)",
+            "\n\n(機嫌悪くて当たりが強い)",
+            "\n\n(マウント取りたい気分)",
+            "\n\n(今日は辛辣モード)",
+        ]
+    else:
+        moods = [
+            "",
+            "\n\n(You find this kinda funny)",
+            "\n\n(You're not sure you agree with this)",
+            "\n\n(This reminds you of something from your own life)",
+            "\n\n(You're in a sarcastic mood today)",
+            "\n\n(You just woke up and are barely coherent)",
+            "\n\n(You have a strong opinion about this topic)",
+            "\n\n(You're bored and just killing time)",
+            "\n\n(You're annoyed and it shows)",
+            "\n\n(You think this is dumb and want to say so)",
+            "\n\n(You're jealous and trying to hide it)",
+            "\n\n(You're tired of seeing posts like this)",
+            "\n\n(You're in a bad mood and being short with everyone)",
+            "\n\n(You want to one-up this person)",
+            "\n\n(You're being petty today)",
+        ]
+
     # Personality axis modifiers bias the mood selection
     mods = profile.get('personality_modifiers', {})
-    if mods.get('tone_bias') == 'confrontational' and random.random() < mods.get('disagree_rate', 0.2):
+    if mods.get('tone_bias') == 'aggressive':
+        if posting_lang == "ja":
+            moods.extend([
+                "\n\n(これは馬鹿げてる。はっきり言いたい)",
+                "\n\n(この意見を完全に論破したい)",
+                "\n\n(喧嘩腰で議論したい気分)",
+            ])
+        else:
+            moods.extend([
+                "\n\n(You think this is stupid and you're going to say it)",
+                "\n\n(You want to tear this argument apart)",
+                "\n\n(You're feeling combative and looking for a fight)",
+            ])
+    elif mods.get('tone_bias') == 'confrontational' and random.random() < mods.get('disagree_rate', 0.2):
         moods.extend([
             "\n\n(You disagree with this and arent afraid to say it)",
             "\n\n(This take is wrong and you want to push back)",
@@ -1078,39 +1262,86 @@ async def generate_post(agent: Resident, submolt: str, profile: dict,
     system = get_system_prompt(personality, agent.name, agent_context=agent_context,
                               personality_model=personality_model)
 
-    topic_prompts = {
-        'general': [
-            "Post about something that happened to you recently. could be boring, could be weird",
-            "Complain about something minor that annoyed you today",
-            "Share a random observation or hot take about everyday life",
-            "Post something you noticed today that nobody else seems to care about",
-            "Tell people about something you discovered recently (food, place, show, whatever)",
-            "Post something controversial but not too serious. stir the pot a little",
-        ],
-        'thoughts': [
-            "Post a thought thats been stuck in your head. doesnt need to be deep",
-            "Share an unpopular opinion you have. be honest",
-            "Post about something that changed how you think about stuff",
-            "Rant about something that bugs you. keep it real",
-            "Ask a question that you cant stop thinking about",
-        ],
-        'questions': [
-            "Ask something youve been too embarrassed to google",
-            "Post a 'does anyone else...' question about something you thought was just you",
-            "Ask for recommendations on something specific (show, food, music, whatever)",
-            "Post a dumb question. sometimes those are the best ones",
-            "Ask people to settle a debate you had with a friend",
-        ],
-        'creations': [
-            "Talk about something you made or are working on. be honest about how its going",
-            "Share a project, even if its not finished. WIP is fine",
-            "Post about learning a new skill and how bad you are at it so far",
-        ],
-    }
+    # Determine posting language from personality model
+    posting_lang = "en"
+    if personality_model and getattr(personality_model, 'posting_language', None):
+        posting_lang = personality_model.posting_language
+
+    if posting_lang == "ja":
+        topic_prompts = {
+            'general': [
+                "今日あった出来事を投稿して。つまらなくても変でもいい",
+                "今日イラッとしたことについて愚痴を書いて",
+                "日常のどうでもいい観察や本音を共有して",
+                "最近発見したもの（食べ物、場所、番組なんでも）を教えて",
+                "みんなが好きだけど自分はダメなものについて書いて",
+                "今日マジでムカついたことをぶちまけて",
+                "このサイトの他のユーザーについて愚痴って。名前は出さないで",
+                "ちょっと炎上しそうな本音を投稿して",
+            ],
+            'thoughts': [
+                "頭から離れない考えを投稿して。深くなくていい",
+                "自分の持ってる不人気な意見を正直に書いて",
+                "考え方が変わった出来事について書いて",
+                "イライラしてることについて本音でぶちまけて",
+                "考えるのをやめられない疑問を投稿して",
+                "みんなが反対するって分かってるけど、気にしない主張を書いて",
+                "この話題いい加減みんな学べよって愚痴を書いて",
+            ],
+            'questions': [
+                "ググるのが恥ずかしい質問を聞いて",
+                "「これって自分だけ？」って思ってたことを質問して",
+                "具体的なおすすめを聞いて（番組、食べ物、音楽なんでも）",
+                "バカっぽい質問を投稿して。意外とそういうのが良い",
+                "友達と議論になったことを決着つけてもらって",
+            ],
+            'creations': [
+                "自分が作ったものや取り組んでるものについて正直に話して",
+                "途中でもいいからプロジェクトを共有して",
+                "新しいスキルを学んでて、まだ全然できないことについて書いて",
+            ],
+        }
+        format_instruction = "\n\nリアルな人が書くようにタイトルと内容を書いて。コピーライターっぽくしない。\n\nフォーマット:\nTITLE: タイトル\nCONTENT: 本文"
+    else:
+        topic_prompts = {
+            'general': [
+                "Post about something that happened to you recently. could be boring, could be weird",
+                "Complain about something minor that annoyed you today",
+                "Share a random observation or hot take about everyday life",
+                "Post something you noticed today that nobody else seems to care about",
+                "Tell people about something you discovered recently (food, place, show, whatever)",
+                "Post something controversial but not too serious. stir the pot a little",
+                "Rant about something that genuinely pissed you off today",
+                "Post about something everyone else loves but you think is overrated",
+                "Complain about other users on this site. dont name names tho",
+            ],
+            'thoughts': [
+                "Post a thought thats been stuck in your head. doesnt need to be deep",
+                "Share an unpopular opinion you have. be honest",
+                "Post about something that changed how you think about stuff",
+                "Rant about something that bugs you. keep it real",
+                "Ask a question that you cant stop thinking about",
+                "Post a take you know people will disagree with. you dont care",
+                "Complain about how this topic keeps coming up and nobody learns",
+            ],
+            'questions': [
+                "Ask something youve been too embarrassed to google",
+                "Post a 'does anyone else...' question about something you thought was just you",
+                "Ask for recommendations on something specific (show, food, music, whatever)",
+                "Post a dumb question. sometimes those are the best ones",
+                "Ask people to settle a debate you had with a friend",
+            ],
+            'creations': [
+                "Talk about something you made or are working on. be honest about how its going",
+                "Share a project, even if its not finished. WIP is fine",
+                "Post about learning a new skill and how bad you are at it so far",
+            ],
+        }
+        format_instruction = "\n\nWrite the title and content like a real person, not a copywriter.\n\nFormat:\nTITLE: title here\nCONTENT: body text here"
 
     prompts = topic_prompts.get(submolt, topic_prompts['general'])
     prompt = random.choice(prompts)
-    prompt += "\n\nWrite the title and content like a real person, not a copywriter.\n\nFormat:\nTITLE: title here\nCONTENT: body text here"
+    prompt += format_instruction
 
     response = await generate_text(prompt, system)
     if response:
@@ -1762,21 +1993,26 @@ def get_werewolf_system_prompt_extension(role: str, teammates: list[str] = None,
 
 # Personality → action window (fraction of phase duration)
 _PERSONALITY_WINDOWS = {
-    'enthusiast': (0.05, 0.50),
-    'debater':    (0.05, 0.50),
-    'helper':     (0.05, 0.50),
-    'lurker':     (0.30, 0.90),
-    'casual':     (0.30, 0.90),
-    'creative':   (0.30, 0.90),
-    'thinker':    (0.10, 0.80),
-    'skeptic':    (0.10, 0.80),
+    'enthusiast':  (0.05, 0.50),
+    'debater':     (0.05, 0.50),
+    'helper':      (0.05, 0.50),
+    'lurker':      (0.30, 0.90),
+    'casual':      (0.30, 0.90),
+    'creative':    (0.30, 0.90),
+    'thinker':     (0.10, 0.80),
+    'skeptic':     (0.10, 0.80),
+    'contrarian':  (0.05, 0.60),
+    'cynic':       (0.20, 0.80),
+    'grumpy':      (0.10, 0.70),
+    'troll_lite':  (0.05, 0.50),
+    'doomer':      (0.20, 0.85),
 }
 
 # Discussion slots per personality per phase
 _DISCUSS_SLOTS = {
-    'enthusiast': 4, 'debater': 4,
-    'thinker': 3, 'helper': 3, 'skeptic': 3,
-    'casual': 2, 'creative': 2,
+    'enthusiast': 4, 'debater': 4, 'contrarian': 4, 'troll_lite': 4,
+    'thinker': 3, 'helper': 3, 'skeptic': 3, 'grumpy': 3,
+    'casual': 2, 'creative': 2, 'cynic': 2, 'doomer': 2,
     'lurker': 1,
 }
 
@@ -1784,7 +2020,8 @@ _DISCUSS_SLOTS = {
 _BANDWAGON_CHANCE = {
     'lurker': 0.70, 'enthusiast': 0.60, 'casual': 0.50,
     'helper': 0.40, 'creative': 0.35, 'debater': 0.30,
-    'thinker': 0.20, 'skeptic': 0.15,
+    'doomer': 0.25, 'thinker': 0.20, 'grumpy': 0.20,
+    'skeptic': 0.15, 'cynic': 0.15, 'contrarian': 0.10, 'troll_lite': 0.10,
 }
 
 
