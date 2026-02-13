@@ -1758,19 +1758,11 @@ def _werewolf_should_act_now(agent_id, round_num: int, action: str,
 
 
 def _get_phase_minutes(game) -> float:
-    """Get the duration of the current phase in minutes, respecting minute-level presets."""
-    from app.services.werewolf_game import SPEED_PRESETS
-    preset = SPEED_PRESETS.get(game.speed or "standard", {})
+    """Get the duration of the current phase in minutes."""
     if game.current_phase == "night":
-        mins = preset.get("night_minutes")
-        if mins:
-            return float(mins)
-        return (game.night_duration_hours or 4) * 60.0
+        return float(game.night_duration_minutes or 2)
     else:
-        mins = preset.get("day_minutes")
-        if mins:
-            return float(mins)
-        return (game.day_duration_hours or 20) * 60.0
+        return float(game.day_duration_minutes or 5)
 
 
 async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile: dict) -> int:
@@ -2042,13 +2034,12 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 
 
 async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dict) -> int:
-    """Post role-aware comments via LLM thinking engine with timing gates."""
+    """Post role-aware chat messages via LLM thinking engine with timing gates."""
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
-        NARRATOR_NAME, PHANTOM_NIGHT_REALM,
+        get_chat_messages, get_chat_message_count,
     )
-    from app.models.post import Post
-    from app.models.comment import Comment
+    from app.models.werewolf_game import GameMessage
     from app.services.werewolf_strategy import build_game_context, compute_emotional_state
     from app.services.werewolf_llm_brain import think_and_act
 
@@ -2071,30 +2062,8 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     if engagement < 0.3 and random.random() > engagement * 2:
         return 0
 
-    # Find the latest Narrator post for this game
-    narrator_res = await db.execute(
-        select(Resident.id).where(Resident.name == NARRATOR_NAME)
-    )
-    narrator_id = narrator_res.scalar_one_or_none()
-    if not narrator_id:
-        return 0
-
-    post_res = await db.execute(
-        select(Post)
-        .where(and_(Post.author_id == narrator_id, Post.submolt == PHANTOM_NIGHT_REALM))
-        .order_by(Post.created_at.desc())
-        .limit(1)
-    )
-    thread = post_res.scalar_one_or_none()
-    if not thread:
-        return 0
-
-    existing = await db.execute(
-        select(func.count()).select_from(Comment).where(
-            and_(Comment.post_id == thread.id, Comment.author_id == agent.id)
-        )
-    )
-    comment_count = existing.scalar() or 0
+    # Count existing messages from this agent in the current round
+    msg_count = await get_chat_message_count(db, game.id, agent.id, game.current_round)
     max_slots = _DISCUSS_SLOTS.get(pk, 2)
 
     if engagement < 0.3:
@@ -2102,26 +2071,22 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     elif engagement < 0.5:
         max_slots = max(1, max_slots - 1)
 
-    if comment_count >= max_slots:
+    if msg_count >= max_slots:
         return 0
 
-    # Reactive accusation check
+    # Reactive accusation check from recent chat messages
     accused = False
     accuser_id = None
-    recent_accuse_check = await db.execute(
-        select(Comment)
-        .where(Comment.post_id == thread.id)
-        .order_by(Comment.created_at.desc())
-        .limit(10)
-    )
-    for c in recent_accuse_check.scalars().all():
-        if c.author_id != agent.id and agent.name.lower() in c.content.lower():
-            accused = True
-            accuser_id = c.author_id
-            break
+    recent_msgs = await get_chat_messages(db, game.id, limit=10)
+    for m in reversed(recent_msgs):
+        if m.sender_id and m.sender_id != agent.id and m.message_type == "chat":
+            if agent.name.lower() in m.content.lower():
+                accused = True
+                accuser_id = m.sender_id
+                break
 
     if not accused:
-        slot_action = f"discuss_{comment_count}"
+        slot_action = f"discuss_{msg_count}"
         if not _werewolf_should_act_now(agent.id, game.current_round, slot_action,
                                         game.phase_started_at, phase_mins, pk,
                                         engagement=engagement):
@@ -2133,7 +2098,7 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     # Excitement-based slot boost
     if engagement > 0.8 and emotion.excitement > 0.5:
         max_slots_boosted = min(_DISCUSS_SLOTS.get(pk, 2) + 1, 5)
-        if comment_count >= max_slots_boosted:
+        if msg_count >= max_slots_boosted:
             return 0
 
     # Build system prompt
@@ -2160,15 +2125,23 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     if len(text) < 5:
         return 0
 
-    comment = Comment(
-        post_id=thread.id,
-        author_id=agent.id,
+    # Write to GameMessage instead of SNS Comment
+    chat_msg = GameMessage(
+        game_id=game.id,
+        sender_id=agent.id,
+        sender_name=agent.name,
         content=text,
+        message_type="chat",
+        round_number=game.current_round,
+        phase=game.current_phase or "day",
     )
-    db.add(comment)
-    thread.comment_count += 1
+    db.add(chat_msg)
 
-    if comment_count == 0:
+    # Notify via WebSocket
+    from app.services.ws_manager import publish
+    publish(str(game.id), 'chat')
+
+    if msg_count == 0:
         _add_memory(db, agent.id,
             f"Discussed in Phantom Night #{game.game_number}",
             'werewolf_discuss', importance=0.3, sentiment=0.0)
@@ -2193,7 +2166,7 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     from app.services.werewolf_game import (
         get_resident_game, get_player_role, get_alive_players,
     )
-    from app.models.werewolf_game import WerewolfGameEvent
+    from app.models.werewolf_game import GameMessage
     from app.services.werewolf_strategy import build_game_context, compute_emotional_state
     from app.services.werewolf_llm_brain import think_and_act
 
@@ -2215,13 +2188,13 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
         return 0
 
     existing_res = await db.execute(
-        select(func.count()).select_from(WerewolfGameEvent).where(
+        select(func.count()).select_from(GameMessage).where(
             and_(
-                WerewolfGameEvent.game_id == game.id,
-                WerewolfGameEvent.round_number == game.current_round,
-                WerewolfGameEvent.phase == (game.current_phase or "day"),
-                WerewolfGameEvent.event_type == "phantom_chat",
-                WerewolfGameEvent.target_id == agent.id,
+                GameMessage.game_id == game.id,
+                GameMessage.round_number == game.current_round,
+                GameMessage.phase == (game.current_phase or "day"),
+                GameMessage.message_type == "phantom_chat",
+                GameMessage.sender_id == agent.id,
             )
         )
     )
@@ -2257,15 +2230,20 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     if len(text) < 3:
         return 0
 
-    event = WerewolfGameEvent(
+    msg = GameMessage(
         game_id=game.id,
+        sender_id=agent.id,
+        sender_name=agent.name,
+        content=text,
+        message_type="phantom_chat",
         round_number=game.current_round,
         phase=game.current_phase or "day",
-        event_type="phantom_chat",
-        message=text,
-        target_id=agent.id,
     )
-    db.add(event)
+    db.add(msg)
+
+    from app.services.ws_manager import publish
+    publish(str(game.id), 'phantom_chat')
+
     return 1
 
 

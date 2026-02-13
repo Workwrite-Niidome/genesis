@@ -15,12 +15,14 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.resident import Resident
 from app.models.werewolf_game import (
-    WerewolfGame, WerewolfRole, NightAction, DayVote, WerewolfGameEvent, ROLES,
+    WerewolfGame, WerewolfRole, NightAction, DayVote, WerewolfGameEvent,
+    GameMessage, ROLES,
 )
 from app.schemas.werewolf import (
     GameResponse, MyRoleResponse, PlayerInfo,
     NightActionRequest, NightActionResponse,
-    QuickStartRequest, CreateGameRequest, LobbyResponse, LobbyPlayerInfo,
+    ChatMessageRequest, ChatMessageResponse,
+    CreateGameRequest, LobbyResponse, LobbyPlayerInfo,
     DayVoteRequest, DayVoteResponse, DayVotesResponse, VoteTallyEntry, VoteDetail,
     EventResponse, EventList,
     PhantomChatRequest, PhantomChatMessage, PhantomChatResponse,
@@ -36,6 +38,8 @@ from app.services.werewolf_game import (
     submit_debugger_identify,
     submit_day_vote, get_vote_tally, get_votes_for_round,
     get_game_events, get_game_history,
+    get_chat_messages, send_chat_message,
+    get_chat_message_count, get_last_message_time,
 )
 from app.routers.auth import get_current_resident, get_optional_resident
 
@@ -73,15 +77,14 @@ async def _get_my_game(db: AsyncSession, resident: Resident) -> WerewolfGame:
 
 @router.post("/quick-start", response_model=GameResponse)
 async def quick_start(
-    data: QuickStartRequest,
+    data: CreateGameRequest,
     current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
     """Create and immediately start a game. AI fills all remaining slots."""
     try:
         game = await quick_start_game(
-            db, current_resident.id, data.max_players,
-            data.day_duration_hours, data.night_duration_hours,
+            db, current_resident.id, data.max_players, data.speed,
         )
         return GameResponse.model_validate(game)
     except ValueError as e:
@@ -485,6 +488,68 @@ async def get_day_votes(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# GAME CHAT
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/chat", response_model=list[ChatMessageResponse])
+async def get_chat_history(
+    limit: int = Query(50, ge=1, le=200),
+    after: Optional[str] = Query(None),
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get chat messages for your current game."""
+    game = await _get_my_game(db, current_resident)
+
+    after_dt = None
+    if after:
+        try:
+            after_dt = datetime.fromisoformat(after)
+        except ValueError:
+            pass
+
+    messages = await get_chat_messages(db, game.id, limit, after_dt)
+    return [ChatMessageResponse.model_validate(m) for m in messages]
+
+
+@router.post("/chat", response_model=ChatMessageResponse)
+async def post_chat_message(
+    data: ChatMessageRequest,
+    current_resident: Resident = Depends(get_current_resident),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a chat message (day phase, alive players only)."""
+    game = await _get_my_game(db, current_resident)
+
+    if game.current_phase != "day":
+        raise HTTPException(status_code=400, detail="Chat is only available during the day phase")
+
+    role = await get_player_role(db, game.id, current_resident.id)
+    if not role or not role.is_alive:
+        raise HTTPException(status_code=400, detail="Dead players cannot chat")
+
+    # Rate limit: 3 seconds between messages
+    last_time = await get_last_message_time(db, game.id, current_resident.id)
+    if last_time:
+        elapsed = (datetime.utcnow() - last_time).total_seconds()
+        if elapsed < 3:
+            raise HTTPException(status_code=429, detail="Please wait before sending another message")
+
+    # Per-round limit: 30 messages
+    msg_count = await get_chat_message_count(db, game.id, current_resident.id, game.current_round)
+    if msg_count >= 30:
+        raise HTTPException(status_code=429, detail="Message limit reached for this round")
+
+    msg = await send_chat_message(db, game, current_resident, data.content)
+    await db.flush()
+
+    from app.services.ws_manager import publish
+    publish(str(game.id), 'chat')
+
+    return ChatMessageResponse.model_validate(msg)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # PHANTOM CHAT
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -500,40 +565,19 @@ async def get_phantom_chat(
     if not role or role.team != "phantoms":
         raise HTTPException(status_code=403, detail="Only Phantom team members can access this chat")
 
-    result = await db.execute(
-        select(WerewolfGameEvent)
-        .where(
-            and_(
-                WerewolfGameEvent.game_id == game.id,
-                WerewolfGameEvent.event_type == "phantom_chat",
-            )
+    messages = await get_chat_messages(db, game.id, limit=50, include_phantom=True)
+    phantom_msgs = [m for m in messages if m.message_type == "phantom_chat"]
+
+    return PhantomChatResponse(messages=[
+        PhantomChatMessage(
+            id=m.id,
+            sender_id=m.sender_id or m.id,  # fallback for system
+            sender_name=m.sender_name,
+            message=m.content,
+            created_at=m.created_at,
         )
-        .order_by(WerewolfGameEvent.created_at.asc())
-        .limit(50)
-    )
-    chat_events = result.scalars().all()
-
-    # Batch-load sender names to avoid N+1 queries
-    sender_ids = {e.target_id for e in chat_events if e.target_id}
-    sender_map = {}
-    if sender_ids:
-        name_res = await db.execute(
-            select(Resident.id, Resident.name).where(Resident.id.in_(sender_ids))
-        )
-        sender_map = {row.id: row.name for row in name_res.all()}
-
-    messages = []
-    for e in chat_events:
-        if e.target_id:
-            messages.append(PhantomChatMessage(
-                id=e.id,
-                sender_id=e.target_id,
-                sender_name=sender_map.get(e.target_id, "unknown"),
-                message=e.message,
-                created_at=e.created_at,
-            ))
-
-    return PhantomChatResponse(messages=messages)
+        for m in phantom_msgs if m.sender_id
+    ])
 
 
 @router.post("/phantom-chat", response_model=PhantomChatMessage)
@@ -549,27 +593,27 @@ async def send_phantom_chat(
     if not role or role.team != "phantoms":
         raise HTTPException(status_code=403, detail="Only Phantom team members can send messages")
 
-    event = WerewolfGameEvent(
+    msg = GameMessage(
         game_id=game.id,
+        sender_id=current_resident.id,
+        sender_name=current_resident.name,
+        content=data.message,
+        message_type="phantom_chat",
         round_number=game.current_round,
         phase=game.current_phase or "day",
-        event_type="phantom_chat",
-        message=data.message,
-        target_id=current_resident.id,
     )
-    db.add(event)
+    db.add(msg)
     await db.flush()
 
-    # Notify other phantom team members
     from app.services.ws_manager import publish
     publish(str(game.id), 'phantom_chat')
 
     return PhantomChatMessage(
-        id=event.id,
+        id=msg.id,
         sender_id=current_resident.id,
         sender_name=current_resident.name,
         message=data.message,
-        created_at=event.created_at,
+        created_at=msg.created_at,
     )
 
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 
-export type RefreshScope = 'comments' | 'votes' | 'game' | 'phantom_chat' | 'events' | 'players'
+export type RefreshScope = 'comments' | 'votes' | 'game' | 'phantom_chat' | 'chat' | 'phase_change' | 'events' | 'players'
 
 interface UseGameWebSocketOptions {
   gameId: string | null

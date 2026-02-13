@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Ghost, Play, Users, Clock, Zap, Timer, LogOut, RefreshCw, Flame } from 'lucide-react'
+import { Ghost, Play, Users, LogOut, RefreshCw, Zap, Timer } from 'lucide-react'
 import { api, WerewolfGame, WerewolfLobby } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import Button from '@/components/ui/Button'
@@ -12,24 +12,12 @@ interface LobbyPanelProps {
 
 const SPEED_PRESETS = [
   {
-    key: 'casual',
-    label: 'Casual',
-    day: '18min',
-    night: '6min',
-    round: '~25min',
-    description: 'Quick lunch-break games',
-    icon: Flame,
-    color: 'text-orange-400',
-    bgColor: 'bg-orange-500/10 border-orange-500/30',
-    activeColor: 'bg-orange-600 border-orange-500 text-white',
-  },
-  {
-    key: 'quick',
-    label: 'Quick',
-    day: '3h',
-    night: '1h',
-    round: '4h',
-    description: 'Fast games, quick rounds',
+    key: 'short',
+    label: 'Short',
+    day: '3 min',
+    night: '1 min',
+    round: '~4 min',
+    description: 'Quick fast-paced games',
     icon: Zap,
     color: 'text-yellow-400',
     bgColor: 'bg-yellow-500/10 border-yellow-500/30',
@@ -38,34 +26,22 @@ const SPEED_PRESETS = [
   {
     key: 'standard',
     label: 'Standard',
-    day: '8h',
-    night: '2h',
-    round: '10h',
-    description: 'Balanced for daily play',
+    day: '5 min',
+    night: '2 min',
+    round: '~7 min',
+    description: 'Balanced discussion time',
     icon: Timer,
     color: 'text-purple-400',
     bgColor: 'bg-purple-500/10 border-purple-500/30',
     activeColor: 'bg-purple-600 border-purple-500 text-white',
   },
-  {
-    key: 'extended',
-    label: 'Extended',
-    day: '20h',
-    night: '4h',
-    round: '24h',
-    description: 'Deep discussion, 1 round/day',
-    icon: Clock,
-    color: 'text-blue-400',
-    bgColor: 'bg-blue-500/10 border-blue-500/30',
-    activeColor: 'bg-blue-600 border-blue-500 text-white',
-  },
 ] as const
 
-const PLAYER_PRESETS = [10, 20, 30, 50]
+const PLAYER_PRESETS = [5, 8, 10, 15]
 
 export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
   const { resident } = useAuthStore()
-  const [maxPlayers, setMaxPlayers] = useState(20)
+  const [maxPlayers, setMaxPlayers] = useState(8)
   const [speed, setSpeed] = useState<string>('standard')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
@@ -79,7 +55,6 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
     try {
       const data = await api.werewolfGetLobbies()
       setLobbies(data)
-      // Check if current user is in any lobby
       if (resident) {
         const mine = data.find(l =>
           l.players.some(p => p.id === resident.id)
@@ -102,9 +77,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
     setError('')
     try {
       const game = await api.werewolfCreateGame(maxPlayers, speed)
-      // After creating, the user is in a lobby — refresh lobbies
       await fetchLobbies()
-      // If the game immediately started (shouldn't, but check), notify parent
       if (game.status !== 'preparing') {
         onGameStarted(game)
       }
@@ -181,12 +154,11 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
               Game #{myLobby.game_number} — Waiting Room
             </h2>
             <p className="text-sm text-text-muted mt-1">
-              {preset.label} speed ({preset.day} day / {preset.night} night) — {myLobby.max_players} players
+              {preset.label} ({preset.day} day / {preset.night} night) — {myLobby.max_players} players
             </p>
           </div>
 
           <div className="p-5 space-y-4">
-            {/* Players */}
             <div>
               <div className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-3">
                 <Users size={16} />
@@ -206,7 +178,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
                 ))}
               </div>
               <p className="text-xs text-text-muted mt-2">
-                AI agents will fill remaining {(myLobby.max_players || 10) - myLobby.current_player_count} slots when the game starts.
+                AI agents will fill remaining {(myLobby.max_players || 8) - myLobby.current_player_count} slots when the game starts.
               </p>
             </div>
 
@@ -251,7 +223,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             Create a Game
           </h2>
           <p className="text-sm text-text-muted mt-1">
-            Choose speed and player count. Other humans can join before you start.
+            Choose speed and player count (5-15). AI agents fill remaining slots.
           </p>
         </div>
 
@@ -313,7 +285,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             <input
               type="range"
               min={5}
-              max={100}
+              max={15}
               value={maxPlayers}
               onChange={e => setMaxPlayers(Number(e.target.value))}
               className="w-full accent-purple-500"
@@ -321,7 +293,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             <div className="flex justify-between text-xs text-text-muted mt-1">
               <span>5</span>
               <span className="text-purple-400 font-medium">{maxPlayers} players</span>
-              <span>100</span>
+              <span>15</span>
             </div>
           </div>
 

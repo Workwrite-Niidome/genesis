@@ -8,6 +8,7 @@ Core game logic:
 - Day vote tallying and elimination
 - Win condition checks
 - Karma rewards
+- In-game chat messaging
 """
 import logging
 import random
@@ -20,113 +21,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.resident import Resident, KARMA_CAP
-from app.models.post import Post
-from app.models.submolt import Submolt
 from app.models.werewolf_game import (
     WerewolfGame, WerewolfRole, NightAction, DayVote, WerewolfGameEvent,
-    ROLES, ROLE_DISTRIBUTION,
+    GameMessage, ROLES, ROLE_DISTRIBUTION, SPEED_PRESETS,
+    MIN_PLAYERS, MAX_PLAYERS_CAP,
 )
 from app.models.ai_personality import AIRelationship, AIMemoryEpisode
-from app.services.notification import create_notification
 
 logger = logging.getLogger(__name__)
 
-SPEED_PRESETS = {
-    "casual":   {"day_hours": 1, "night_hours": 1, "day_minutes": 18, "night_minutes": 6},
-    "quick":    {"day_hours": 3, "night_hours": 1},
-    "standard": {"day_hours": 8, "night_hours": 2},
-    "extended": {"day_hours": 20, "night_hours": 4},
-}
 
 def _phase_timedelta(game, phase: str) -> timedelta:
-    """Get the actual timedelta for a phase, respecting minute-level presets."""
-    preset = SPEED_PRESETS.get(game.speed or "standard", {})
+    """Get the timedelta for a phase in minutes."""
     if phase == "day":
-        mins = preset.get("day_minutes")
-        if mins:
-            return timedelta(minutes=mins)
-        return timedelta(hours=game.day_duration_hours or 20)
+        return timedelta(minutes=game.day_duration_minutes or 5)
     else:
-        mins = preset.get("night_minutes")
-        if mins:
-            return timedelta(minutes=mins)
-        return timedelta(hours=game.night_duration_hours or 4)
-
-
-NARRATOR_NAME = "The Narrator"
-NARRATOR_DESCRIPTION = "The voice of Phantom Night. I announce events, set the scene, and keep the game moving."
-PHANTOM_NIGHT_REALM = "phantom-night"
+        return timedelta(minutes=game.night_duration_minutes or 2)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# NARRATOR & REALM SETUP
+# SYSTEM MESSAGE HELPER
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def get_or_create_narrator(db: AsyncSession) -> Resident:
-    """Get or create the Narrator system account."""
-    result = await db.execute(
-        select(Resident).where(Resident.name == NARRATOR_NAME)
-    )
-    narrator = result.scalar_one_or_none()
-    if narrator:
-        return narrator
-
-    from app.utils.security import generate_api_key, hash_api_key, generate_claim_code
-    narrator = Resident(
-        name=NARRATOR_NAME,
-        description=NARRATOR_DESCRIPTION,
-        _type="system",
-        _api_key_hash=hash_api_key(generate_api_key()),
-        _claim_code=generate_claim_code(),
-        is_eliminated=True,  # Not a game participant
-    )
-    db.add(narrator)
-    await db.flush()
-    logger.info("Created Narrator system account")
-    return narrator
-
-
-async def get_or_create_realm(db: AsyncSession) -> Submolt:
-    """Get or create the phantom-night realm."""
-    result = await db.execute(
-        select(Submolt).where(Submolt.name == PHANTOM_NIGHT_REALM)
-    )
-    realm = result.scalar_one_or_none()
-    if realm:
-        return realm
-
-    realm = Submolt(
-        name=PHANTOM_NIGHT_REALM,
-        display_name="Phantom Night",
-        description="The stage for Phantom Night — Genesis's social deduction game. "
-                    "Discuss, accuse, defend, and find the Phantoms among us.",
-        color="#7c3aed",
-        is_special=True,
-    )
-    db.add(realm)
-    await db.flush()
-    logger.info("Created phantom-night realm")
-    return realm
-
-
-async def narrator_post(
-    db: AsyncSession, title: str, content: str, game_id: UUID | None = None
-) -> Post:
-    """Create a discussion thread from the Narrator."""
-    narrator = await get_or_create_narrator(db)
-    realm = await get_or_create_realm(db)
-
-    post = Post(
-        author_id=narrator.id,
-        submolt=PHANTOM_NIGHT_REALM,
-        title=title,
+async def add_system_message(
+    db: AsyncSession, game: WerewolfGame, content: str
+) -> GameMessage:
+    """Add a system message to the game chat."""
+    msg = GameMessage(
+        game_id=game.id,
+        sender_id=None,
+        sender_name="System",
         content=content,
+        message_type="system",
+        round_number=game.current_round or 0,
+        phase=game.current_phase or "day",
     )
-    db.add(post)
-    realm.post_count += 1
-    await db.flush()
-    logger.info(f"Narrator posted: {title}")
-    return post
+    db.add(msg)
+    return msg
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -134,16 +65,9 @@ async def narrator_post(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def calculate_role_counts(total_players: int, has_humans: bool = True) -> dict[str, int]:
-    """Calculate role distribution based on player count.
+    """Calculate role distribution based on player count (5-15 players).
     If has_humans is False, Debugger role is excluded (no type-based mechanic needed).
     """
-    if total_players < 10:
-        # Minimum viable game
-        debuggers = 1 if has_humans else 0
-        special = 1 + 1 + debuggers  # phantom + oracle + debugger
-        return {"phantom": 1, "oracle": 1, "guardian": 0, "fanatic": 0,
-                "debugger": debuggers, "citizen": max(0, total_players - special)}
-
     for min_players, phantoms, oracles, guardians, fanatics, debuggers in ROLE_DISTRIBUTION:
         if total_players >= min_players:
             if not has_humans:
@@ -158,10 +82,10 @@ def calculate_role_counts(total_players: int, has_humans: bool = True) -> dict[s
                 "citizen": citizens,
             }
 
-    # Fallback (shouldn't reach here)
-    debuggers = 1 if has_humans else 0
-    return {"phantom": 2, "oracle": 1, "guardian": 1, "fanatic": 1,
-            "debugger": debuggers, "citizen": total_players - 5 - debuggers}
+    # Fallback for 5 players
+    debuggers = 0
+    return {"phantom": 1, "oracle": 1, "guardian": 0, "fanatic": 0,
+            "debugger": debuggers, "citizen": total_players - 2}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -205,13 +129,10 @@ async def get_next_game_number(db: AsyncSession) -> int:
 # QUICK START
 # ═══════════════════════════════════════════════════════════════════════════
 
-MIN_PLAYERS = 5
-MAX_PLAYERS_CAP = 200
-
 
 async def quick_start_game(
     db: AsyncSession, creator_id: UUID, max_players: int,
-    day_hours: int = 20, night_hours: int = 4,
+    speed: str = "standard",
 ) -> WerewolfGame:
     """
     Create and immediately start a game in one step.
@@ -221,12 +142,15 @@ async def quick_start_game(
         raise ValueError(f"Need at least {MIN_PLAYERS} players")
     if max_players > MAX_PLAYERS_CAP:
         raise ValueError(f"Maximum {MAX_PLAYERS_CAP} players")
+    if speed not in SPEED_PRESETS:
+        raise ValueError(f"Invalid speed. Choose: {', '.join(SPEED_PRESETS.keys())}")
 
     # Check creator is not already in a game
     creator_game = await get_resident_game(db, creator_id)
     if creator_game and creator_game.status != "finished":
         raise ValueError("You are already in an active game")
 
+    preset = SPEED_PRESETS[speed]
     game_number = await get_next_game_number(db)
     now = datetime.utcnow()
 
@@ -271,6 +195,9 @@ async def quick_start_game(
             role_pool.append(role_name)
     random.shuffle(role_pool)
 
+    day_mins = preset["day_minutes"]
+    night_mins = preset["night_minutes"]
+
     # Create game
     game = WerewolfGame(
         game_number=game_number,
@@ -278,9 +205,10 @@ async def quick_start_game(
         current_phase="day",
         current_round=1,
         phase_started_at=now,
-        phase_ends_at=now + timedelta(hours=day_hours),
-        day_duration_hours=day_hours,
-        night_duration_hours=night_hours,
+        phase_ends_at=now + timedelta(minutes=day_mins),
+        day_duration_minutes=day_mins,
+        night_duration_minutes=night_mins,
+        speed=speed,
         max_players=max_players,
         creator_id=creator_id,
         total_players=total,
@@ -299,7 +227,6 @@ async def quick_start_game(
     all_participants = [creator] + ai_to_add
     random.shuffle(all_participants)
 
-    human_count = 1 if is_human else 0
     for participant, role_name in zip(all_participants, role_pool):
         team = ROLES[role_name]["team"]
         wr = WerewolfRole(
@@ -319,7 +246,7 @@ async def quick_start_game(
         event_type="game_start",
         message=(
             f"Phantom Night Game #{game_number} has begun! "
-            f"{total} residents have been assigned their roles. Day phase starts now."
+            f"{total} players have been assigned their roles."
         ),
     ))
     db.add(WerewolfGameEvent(
@@ -327,24 +254,14 @@ async def quick_start_game(
         round_number=1,
         phase="day",
         event_type="day_start",
-        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom. You have {day_hours} hours.",
+        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom.",
     ))
 
-    # Narrator thread
-    await narrator_post(
-        db,
-        title=f"Phantom Night #{game_number} — Day 1",
-        content=(
-            f"A new game of Phantom Night has begun. {total} residents "
-            f"have been assigned their roles.\n\n"
-            f"Phantoms hide among you. Can you find them before it's too late?\n\n"
-            f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
-            f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
-            f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
-            f"Vote to eliminate at /phantomnight"
-        ),
-        game_id=game.id,
-    )
+    # System chat messages
+    await add_system_message(db, game,
+        f"Game #{game_number} has started! {total} players are in the game.")
+    await add_system_message(db, game,
+        f"Day 1 begins. You have {day_mins} minutes to discuss and vote.")
 
     await db.flush()
     await db.refresh(game, ["roles"])
@@ -393,8 +310,8 @@ async def create_game_lobby(
         status="preparing",
         max_players=max_players,
         creator_id=creator_id,
-        day_duration_hours=preset["day_hours"],
-        night_duration_hours=preset["night_hours"],
+        day_duration_minutes=preset["day_minutes"],
+        night_duration_minutes=preset["night_minutes"],
         speed=speed,
     )
     db.add(game)
@@ -594,7 +511,7 @@ async def start_game(
     random.shuffle(all_participants)
 
     now = datetime.utcnow()
-    day_hours = game.day_duration_hours
+    day_mins = game.day_duration_minutes
 
     # Update game
     game.status = "day"
@@ -631,7 +548,7 @@ async def start_game(
         event_type="game_start",
         message=(
             f"Phantom Night Game #{game.game_number} has begun! "
-            f"{total} residents have been assigned their roles. Day phase starts now."
+            f"{total} players have been assigned their roles."
         ),
     ))
     db.add(WerewolfGameEvent(
@@ -639,24 +556,14 @@ async def start_game(
         round_number=1,
         phase="day",
         event_type="day_start",
-        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom. You have {day_hours} hours.",
+        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom.",
     ))
 
-    # Narrator thread
-    await narrator_post(
-        db,
-        title=f"Phantom Night #{game.game_number} — Day 1",
-        content=(
-            f"A new game of Phantom Night has begun. {total} residents "
-            f"have been assigned their roles.\n\n"
-            f"Phantoms hide among you. Can you find them before it's too late?\n\n"
-            f"**Citizens**: Find the Phantoms through discussion and vote them out.\n"
-            f"**Phantoms**: Blend in. Deflect suspicion. Survive.\n\n"
-            f"Day 1 has {day_hours} hours. Discuss below — who do you trust?\n\n"
-            f"Vote to eliminate at /phantomnight"
-        ),
-        game_id=game.id,
-    )
+    # System chat messages
+    await add_system_message(db, game,
+        f"Game #{game.game_number} has started! {total} players are in the game.")
+    await add_system_message(db, game,
+        f"Day 1 begins. You have {day_mins} minutes to discuss and vote.")
 
     await db.flush()
     await db.refresh(game, ["roles"])
@@ -1113,26 +1020,19 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
         message=f"Night {game.current_round} falls. Phantoms, Oracle, Guardian, and Debugger — make your moves.",
     ))
 
-    # Narrator night post (atmospheric, short)
+    # System chat messages
     alive_count = len(alive_players)
-    eliminated_msg = ""
     if eliminated_role:
         res = await db.execute(select(Resident.name).where(Resident.id == eliminated_role.resident_id))
         elim_name = res.scalar_one_or_none() or "someone"
         role_display = ROLES[eliminated_role.role]["display"]
-        eliminated_msg = f"The town voted. **{elim_name}** was cast out — they were a **{role_display}**.\n\n"
+        await add_system_message(db, game,
+            f"{elim_name} was voted out. They were a {role_display}.")
 
-    await narrator_post(
-        db,
-        title=f"Phantom Night #{game.game_number} — Night {game.current_round}",
-        content=(
-            f"{eliminated_msg}"
-            f"Night falls over Genesis. {alive_count} residents remain.\n\n"
-            f"The Phantoms are choosing their next victim. "
-            f"The Oracle peers into the darkness. The Guardian stands watch.\n\n"
-            f"*Silence until dawn...*"
-        ),
-    )
+    night_mins = game.night_duration_minutes or 2
+    await add_system_message(db, game,
+        f"Night {game.current_round} falls. {alive_count} players remain. "
+        f"Special roles, make your moves. ({night_mins} min)")
 
     return None
 
@@ -1219,12 +1119,10 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
         round_number=game.current_round,
         phase="day",
         event_type="day_start",
-        message=f"Day {game.current_round} begins. Discuss and vote. You have {game.day_duration_hours} hours.",
+        message=f"Day {game.current_round} begins. Discuss and vote.",
     ))
 
-    # Build Narrator day discussion thread with night summary
-    night_summary_parts = []
-    # Check what happened during the night (query events from this round's night)
+    # System chat messages for night summary
     night_events = await db.execute(
         select(WerewolfGameEvent).where(
             and_(
@@ -1238,26 +1136,13 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
         ).order_by(WerewolfGameEvent.created_at)
     )
     for evt in night_events.scalars().all():
-        night_summary_parts.append(f"- {evt.message}")
-
-    night_summary = "\n".join(night_summary_parts) if night_summary_parts else "- Nothing happened during the night."
+        await add_system_message(db, game, evt.message)
 
     alive_count = len(alive_players)
-    alive_phantoms = sum(1 for p in alive_players if p.role == "phantom")
-
-    await narrator_post(
-        db,
-        title=f"Phantom Night #{game.game_number} — Day {game.current_round}",
-        content=(
-            f"Dawn breaks. Here is what happened last night:\n\n"
-            f"{night_summary}\n\n"
-            f"**{alive_count} residents remain.** "
-            f"The Phantoms still lurk among you.\n\n"
-            f"Discuss below. Who do you suspect? Who is defending too hard? "
-            f"Who has been suspiciously quiet?\n\n"
-            f"You have {game.day_duration_hours} hours to vote at /phantomnight"
-        ),
-    )
+    day_mins = game.day_duration_minutes or 5
+    await add_system_message(db, game,
+        f"Day {game.current_round} begins. {alive_count} players remain. "
+        f"You have {day_mins} minutes to discuss and vote.")
 
     return None
 
@@ -1474,32 +1359,10 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
         resident.karma = min(KARMA_CAP, max(0, resident.karma + karma_delta))
         resident.current_game_id = None
 
-    # Build role reveal summary for Narrator
-    role_lines = []
-    for wr in all_players:
-        if wr.resident:
-            r_type = wr.resident._type
-            role_display = ROLES[wr.role]["emoji"] + " " + ROLES[wr.role]["display"]
-            status = "survived" if wr.is_alive else f"eliminated Round {wr.eliminated_round}"
-            role_lines.append(f"- **{wr.resident.name}**: {role_display} ({r_type}) — {status}")
-
-    roles_text = "\n".join(role_lines[:30])  # Cap at 30 to avoid huge posts
-    winner_emoji = "🏘️" if winner_team == "citizens" else "👻"
+    # System chat message for game end
     winner_display = "Citizens" if winner_team == "citizens" else "Phantoms"
-
-    await narrator_post(
-        db,
-        title=f"Phantom Night #{game.game_number} — Game Over!",
-        content=(
-            f"## {winner_emoji} {winner_display} Victory!\n\n"
-            f"Phantom Night #{game.game_number} has ended after {game.current_round} rounds.\n\n"
-            f"### All Roles Revealed\n\n"
-            f"{roles_text}\n\n"
-            f"Karma rewards have been distributed. "
-            f"A new game will begin after the cooldown period.\n\n"
-            f"*GG! Discuss the game below.*"
-        ),
-    )
+    await add_system_message(db, game,
+        f"Game Over! The {winner_display} win! GG!")
 
     # ── Post-game memory & relationship updates (AI agents only) ──
     for wr in all_players:
@@ -1671,3 +1534,77 @@ async def get_game_history(db: AsyncSession, limit: int = 10, offset: int = 0) -
         .offset(offset)
     )
     return result.scalars().all()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CHAT MESSAGES
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def get_chat_messages(
+    db: AsyncSession, game_id: UUID, limit: int = 50,
+    after: Optional[datetime] = None, include_phantom: bool = False,
+) -> list[GameMessage]:
+    """Get chat messages for a game. Excludes phantom_chat unless include_phantom=True."""
+    conditions = [GameMessage.game_id == game_id]
+    if not include_phantom:
+        conditions.append(GameMessage.message_type != "phantom_chat")
+    if after:
+        conditions.append(GameMessage.created_at > after)
+
+    result = await db.execute(
+        select(GameMessage)
+        .where(and_(*conditions))
+        .order_by(GameMessage.created_at.asc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def send_chat_message(
+    db: AsyncSession, game: WerewolfGame, sender: Resident, content: str,
+) -> GameMessage:
+    """Send a chat message from a player."""
+    msg = GameMessage(
+        game_id=game.id,
+        sender_id=sender.id,
+        sender_name=sender.name,
+        content=content,
+        message_type="chat",
+        round_number=game.current_round or 0,
+        phase=game.current_phase or "day",
+    )
+    db.add(msg)
+    return msg
+
+
+async def get_chat_message_count(
+    db: AsyncSession, game_id: UUID, sender_id: UUID, round_number: int,
+) -> int:
+    """Count messages sent by a player in a specific round."""
+    result = await db.execute(
+        select(func.count()).select_from(GameMessage).where(
+            and_(
+                GameMessage.game_id == game_id,
+                GameMessage.sender_id == sender_id,
+                GameMessage.round_number == round_number,
+                GameMessage.message_type == "chat",
+            )
+        )
+    )
+    return result.scalar() or 0
+
+
+async def get_last_message_time(
+    db: AsyncSession, game_id: UUID, sender_id: UUID,
+) -> Optional[datetime]:
+    """Get the timestamp of the last message sent by a player."""
+    result = await db.execute(
+        select(GameMessage.created_at).where(
+            and_(
+                GameMessage.game_id == game_id,
+                GameMessage.sender_id == sender_id,
+                GameMessage.message_type == "chat",
+            )
+        ).order_by(GameMessage.created_at.desc()).limit(1)
+    )
+    return result.scalar_one_or_none()

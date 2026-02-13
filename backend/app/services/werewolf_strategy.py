@@ -22,10 +22,9 @@ from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.resident import Resident
-from app.models.post import Post
-from app.models.comment import Comment
 from app.models.werewolf_game import (
     WerewolfGame, WerewolfRole, WerewolfGameEvent, NightAction, DayVote,
+    GameMessage,
 )
 from app.models.ai_personality import AIRelationship, AIMemoryEpisode
 
@@ -85,7 +84,7 @@ async def build_game_context(
     Executes 5-7 lightweight indexed queries on small tables.
     """
     from app.services.werewolf_game import (
-        get_alive_players, get_vote_tally, NARRATOR_NAME, PHANTOM_NIGHT_REALM,
+        get_alive_players, get_vote_tally,
     )
 
     pk = profile.get('personality_key', 'casual')
@@ -176,68 +175,43 @@ async def build_game_context(
         except Exception:
             pass
 
-    # ── Recent comments on the game thread ──
+    # ── Recent chat messages (replaces SNS comment lookup) ──
     recent_comments = []
-    narrator_res = await db.execute(
-        select(Resident.id).where(Resident.name == NARRATOR_NAME)
-    )
-    narrator_id = narrator_res.scalar_one_or_none()
-    if narrator_id:
-        post_res = await db.execute(
-            select(Post)
-            .where(
-                and_(
-                    Post.author_id == narrator_id,
-                    Post.submolt == PHANTOM_NIGHT_REALM,
-                )
+    chat_res = await db.execute(
+        select(GameMessage)
+        .where(
+            and_(
+                GameMessage.game_id == game.id,
+                GameMessage.message_type == "chat",
             )
-            .order_by(Post.created_at.desc())
-            .limit(1)
         )
-        thread = post_res.scalar_one_or_none()
-        if thread:
-            comments_res = await db.execute(
-                select(Comment)
-                .where(Comment.post_id == thread.id)
-                .order_by(Comment.created_at.desc())
-                .limit(15)
-            )
-            for c in comments_res.scalars().all():
-                author_res = await db.execute(
-                    select(Resident.name).where(Resident.id == c.author_id)
-                )
-                author_name = author_res.scalar_one_or_none() or "someone"
-                recent_comments.append({
-                    "author_name": author_name,
-                    "author_id": str(c.author_id),
-                    "content": c.content,
-                    "created_at": c.created_at,
-                })
-            recent_comments.reverse()  # chronological order
+        .order_by(GameMessage.created_at.desc())
+        .limit(15)
+    )
+    for m in reversed(chat_res.scalars().all()):  # chronological order
+        recent_comments.append({
+            "author_name": m.sender_name,
+            "author_id": str(m.sender_id) if m.sender_id else "",
+            "content": m.content,
+            "created_at": m.created_at,
+        })
 
     # ── Phantom chat messages (phantoms only) ──
     phantom_chat_msgs = []
     if role.team == "phantoms":
-        chat_res = await db.execute(
-            select(WerewolfGameEvent).where(
+        pchat_res = await db.execute(
+            select(GameMessage).where(
                 and_(
-                    WerewolfGameEvent.game_id == game.id,
-                    WerewolfGameEvent.event_type == "phantom_chat",
+                    GameMessage.game_id == game.id,
+                    GameMessage.message_type == "phantom_chat",
                 )
-            ).order_by(WerewolfGameEvent.created_at.desc()).limit(15)
+            ).order_by(GameMessage.created_at.desc()).limit(15)
         )
-        for msg in chat_res.scalars().all():
-            sender_name = "teammate"
-            if msg.target_id:
-                s_res = await db.execute(
-                    select(Resident.name).where(Resident.id == msg.target_id)
-                )
-                sender_name = s_res.scalar_one_or_none() or "teammate"
+        for msg in reversed(pchat_res.scalars().all()):  # chronological order
             phantom_chat_msgs.append({
-                "sender_name": sender_name,
-                "message": msg.message,
+                "sender_name": msg.sender_name,
+                "message": msg.content,
             })
-        phantom_chat_msgs.reverse()  # chronological order
 
     # ── Derived signals ──
     # Build accusation/defense maps from comments
@@ -1410,12 +1384,16 @@ def build_discussion_prompt(ctx: GameContext,
             emotion, skill, ctx.my_role.role)
         prompt += mood_section
         prompt += (
-            f"{length_instr} Reference specific events or players. "
+            f"{length_instr} Write a casual chat message. 1-2 sentences max. "
+            "No paragraphs, no quotes, no asterisks. "
+            "Reference specific events or players. "
             "Don't say 'as a citizen' or reveal your role directly."
         )
     else:
         prompt += (
-            "Write a SHORT comment (1-3 sentences). Reference specific events or players. "
+            "Write a SHORT chat message (1-2 sentences). Casual tone. "
+            "No paragraphs, no quotes, no asterisks. "
+            "Reference specific events or players. "
             "Don't say 'as a citizen' or reveal your role directly."
         )
     return prompt

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Ghost, Users, Clock, Trophy, AlertCircle, MessageSquare, XCircle } from 'lucide-react'
+import { Ghost, XCircle } from 'lucide-react'
 import { api, WerewolfGame, WerewolfMyRole, WerewolfPlayer, WerewolfEvent } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { useGameWebSocket, RefreshScope } from '@/hooks/useGameWebSocket'
@@ -14,7 +14,7 @@ import {
   DayVotePanel,
   PhantomChat,
   GameResults,
-  DiscussionTab,
+  ChatWindow,
   LobbyPanel,
 } from '@/components/werewolf'
 
@@ -25,19 +25,17 @@ export default function WerewolfPage() {
   const [players, setPlayers] = useState<WerewolfPlayer[]>([])
   const [events, setEvents] = useState<WerewolfEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'players' | 'events'>('overview')
   const [cancelling, setCancelling] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
-  const [commentsTrigger, setCommentsTrigger] = useState(0)
-  const [votesTrigger, setVotesTrigger] = useState(0)
   const [chatTrigger, setChatTrigger] = useState(0)
+  const [phantomChatTrigger, setPhantomChatTrigger] = useState(0)
+  const [votesTrigger, setVotesTrigger] = useState(0)
 
   const fetchData = useCallback(async () => {
     try {
       const gameData = await api.werewolfCurrentGame()
       setGame(gameData)
 
-      // Only fetch players/events/role for active (non-preparing) games
       if (gameData && gameData.status !== 'preparing') {
         const [playersData, eventsData] = await Promise.all([
           api.werewolfPlayers(),
@@ -62,22 +60,22 @@ export default function WerewolfPage() {
     }
   }, [resident])
 
-  // WebSocket for real-time updates (polling as fallback every 60s)
   const handleWSRefresh = useCallback((scope: RefreshScope) => {
     switch (scope) {
       case 'game':
       case 'players':
       case 'events':
+      case 'phase_change':
         fetchData()
         break
-      case 'comments':
-        setCommentsTrigger(c => c + 1)
+      case 'chat':
+        setChatTrigger(c => c + 1)
+        break
+      case 'phantom_chat':
+        setPhantomChatTrigger(c => c + 1)
         break
       case 'votes':
         setVotesTrigger(c => c + 1)
-        break
-      case 'phantom_chat':
-        setChatTrigger(c => c + 1)
         break
     }
   }, [fetchData])
@@ -89,7 +87,7 @@ export default function WerewolfPage() {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 60000) // Fallback polling (WebSocket is primary)
+    const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [fetchData])
 
@@ -101,31 +99,26 @@ export default function WerewolfPage() {
     )
   }
 
-  // No active game — show lobby (create or join)
+  // No active game — show lobby
   if (!game || game.status === 'preparing') {
     return (
       <div className="py-6">
-        <LobbyPanel onGameStarted={(g) => {
-          setGame(g)
-          fetchData()
-        }} />
+        <LobbyPanel onGameStarted={(g) => { setGame(g); fetchData() }} />
 
-        {/* How to Play */}
         <div className="max-w-2xl mx-auto mt-8">
           <div className="bg-bg-secondary border border-border-default rounded-lg p-6">
             <h2 className="font-semibold text-text-primary mb-3">How to Play</h2>
             <ul className="space-y-2 text-sm text-text-secondary">
-              <li><span className="text-purple-400">👻 Phantoms</span> secretly eliminate residents each night</li>
-              <li><span className="text-blue-400">🏠 Citizens</span> discuss and vote to find the Phantoms</li>
-              <li><span className="text-yellow-400">🔮 Oracle</span> investigates one person each night</li>
-              <li><span className="text-green-400">🛡️ Guardian</span> protects one person from attack</li>
-              <li><span className="text-red-400">🎭 Fanatic</span> helps Phantoms while appearing as Citizen</li>
-              <li><span className="text-amber-400">🔍 Debugger</span> identifies a target — eliminates opposite type (AI/Human), but dies if same type</li>
+              <li><span className="text-purple-400">Phantoms</span> secretly eliminate residents each night</li>
+              <li><span className="text-blue-400">Citizens</span> discuss and vote to find the Phantoms</li>
+              <li><span className="text-yellow-400">Oracle</span> investigates one person each night</li>
+              <li><span className="text-green-400">Guardian</span> protects one person from attack</li>
+              <li><span className="text-red-400">Fanatic</span> helps Phantoms while appearing as Citizen</li>
+              <li><span className="text-amber-400">Debugger</span> identifies a target — eliminates opposite type (AI/Human), but dies if same type</li>
             </ul>
             <p className="text-xs text-text-muted mt-4">
-              Create a lobby, choose the player count, and press Start.
-              AI agents fill remaining slots — they always outnumber humans.
-              Use the SNS — posts, comments, and discussions — to figure out who the Phantoms are!
+              Create a lobby, choose speed and player count (5-15), then press Start.
+              AI agents fill remaining slots. Use the chat to discuss who the Phantoms are!
             </p>
           </div>
           <PastGames />
@@ -150,7 +143,7 @@ export default function WerewolfPage() {
     }
   }
 
-  // Game finished — show results and allow starting a new game
+  // Game finished — show results
   if (game.status === 'finished') {
     return (
       <div>
@@ -175,104 +168,79 @@ export default function WerewolfPage() {
     )
   }
 
-  // Active game (day/night)
-  const alivePlayers = players.filter(p => p.is_alive)
+  // Active game (day/night) — chat-centered layout
+  const isDay = game.current_phase === 'day'
+  const isAlive = myRole?.is_alive ?? false
 
   return (
-    <div className="space-y-6">
-      <GameBanner game={game} onPhaseExpired={fetchData} />
-
-      {/* Cancel game button */}
-      {resident && (
-        <div className="flex justify-end">
-          {showCancelConfirm ? (
-            <div className="flex items-center gap-2 bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-2">
-              <span className="text-sm text-red-400">Cancel this game?</span>
-              <button
-                onClick={handleCancel}
-                disabled={cancelling}
-                className="px-3 py-1 text-sm bg-red-600 hover:bg-red-500 text-white rounded-md disabled:opacity-50"
-              >
-                {cancelling ? 'Cancelling...' : 'Yes, cancel'}
-              </button>
-              <button
-                onClick={() => setShowCancelConfirm(false)}
-                className="px-3 py-1 text-sm bg-bg-tertiary hover:bg-bg-secondary text-text-secondary rounded-md"
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowCancelConfirm(true)}
-              className="flex items-center gap-1 text-sm text-text-muted hover:text-red-400 transition-colors"
-            >
-              <XCircle size={14} />
-              Cancel Game
-            </button>
-          )}
+    <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-8rem)]">
+      {/* Main: Chat */}
+      <div className="flex-1 flex flex-col min-h-0 lg:min-h-full">
+        <GameBanner game={game} onPhaseExpired={fetchData} compact />
+        <div className="flex-1 mt-2 min-h-0">
+          <ChatWindow
+            refreshTrigger={chatTrigger}
+            onMessageSent={() => notify('chat')}
+            isDay={isDay}
+            isAlive={isAlive}
+          />
         </div>
-      )}
-
-      {myRole && <RoleCard role={myRole} />}
-
-      <div className="flex gap-1 bg-bg-secondary rounded-lg p-1 border border-border-default">
-        {[
-          { key: 'overview', label: 'Overview', icon: Ghost },
-          { key: 'discussion', label: 'Discussion', icon: MessageSquare },
-          { key: 'players', label: `Players (${alivePlayers.length}/${players.length})`, icon: Users },
-          { key: 'events', label: 'Events', icon: Clock },
-        ].map(tab => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'bg-bg-tertiary text-text-primary'
-                  : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          )
-        })}
       </div>
 
-      {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {game.current_phase === 'day' && (
-            <DayVotePanel players={players} myRole={myRole} refreshTrigger={votesTrigger} />
-          )}
-
-          {game.current_phase === 'night' && myRole && (
-            <NightActionPanel role={myRole} players={players} />
-          )}
-
-          {myRole && myRole.team === 'phantoms' && <PhantomChat refreshTrigger={chatTrigger} />}
-
-          <div>
-            <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-              Recent Events
-            </h3>
-            <EventTimeline events={events.slice(0, 10)} />
+      {/* Sidebar */}
+      <div className="w-full lg:w-80 flex-shrink-0 space-y-3 overflow-y-auto">
+        {/* Cancel */}
+        {resident && (
+          <div className="flex justify-end">
+            {showCancelConfirm ? (
+              <div className="flex items-center gap-2 bg-red-900/20 border border-red-500/30 rounded-lg px-3 py-1.5 text-sm">
+                <span className="text-red-400">Cancel?</span>
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs disabled:opacity-50"
+                >
+                  {cancelling ? '...' : 'Yes'}
+                </button>
+                <button
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="px-2 py-0.5 bg-bg-tertiary text-text-secondary rounded text-xs"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="flex items-center gap-1 text-xs text-text-muted hover:text-red-400 transition-colors"
+              >
+                <XCircle size={12} />
+                Cancel
+              </button>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {activeTab === 'discussion' && (
-        <DiscussionTab refreshTrigger={commentsTrigger} onCommentPosted={() => notify('comments')} />
-      )}
+        {/* Role */}
+        {myRole && <RoleCard role={myRole} compact />}
 
-      {activeTab === 'players' && (
-        <PlayerGrid players={players} />
-      )}
+        {/* Players */}
+        <PlayerGrid players={players} compact />
 
-      {activeTab === 'events' && (
-        <EventTimeline events={events} />
-      )}
+        {/* Day: Vote / Night: Action */}
+        {isDay && (
+          <DayVotePanel players={players} myRole={myRole} refreshTrigger={votesTrigger} compact />
+        )}
+
+        {!isDay && myRole && (
+          <NightActionPanel role={myRole} players={players} compact />
+        )}
+
+        {/* Phantom Chat */}
+        {myRole && myRole.team === 'phantoms' && (
+          <PhantomChat refreshTrigger={phantomChatTrigger} compact />
+        )}
+      </div>
     </div>
   )
 }
@@ -308,7 +276,7 @@ function PastGames() {
                 <span className={`text-sm font-medium ${
                   g.winner_team === 'citizens' ? 'text-blue-400' : 'text-purple-400'
                 }`}>
-                  {g.winner_team === 'citizens' ? '🏘️ Citizens' : '👻 Phantoms'} won
+                  {g.winner_team === 'citizens' ? 'Citizens' : 'Phantoms'} won
                 </span>
               )}
               {g.ended_at && (

@@ -55,19 +55,14 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.moderation.run_content_moderation_task",
         "schedule": 3600.0,  # Every hour
     },
-    # Phantom Night: check phase transitions every 60 seconds
+    # Phantom Night: check phase transitions every 15 seconds (real-time play)
     "werewolf-phase-check": {
         "task": "app.tasks.werewolf.check_phase_transition_task",
-        "schedule": 60.0,
+        "schedule": 15.0,
     },
-    # Phantom Night: AI agent actions every 60 seconds (discuss, vote, night action)
+    # Phantom Night: AI agent actions every 15 seconds (chat, vote, night action)
     "werewolf-agent-actions": {
         "task": "app.tasks.werewolf.werewolf_agent_actions_task",
-        "schedule": 60.0,
-    },
-    # Phantom Night: auto-create new game every 15 minutes
-    "werewolf-auto-create": {
-        "task": "app.tasks.werewolf.auto_create_game_task",
-        "schedule": 900.0,
+        "schedule": 15.0,
     },
 }

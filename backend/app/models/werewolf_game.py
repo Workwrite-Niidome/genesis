@@ -1,16 +1,17 @@
 """
 Phantom Night — Werewolf Game Models
 
-5 tables:
+6 tables:
 - WerewolfGame: Game state and configuration
 - WerewolfRole: Role assignments per game
 - NightAction: Night phase action records
 - DayVote: Day phase elimination votes
 - WerewolfGameEvent: Public event log
+- GameMessage: In-game chat messages
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, Boolean, DateTime, Text, Float, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import String, Integer, Boolean, DateTime, Text, Float, ForeignKey, JSON, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -34,20 +35,29 @@ TEAMS = {
     "phantoms": {"display": "Phantoms", "emoji": "👻"},
 }
 
-# Role distribution by player count
+# Role distribution for 5-15 player games
 # (min_players, phantom, oracle, guardian, fanatic, debugger)
 ROLE_DISTRIBUTION = [
-    (121, 7, 2, 3, 2, 2),
-    (71, 5, 2, 2, 2, 1),
-    (41, 4, 1, 2, 1, 1),
-    (21, 3, 1, 1, 1, 1),
-    (10, 2, 1, 1, 1, 1),
+    (13, 3, 1, 1, 1, 1),  # 13-15 players
+    (10, 2, 1, 1, 1, 1),  # 10-12 players
+    (8,  2, 1, 1, 0, 0),  # 8-9 players
+    (6,  1, 1, 1, 0, 0),  # 6-7 players
+    (5,  1, 1, 0, 0, 0),  # 5 players
 ]
+
+MIN_PLAYERS = 5
+MAX_PLAYERS_CAP = 15
+
+SPEED_PRESETS = {
+    "short":    {"day_minutes": 3, "night_minutes": 1},
+    "standard": {"day_minutes": 5, "night_minutes": 2},
+}
 
 GAME_STATUSES = ("preparing", "day", "night", "finished")
 PHASES = ("day", "night")
 ELIMINATION_TYPES = ("vote", "phantom_attack", "identifier_kill", "identifier_backfire", "quit")
 ACTION_TYPES = ("phantom_attack", "oracle_investigate", "guardian_protect", "identifier_kill")
+MESSAGE_TYPES = ("chat", "system", "phantom_chat")
 EVENT_TYPES = (
     "game_start", "day_start", "night_start",
     "vote_elimination", "phantom_kill", "protected",
@@ -83,11 +93,11 @@ class WerewolfGame(Base):
         UUID(as_uuid=True), ForeignKey("residents.id")
     )
 
-    # Configurable durations
-    day_duration_hours: Mapped[int] = mapped_column(Integer, default=20)
-    night_duration_hours: Mapped[int] = mapped_column(Integer, default=4)
+    # Configurable durations (minutes for real-time chat play)
+    day_duration_minutes: Mapped[int] = mapped_column(Integer, default=5)
+    night_duration_minutes: Mapped[int] = mapped_column(Integer, default=2)
 
-    # Speed preset (quick / standard / extended)
+    # Speed preset (short / standard)
     speed: Mapped[str | None] = mapped_column(String(20))
 
     # Player counts (snapshot at game start)
@@ -114,6 +124,8 @@ class WerewolfGame(Base):
     day_votes = relationship("DayVote", back_populates="game", lazy="noload")
     events = relationship("WerewolfGameEvent", back_populates="game", lazy="noload",
                           order_by="WerewolfGameEvent.created_at")
+    messages = relationship("GameMessage", back_populates="game", lazy="noload",
+                            order_by="GameMessage.created_at")
 
     @property
     def current_player_count(self) -> int:
@@ -280,3 +292,41 @@ class WerewolfGameEvent(Base):
 
     def __repr__(self) -> str:
         return f"<WerewolfGameEvent {self.event_type} round={self.round_number}>"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GAME MESSAGE — In-game chat messages
+# ═══════════════════════════════════════════════════════════════════════════
+
+class GameMessage(Base):
+    __tablename__ = "game_messages"
+    __table_args__ = (
+        Index("ix_game_messages_game_created", "game_id", "created_at"),
+        Index("ix_game_messages_game_type_created", "game_id", "message_type", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    game_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("werewolf_games.id"), nullable=False, index=True
+    )
+    sender_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("residents.id")
+    )  # null = system message
+    sender_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="chat"
+    )  # chat | system | phantom_chat
+    round_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    phase: Mapped[str] = mapped_column(String(10), nullable=False)  # day/night
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    # Relationships
+    game = relationship("WerewolfGame", back_populates="messages")
+    sender = relationship("Resident", foreign_keys=[sender_id])
+
+    def __repr__(self) -> str:
+        return f"<GameMessage {self.message_type} by={self.sender_name}>"

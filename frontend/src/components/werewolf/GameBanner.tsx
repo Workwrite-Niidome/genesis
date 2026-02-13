@@ -8,9 +8,10 @@ import { WerewolfGame } from '@/lib/api'
 interface GameBannerProps {
   game: WerewolfGame
   onPhaseExpired?: () => void
+  compact?: boolean
 }
 
-export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
+export default function GameBanner({ game, onPhaseExpired, compact }: GameBannerProps) {
   const [timeRemaining, setTimeRemaining] = useState<string>('')
   const expiredRef = useRef(false)
   const onPhaseExpiredRef = useRef(onPhaseExpired)
@@ -30,7 +31,7 @@ export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
       const diff = end.getTime() - now.getTime()
 
       if (diff <= 0) {
-        setTimeRemaining('00:00:00')
+        setTimeRemaining('0:00')
         if (!expiredRef.current) {
           expiredRef.current = true
           onPhaseExpiredRef.current?.()
@@ -38,13 +39,9 @@ export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
         return
       }
 
-      const hours = Math.floor(diff / (1000 * 60 * 60))
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      const minutes = Math.floor(diff / (1000 * 60))
       const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-
-      setTimeRemaining(
-        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-      )
+      setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`)
     }
 
     updateTimer()
@@ -55,6 +52,42 @@ export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
 
   const isDayPhase = game.current_phase === 'day'
   const isNightPhase = game.current_phase === 'night'
+
+  if (compact) {
+    return (
+      <div
+        className={clsx(
+          'rounded-lg border px-3 py-2 transition-all duration-300',
+          isDayPhase && 'bg-gradient-to-r from-blue-900/20 to-indigo-900/20 border-blue-500/30',
+          isNightPhase && 'bg-gradient-to-r from-purple-900/20 to-violet-900/20 border-purple-500/30',
+        )}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {isDayPhase && <Sun size={16} className="text-blue-400 flex-shrink-0" />}
+            {isNightPhase && <Moon size={16} className="text-purple-400 flex-shrink-0" />}
+            <span className="text-sm font-bold text-text-primary truncate">
+              #{game.game_number}
+            </span>
+            <span
+              className={clsx(
+                'px-1.5 py-0.5 rounded text-xs font-semibold flex-shrink-0',
+                isDayPhase && 'bg-blue-500/20 text-blue-400',
+                isNightPhase && 'bg-purple-500/20 text-purple-400'
+              )}
+            >
+              {isDayPhase ? 'Day' : 'Night'} {game.current_round}
+            </span>
+          </div>
+          {game.phase_ends_at && (
+            <span className="text-lg font-mono font-bold text-text-primary flex-shrink-0">
+              {timeRemaining}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -104,7 +137,7 @@ export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
               {game.total_players} players
               {game.status === 'finished' && game.winner_team && (
                 <span className="ml-2">
-                  Winner: {game.winner_team === 'citizens' ? 'Citizens 🏘️' : 'Phantoms 👻'}
+                  Winner: {game.winner_team === 'citizens' ? 'Citizens' : 'Phantoms'}
                 </span>
               )}
             </p>
@@ -116,7 +149,7 @@ export default function GameBanner({ game, onPhaseExpired }: GameBannerProps) {
             <div className="text-2xl font-mono font-bold text-text-primary">
               {timeRemaining}
             </div>
-            <p className="text-xs text-text-secondary">Phase ends</p>
+            <p className="text-xs text-text-secondary">remaining</p>
           </div>
         )}
       </div>

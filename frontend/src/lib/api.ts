@@ -334,8 +334,8 @@ export interface WerewolfGame {
   current_round: number
   phase_started_at?: string
   phase_ends_at?: string
-  day_duration_hours: number
-  night_duration_hours: number
+  day_duration_minutes: number
+  night_duration_minutes: number
   max_players?: number
   creator_id?: string
   total_players: number
@@ -350,7 +350,18 @@ export interface WerewolfGame {
   started_at?: string
   ended_at?: string
   current_player_count?: number
-  speed?: 'quick' | 'standard' | 'extended'
+  speed?: 'short' | 'standard'
+}
+
+export interface ChatMessage {
+  id: string
+  sender_name: string
+  content: string
+  message_type: 'chat' | 'system' | 'phantom_chat'
+  round_number: number
+  phase: string
+  sender_id?: string
+  created_at: string
 }
 
 export interface WerewolfLobbyPlayer {
@@ -1016,10 +1027,10 @@ class ApiClient {
   }
 
   // Phantom Night (Werewolf) — Quick Start
-  async werewolfQuickStart(maxPlayers: number, dayHours = 20, nightHours = 4): Promise<WerewolfGame> {
+  async werewolfQuickStart(maxPlayers: number, speed: 'short' | 'standard' = 'standard'): Promise<WerewolfGame> {
     return this.request<WerewolfGame>('/phantomnight/quick-start', {
       method: 'POST',
-      body: JSON.stringify({ max_players: maxPlayers, day_duration_hours: dayHours, night_duration_hours: nightHours }),
+      body: JSON.stringify({ max_players: maxPlayers, speed }),
     })
   }
 
@@ -1119,6 +1130,21 @@ class ApiClient {
     return this.request<PhantomChatMessage>('/phantomnight/phantom-chat', {
       method: 'POST',
       body: JSON.stringify({ message }),
+    })
+  }
+
+  // Phantom Night (Werewolf) — Chat
+  async werewolfChatHistory(limit = 100, after?: string): Promise<ChatMessage[]> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    if (after) params.set('after', after)
+    return this.request<ChatMessage[]>(`/phantomnight/chat?${params}`)
+  }
+
+  async werewolfSendChat(content: string): Promise<ChatMessage> {
+    return this.request<ChatMessage>('/phantomnight/chat', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
     })
   }
 

@@ -18,16 +18,13 @@ class DayVoteRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=500)
 
 
-class QuickStartRequest(BaseModel):
-    """Legacy — kept for backwards compat."""
-    max_players: int = Field(..., ge=5, le=200)
-    day_duration_hours: int = Field(20, ge=4, le=48)
-    night_duration_hours: int = Field(4, ge=2, le=12)
+class ChatMessageRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=500)
 
 
 class CreateGameRequest(BaseModel):
-    max_players: int = Field(..., ge=5, le=200)
-    speed: str = Field("standard")  # quick / standard / extended
+    max_players: int = Field(..., ge=5, le=15)
+    speed: str = Field("standard")  # short / standard
 
 
 class LobbyPlayerInfo(BaseModel):
@@ -61,6 +58,20 @@ class PlayerInfo(BaseModel):
         from_attributes = True
 
 
+class ChatMessageResponse(BaseModel):
+    id: UUID
+    sender_name: str
+    content: str
+    message_type: str
+    round_number: int
+    phase: str
+    sender_id: Optional[UUID] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class GameResponse(BaseModel):
     id: UUID
     game_number: int
@@ -69,8 +80,8 @@ class GameResponse(BaseModel):
     current_round: int = 0
     phase_started_at: Optional[datetime] = None
     phase_ends_at: Optional[datetime] = None
-    day_duration_hours: int = 20
-    night_duration_hours: int = 4
+    day_duration_minutes: int = 5
+    night_duration_minutes: int = 2
     max_players: Optional[int] = None
     creator_id: Optional[UUID] = None
     total_players: int = 0
@@ -85,7 +96,7 @@ class GameResponse(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     current_player_count: int = 0  # humans joined so far (for lobbies)
-    speed: Optional[str] = None  # quick / standard / extended
+    speed: Optional[str] = None  # short / standard
 
     class Config:
         from_attributes = True

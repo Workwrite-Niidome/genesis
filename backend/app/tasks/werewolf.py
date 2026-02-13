@@ -61,6 +61,8 @@ async def _check_phase_transition():
                     from app.services.ws_manager import publish
                     for gid in active_ids:
                         publish(gid, 'game')
+                        publish(gid, 'phase_change')
+                        publish(gid, 'chat')
                         publish(gid, 'events')
                         publish(gid, 'players')
                 except Exception:
@@ -83,11 +85,3 @@ def werewolf_agent_actions_task():
     run_async(run_werewolf_agent_cycle())
 
 
-@celery_app.task(name='app.tasks.werewolf.auto_create_game_task')
-def auto_create_game_task():
-    """
-    Lobby system replaced auto-create.
-    This task is kept for backward compatibility but is now a no-op.
-    Games are created manually via the lobby system.
-    """
-    logger.debug("auto_create_game_task: no-op (lobby system active)")

@@ -534,10 +534,11 @@ def build_discuss_action_prompt(
     if mood:
         prompt += f"{mood}\n\n"
     prompt += (
-        f"Write a discussion comment as {ctx.agent_name}.\n"
+        f"Write a chat message as {ctx.agent_name}.\n"
         f"Your goal: {team_goal}.\n"
-        f"Be natural and casual. 1-3 sentences. Stay in character.\n\n"
-        f"Write ONLY your comment. No JSON, no quotes, no formatting."
+        f"Be natural and casual. 1-2 sentences max. Like a group chat message.\n"
+        f"No paragraphs, no quotes, no asterisks, no formatting.\n\n"
+        f"Write ONLY your message. No JSON, no quotes."
     )
     return prompt
 
