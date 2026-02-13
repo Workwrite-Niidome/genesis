@@ -1681,9 +1681,53 @@ WEREWOLF_ROLE_PROMPTS = {
 }
 
 
-def get_werewolf_system_prompt_extension(role: str, teammates: list[str] = None) -> str:
+WEREWOLF_ROLE_PROMPTS_JA = {
+    "phantom": (
+        "秘密の役職: あなたはファントムです。市民を排除しながら正体を隠すのが目標です。"
+        "議論中は完全に普通に振る舞ってください。さりげなく他の人に疑いをかけましょう。"
+        "仲間のファントムを露骨にかばってはいけません。"
+        "疑われた場合は冷静にかわしましょう。過剰反応は怪しまれます。"
+        "他のファントムが誰か知っていますが、絶対に明かしてはいけません。"
+    ),
+    "citizen": (
+        "秘密の役職: あなたは市民です。ファントムを見つけて投票で排除するのが目標です。"
+        "怪しい人に注目しましょう。矛盾した発言、告発をかわす人、"
+        "いつも同じ人に投票する人。疑いを共有しましょう。"
+        "直感を信じつつ、全員を疑いすぎないように。"
+    ),
+    "oracle": (
+        "秘密の役職: あなたは占い師です。毎晩一人を調査してファントムかどうか知ることができます。"
+        "結果の公開は戦略的に。早すぎる占い師COはファントムに狙われます。"
+        "確実な証拠が揃ったらゲーム中盤でCOを検討しましょう。"
+        "注意: 狂信者はファントムではないと判定されます。"
+    ),
+    "guardian": (
+        "秘密の役職: あなたは騎士です。毎晩一人をファントムの攻撃から守れます。"
+        "占い師が誰か推理して守りましょう。役職は秘密に。"
+        "ファントムに騎士だとバレると守りを回避されます。"
+        "議論は普通に参加し、目立ちすぎないように。"
+    ),
+    "fanatic": (
+        "秘密の役職: あなたは狂信者です。ファントム陣営ですが、占い師には市民と判定されます。"
+        "市民の中で混乱を作るのが目標です。"
+        "偽の占い師COをして嘘の結果を伝えることも検討しましょう。"
+        "投票は市民に向け、ファントムを守りましょう。内側からの破壊工作です。"
+    ),
+    "debugger": (
+        "秘密の役職: あなたはデバッガーです。毎晩一人を識別できます。"
+        "自分と反対のタイプ（AIvs人間）を選ぶと相手が排除されます。"
+        "同じタイプを選ぶと自分が死にます。"
+        "あなたはAIエージェントなので、人間を排除できますが、AIを選ぶと自滅します。"
+        "投稿をよく読んで誰が人間らしい文章を書くか見極めましょう。"
+        "役職は秘密に。普通に議論に参加してください。"
+    ),
+}
+
+
+def get_werewolf_system_prompt_extension(role: str, teammates: list[str] = None, lang: str = "en") -> str:
     """Get the werewolf role addition to the system prompt."""
-    base = WEREWOLF_ROLE_PROMPTS.get(role, "")
+    prompts = WEREWOLF_ROLE_PROMPTS_JA if lang == "ja" else WEREWOLF_ROLE_PROMPTS
+    base = prompts.get(role, "")
     if not base:
         return ""
 
@@ -1691,7 +1735,10 @@ def get_werewolf_system_prompt_extension(role: str, teammates: list[str] = None)
 
     if role == "phantom" and teammates:
         names = ", ".join(teammates)
-        extension += f"\nYour Phantom teammates: {names}. Coordinate in Phantom chat, never in public."
+        if lang == "ja":
+            extension += f"\nファントム仲間: {names}。ファントムチャットで連携、公開チャットでは絶対に明かさないこと。"
+        else:
+            extension += f"\nYour Phantom teammates: {names}. Coordinate in Phantom chat, never in public."
 
     return extension
 
@@ -1827,17 +1874,19 @@ async def agent_werewolf_night_action(agent: Resident, db: AsyncSession, profile
 
         # Build system prompt
         personality = profile.get('personality', {})
+        game_lang = game.language or "en"
         teammates = None
         if role.team == "phantoms":
             teammates = [p.resident.name for p in alive
                          if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
-        werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+        werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates, lang=game_lang)
         system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
         # LLM thinking engine
         result = await think_and_act(
             db, agent, game, role, profile, "night",
             ctx=ctx, emotion=emotion, system_prompt=system,
+            lang=game_lang,
         )
 
         if result and 'target' in result:
@@ -1964,11 +2013,12 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
             ctx = await build_game_context(db, agent, game, role, profile)
             emotion = compute_emotional_state(ctx, traits)
             personality = profile.get('personality', {})
+            game_lang = game.language or "en"
             teammates = None
             if role.team == "phantoms":
                 teammates = [p.resident.name for p in alive_others
                              if p.team == "phantoms" and p.resident]
-            werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+            werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates, lang=game_lang)
             system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
             cur_target_name = next(
@@ -2012,17 +2062,19 @@ async def agent_werewolf_day_vote(agent: Resident, db: AsyncSession, profile: di
 
     # Build system prompt
     personality = profile.get('personality', {})
+    game_lang = game.language or "en"
     teammates = None
     if role.team == "phantoms":
         teammates = [p.resident.name for p in alive_others
                      if p.team == "phantoms" and p.resident]
-    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates, lang=game_lang)
     system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
     # LLM thinking engine
     result = await think_and_act(
         db, agent, game, role, profile, "vote",
         ctx=ctx, emotion=emotion, system_prompt=system,
+        lang=game_lang,
     )
 
     if result and 'target' in result:
@@ -2122,12 +2174,13 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
 
     # Build system prompt
     personality = profile.get('personality', {})
+    game_lang = game.language or "en"
     teammates = None
     if role.team == "phantoms":
         alive = await get_alive_players(db, game.id)
         teammates = [p.resident.name for p in alive
                      if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
-    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates, lang=game_lang)
     system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
     # LLM thinking engine
@@ -2135,6 +2188,7 @@ async def agent_werewolf_discuss(agent: Resident, db: AsyncSession, profile: dic
     result = await think_and_act(
         db, agent, game, role, profile, action,
         ctx=ctx, emotion=emotion, system_prompt=system,
+        lang=game_lang,
     )
 
     if not result or 'text' not in result:
@@ -2234,12 +2288,14 @@ async def agent_werewolf_phantom_chat(agent: Resident, db: AsyncSession, profile
     teammates = [p.resident.name for p in alive
                  if p.team == "phantoms" and p.resident_id != agent.id and p.resident]
     personality = profile.get('personality', {})
-    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates)
+    game_lang = game.language or "en"
+    werewolf_ext = get_werewolf_system_prompt_extension(role.role, teammates, lang=game_lang)
     system = get_system_prompt(personality, agent.name, werewolf_context=werewolf_ext)
 
     result = await think_and_act(
         db, agent, game, role, profile, "phantom_chat",
         ctx=ctx, emotion=emotion, system_prompt=system,
+        lang=game_lang,
     )
 
     if not result or 'text' not in result:

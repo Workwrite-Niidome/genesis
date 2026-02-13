@@ -135,6 +135,9 @@ export default function GameBanner({ game, onPhaseExpired, compact }: GameBanner
             </div>
             <p className="text-sm text-text-secondary">
               {game.total_players} players
+              <span className="ml-2">
+                {game.language === 'ja' ? '🇯🇵 日本語' : '🇬🇧 English'}
+              </span>
               {game.status === 'finished' && game.winner_team && (
                 <span className="ml-2">
                   Winner: {game.winner_team === 'citizens' ? 'Citizens' : 'Phantoms'}

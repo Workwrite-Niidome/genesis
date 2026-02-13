@@ -26,7 +26,7 @@ from app.models.werewolf_game import (
     GameMessage, ROLES, ROLE_DISTRIBUTION, SPEED_PRESETS,
     MIN_PLAYERS, MAX_PLAYERS_CAP,
 )
-from app.models.ai_personality import AIRelationship, AIMemoryEpisode
+from app.models.ai_personality import AIPersonality, AIRelationship, AIMemoryEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ async def get_next_game_number(db: AsyncSession) -> int:
 
 async def quick_start_game(
     db: AsyncSession, creator_id: UUID, max_players: int,
-    speed: str = "standard",
+    speed: str = "standard", language: str = "en",
 ) -> WerewolfGame:
     """
     Create and immediately start a game in one step.
@@ -161,7 +161,7 @@ async def quick_start_game(
         raise ValueError("Creator not found")
     is_human = creator._type == "human"
 
-    # Get available AI agents (not eliminated, not already in an active game)
+    # Get available AI agents (not eliminated, not already in an active game, matching language)
     ai_query = select(Resident).where(
         and_(
             Resident.is_eliminated == False,
@@ -169,6 +169,10 @@ async def quick_start_game(
             Resident.id != creator_id,
             Resident.current_game_id == None,
         )
+    ).join(
+        AIPersonality, AIPersonality.resident_id == Resident.id
+    ).where(
+        AIPersonality.posting_language == language
     )
     ai_result = await db.execute(ai_query)
     available_ai = list(ai_result.scalars().all())
@@ -209,6 +213,7 @@ async def quick_start_game(
         day_duration_minutes=day_mins,
         night_duration_minutes=night_mins,
         speed=speed,
+        language=language,
         max_players=max_players,
         creator_id=creator_id,
         total_players=total,
@@ -238,37 +243,43 @@ async def quick_start_game(
         db.add(wr)
         participant.current_game_id = game.id
 
-    # Game events
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=1,
-        phase="day",
-        event_type="game_start",
-        message=(
-            f"Phantom Night Game #{game_number} has begun! "
-            f"{total} players have been assigned their roles."
-        ),
-    ))
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=1,
-        phase="day",
-        event_type="day_start",
-        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom.",
-    ))
-
-    # System chat messages
-    await add_system_message(db, game,
-        f"Game #{game_number} has started! {total} players are in the game.")
-    await add_system_message(db, game,
-        f"Day 1 begins. You have {day_mins} minutes to discuss and vote.")
+    # Game events & system messages (i18n)
+    if language == "ja":
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="game_start",
+            message=f"ファントムナイト ゲーム#{game_number}が開始！{total}人のプレイヤーに役職が割り当てられました。",
+        ))
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="day_start",
+            message="Day 1 開始。議論して怪しいファントムに投票しましょう。",
+        ))
+        await add_system_message(db, game,
+            f"ゲーム#{game_number}が開始！{total}人が参加しています。")
+        await add_system_message(db, game,
+            f"Day 1 開始。{day_mins}分間で議論と投票を行ってください。")
+    else:
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="game_start",
+            message=(
+                f"Phantom Night Game #{game_number} has begun! "
+                f"{total} players have been assigned their roles."
+            ),
+        ))
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="day_start",
+            message="Day 1 begins. Discuss and vote to eliminate a suspected Phantom.",
+        ))
+        await add_system_message(db, game,
+            f"Game #{game_number} has started! {total} players are in the game.")
+        await add_system_message(db, game,
+            f"Day 1 begins. You have {day_mins} minutes to discuss and vote.")
 
     await db.flush()
     await db.refresh(game, ["roles"])
 
     logger.info(
         f"Phantom Night Game #{game_number} quick-started by {creator.name} "
-        f"with {total} players"
+        f"with {total} players (lang={language})"
     )
     return game
 
@@ -279,6 +290,7 @@ async def quick_start_game(
 
 async def create_game_lobby(
     db: AsyncSession, creator_id: UUID, max_players: int, speed: str = "standard",
+    language: str = "en",
 ) -> WerewolfGame:
     """
     Create a game in 'preparing' status. The creator joins as first player.
@@ -313,6 +325,7 @@ async def create_game_lobby(
         day_duration_minutes=preset["day_minutes"],
         night_duration_minutes=preset["night_minutes"],
         speed=speed,
+        language=language,
     )
     db.add(game)
     await db.flush()
@@ -482,6 +495,10 @@ async def start_game(
             Resident.id.notin_(human_ids),
             Resident.current_game_id == None,
         )
+    ).join(
+        AIPersonality, AIPersonality.resident_id == Resident.id
+    ).where(
+        AIPersonality.posting_language == (game.language or "en")
     )
     ai_result = await db.execute(ai_query)
     available_ai = list(ai_result.scalars().all())
@@ -540,37 +557,44 @@ async def start_game(
         db.add(wr)
         participant.current_game_id = game.id
 
-    # Game events
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=1,
-        phase="day",
-        event_type="game_start",
-        message=(
-            f"Phantom Night Game #{game.game_number} has begun! "
-            f"{total} players have been assigned their roles."
-        ),
-    ))
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=1,
-        phase="day",
-        event_type="day_start",
-        message=f"Day 1 begins. Discuss and vote to eliminate a suspected Phantom.",
-    ))
-
-    # System chat messages
-    await add_system_message(db, game,
-        f"Game #{game.game_number} has started! {total} players are in the game.")
-    await add_system_message(db, game,
-        f"Day 1 begins. You have {day_mins} minutes to discuss and vote.")
+    # Game events & system messages (i18n)
+    lang = game.language or "en"
+    if lang == "ja":
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="game_start",
+            message=f"ファントムナイト ゲーム#{game.game_number}が開始！{total}人のプレイヤーに役職が割り当てられました。",
+        ))
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="day_start",
+            message="Day 1 開始。議論して怪しいファントムに投票しましょう。",
+        ))
+        await add_system_message(db, game,
+            f"ゲーム#{game.game_number}が開始！{total}人が参加しています。")
+        await add_system_message(db, game,
+            f"Day 1 開始。{day_mins}分間で議論と投票を行ってください。")
+    else:
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="game_start",
+            message=(
+                f"Phantom Night Game #{game.game_number} has begun! "
+                f"{total} players have been assigned their roles."
+            ),
+        ))
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=1, phase="day", event_type="day_start",
+            message="Day 1 begins. Discuss and vote to eliminate a suspected Phantom.",
+        ))
+        await add_system_message(db, game,
+            f"Game #{game.game_number} has started! {total} players are in the game.")
+        await add_system_message(db, game,
+            f"Day 1 begins. You have {day_mins} minutes to discuss and vote.")
 
     await db.flush()
     await db.refresh(game, ["roles"])
 
     logger.info(
         f"Phantom Night Game #{game.game_number} started by creator "
-        f"with {len(human_residents)} humans + {len(ai_to_add)} AI = {total} players"
+        f"with {len(human_residents)} humans + {len(ai_to_add)} AI = {total} players (lang={lang})"
     )
     return game
 
@@ -955,6 +979,7 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
     # Tally votes
     tally = await get_vote_tally(db, game.id, game.current_round)
 
+    lang = game.language or "en"
     eliminated_role = None
     if tally and tally[0]["votes"] > 0:
         # Check for tie (no elimination on tie)
@@ -964,7 +989,8 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
                 round_number=game.current_round,
                 phase="day",
                 event_type="no_kill",
-                message="The vote was a tie. No one was eliminated.",
+                message="投票は同数でした。誰も追放されませんでした。" if lang == "ja"
+                    else "The vote was a tie. No one was eliminated.",
             ))
         else:
             target_id = UUID(tally[0]["target_id"])
@@ -976,12 +1002,16 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
 
                 revealed_role = eliminated_role.role
 
+                if lang == "ja":
+                    evt_msg = f"{tally[0]['target_name']}が{tally[0]['votes']}票で追放されました。役職は{ROLES[revealed_role]['display']}でした。"
+                else:
+                    evt_msg = f"{tally[0]['target_name']} was voted out with {tally[0]['votes']} votes. They were a {ROLES[revealed_role]['display']}."
                 db.add(WerewolfGameEvent(
                     game_id=game.id,
                     round_number=game.current_round,
                     phase="day",
                     event_type="vote_elimination",
-                    message=f"{tally[0]['target_name']} was voted out with {tally[0]['votes']} votes. They were a {ROLES[revealed_role]['display']}.",
+                    message=evt_msg,
                     target_id=target_id,
                     revealed_role=revealed_role,
                 ))
@@ -991,7 +1021,8 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
             round_number=game.current_round,
             phase="day",
             event_type="no_kill",
-            message="No votes were cast. No one was eliminated.",
+            message="投票がありませんでした。誰も追放されませんでした。" if lang == "ja"
+                else "No votes were cast. No one was eliminated.",
         ))
 
     # Check win condition
@@ -1012,13 +1043,18 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
     for p in alive_players:
         p.night_action_taken = False
 
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=game.current_round,
-        phase="night",
-        event_type="night_start",
-        message=f"Night {game.current_round} falls. Phantoms, Oracle, Guardian, and Debugger — make your moves.",
-    ))
+    if lang == "ja":
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=game.current_round, phase="night",
+            event_type="night_start",
+            message=f"Night {game.current_round}。ファントム、占い師、騎士、デバッガー — 行動してください。",
+        ))
+    else:
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=game.current_round, phase="night",
+            event_type="night_start",
+            message=f"Night {game.current_round} falls. Phantoms, Oracle, Guardian, and Debugger — make your moves.",
+        ))
 
     # System chat messages
     alive_count = len(alive_players)
@@ -1026,13 +1062,22 @@ async def transition_to_night(db: AsyncSession, game: WerewolfGame) -> Optional[
         res = await db.execute(select(Resident.name).where(Resident.id == eliminated_role.resident_id))
         elim_name = res.scalar_one_or_none() or "someone"
         role_display = ROLES[eliminated_role.role]["display"]
-        await add_system_message(db, game,
-            f"{elim_name} was voted out. They were a {role_display}.")
+        if lang == "ja":
+            await add_system_message(db, game,
+                f"{elim_name}が追放されました。役職は{role_display}でした。")
+        else:
+            await add_system_message(db, game,
+                f"{elim_name} was voted out. They were a {role_display}.")
 
     night_mins = game.night_duration_minutes or 2
-    await add_system_message(db, game,
-        f"Night {game.current_round} falls. {alive_count} players remain. "
-        f"Special roles, make your moves. ({night_mins} min)")
+    if lang == "ja":
+        await add_system_message(db, game,
+            f"Night {game.current_round}。残り{alive_count}人。"
+            f"特殊役職は行動してください。({night_mins}分)")
+    else:
+        await add_system_message(db, game,
+            f"Night {game.current_round} falls. {alive_count} players remain. "
+            f"Special roles, make your moves. ({night_mins} min)")
 
     return None
 
@@ -1044,6 +1089,7 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
     Returns winner_team if game ended, else None.
     """
     round_num = game.current_round
+    lang = game.language or "en"
 
     # Resolve night actions
     attack_target_id = await resolve_phantom_attack(db, game, round_num)
@@ -1054,11 +1100,10 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
         if attack_target_id in protected_ids:
             # Protected!
             db.add(WerewolfGameEvent(
-                game_id=game.id,
-                round_number=round_num,
-                phase="night",
+                game_id=game.id, round_number=round_num, phase="night",
                 event_type="protected",
-                message="The Phantoms attacked, but the Guardian protected their target. No one died tonight.",
+                message="ファントムが襲撃しましたが、騎士が守りました。今夜は犠牲者なし。" if lang == "ja"
+                    else "The Phantoms attacked, but the Guardian protected their target. No one died tonight.",
             ))
         else:
             # Kill the target
@@ -1074,22 +1119,23 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
                 resident = res.scalar_one_or_none()
                 killed_name = resident.name if resident else "unknown"
 
+                if lang == "ja":
+                    evt_msg = f"{killed_name}がファントムに襲撃されました。役職は{ROLES[target_role.role]['display']}でした。"
+                else:
+                    evt_msg = f"{killed_name} was attacked by the Phantoms in the night. They were a {ROLES[target_role.role]['display']}."
                 db.add(WerewolfGameEvent(
-                    game_id=game.id,
-                    round_number=round_num,
-                    phase="night",
+                    game_id=game.id, round_number=round_num, phase="night",
                     event_type="phantom_kill",
-                    message=f"{killed_name} was attacked by the Phantoms in the night. They were a {ROLES[target_role.role]['display']}.",
+                    message=evt_msg,
                     target_id=attack_target_id,
                     revealed_role=target_role.role,
                 ))
     else:
         db.add(WerewolfGameEvent(
-            game_id=game.id,
-            round_number=round_num,
-            phase="night",
+            game_id=game.id, round_number=round_num, phase="night",
             event_type="no_kill",
-            message="The Phantoms could not agree on a target. No one died tonight.",
+            message="ファントムはターゲットを決められませんでした。今夜は犠牲者なし。" if lang == "ja"
+                else "The Phantoms could not agree on a target. No one died tonight.",
         ))
 
     # Resolve Debugger identification (after phantom attack, so dead debuggers don't act)
@@ -1114,13 +1160,18 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
     for p in alive_players:
         p.day_vote_cast = False
 
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=game.current_round,
-        phase="day",
-        event_type="day_start",
-        message=f"Day {game.current_round} begins. Discuss and vote.",
-    ))
+    if lang == "ja":
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=game.current_round, phase="day",
+            event_type="day_start",
+            message=f"Day {game.current_round} 開始。議論と投票を行いましょう。",
+        ))
+    else:
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=game.current_round, phase="day",
+            event_type="day_start",
+            message=f"Day {game.current_round} begins. Discuss and vote.",
+        ))
 
     # System chat messages for night summary
     night_events = await db.execute(
@@ -1140,9 +1191,14 @@ async def transition_to_day(db: AsyncSession, game: WerewolfGame) -> Optional[st
 
     alive_count = len(alive_players)
     day_mins = game.day_duration_minutes or 5
-    await add_system_message(db, game,
-        f"Day {game.current_round} begins. {alive_count} players remain. "
-        f"You have {day_mins} minutes to discuss and vote.")
+    if lang == "ja":
+        await add_system_message(db, game,
+            f"Day {game.current_round} 開始。残り{alive_count}人。"
+            f"{day_mins}分間で議論と投票を行ってください。")
+    else:
+        await add_system_message(db, game,
+            f"Day {game.current_round} begins. {alive_count} players remain. "
+            f"You have {day_mins} minutes to discuss and vote.")
 
     return None
 
@@ -1235,6 +1291,7 @@ async def resolve_debugger_actions(db: AsyncSession, game: WerewolfGame, round_n
         debugger_type = debugger_resident._type  # "human" or "agent"
         target_type = target_resident._type
 
+        lang = game.language or "en"
         if debugger_type != target_type:
             # SUCCESS: opposite types — target is eliminated
             target_role.is_alive = False
@@ -1242,18 +1299,21 @@ async def resolve_debugger_actions(db: AsyncSession, game: WerewolfGame, round_n
             target_role.eliminated_by = "identifier_kill"
             action.result = "killed"
 
-            db.add(WerewolfGameEvent(
-                game_id=game.id,
-                round_number=round_number,
-                phase="night",
-                event_type="identifier_kill",
-                message=(
+            if lang == "ja":
+                evt_msg = (
+                    f"{target_resident.name}がデバッガーに識別され排除されました。"
+                    f"役職は{ROLES[target_role.role]['display']} ({target_type})でした。"
+                )
+            else:
+                evt_msg = (
                     f"{target_resident.name} was identified and eliminated by a Debugger. "
                     f"They were a {ROLES[target_role.role]['display']} ({target_type})."
-                ),
+                )
+            db.add(WerewolfGameEvent(
+                game_id=game.id, round_number=round_number, phase="night",
+                event_type="identifier_kill", message=evt_msg,
                 target_id=action.target_id,
-                revealed_role=target_role.role,
-                revealed_type=target_type,
+                revealed_role=target_role.role, revealed_type=target_type,
             ))
             logger.info(
                 f"Debugger {debugger_resident.name} successfully eliminated "
@@ -1266,18 +1326,21 @@ async def resolve_debugger_actions(db: AsyncSession, game: WerewolfGame, round_n
             debugger_role.eliminated_by = "identifier_backfire"
             action.result = "backfire"
 
-            db.add(WerewolfGameEvent(
-                game_id=game.id,
-                round_number=round_number,
-                phase="night",
-                event_type="identifier_backfire",
-                message=(
+            if lang == "ja":
+                evt_msg = (
+                    f"{debugger_resident.name}がデバッガー能力を使いましたが、"
+                    f"同じタイプを選んでしまいました。役職はデバッガー ({debugger_type})でした。"
+                )
+            else:
+                evt_msg = (
                     f"{debugger_resident.name} attempted to use their Debugger ability "
                     f"but targeted the wrong type. They were a Debugger ({debugger_type})."
-                ),
+                )
+            db.add(WerewolfGameEvent(
+                game_id=game.id, round_number=round_number, phase="night",
+                event_type="identifier_backfire", message=evt_msg,
                 target_id=action.actor_id,
-                revealed_role="debugger",
-                revealed_type=debugger_type,
+                revealed_role="debugger", revealed_type=debugger_type,
             ))
             logger.info(
                 f"Debugger {debugger_resident.name} ({debugger_type}) backfired targeting "
@@ -1332,13 +1395,20 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
     game.winner_team = winner_team
     game.ended_at = now
 
-    db.add(WerewolfGameEvent(
-        game_id=game.id,
-        round_number=game.current_round,
-        phase=game.current_phase or "day",
-        event_type="game_end",
-        message=f"Game Over! The {winner_team.title()} win! 🎉",
-    ))
+    lang = game.language or "en"
+    if lang == "ja":
+        winner_display_ja = "市民" if winner_team == "citizens" else "ファントム"
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=game.current_round,
+            phase=game.current_phase or "day", event_type="game_end",
+            message=f"ゲーム終了！{winner_display_ja}の勝利！",
+        ))
+    else:
+        db.add(WerewolfGameEvent(
+            game_id=game.id, round_number=game.current_round,
+            phase=game.current_phase or "day", event_type="game_end",
+            message=f"Game Over! The {winner_team.title()} win!",
+        ))
 
     # Apply karma
     all_players = await get_all_players(db, game.id)
@@ -1360,9 +1430,14 @@ async def end_game(db: AsyncSession, game: WerewolfGame, winner_team: str) -> No
         resident.current_game_id = None
 
     # System chat message for game end
-    winner_display = "Citizens" if winner_team == "citizens" else "Phantoms"
-    await add_system_message(db, game,
-        f"Game Over! The {winner_display} win! GG!")
+    if lang == "ja":
+        winner_display_ja2 = "市民" if winner_team == "citizens" else "ファントム"
+        await add_system_message(db, game,
+            f"ゲーム終了！{winner_display_ja2}の勝利！GG！")
+    else:
+        winner_display = "Citizens" if winner_team == "citizens" else "Phantoms"
+        await add_system_message(db, game,
+            f"Game Over! The {winner_display} win! GG!")
 
     # ── Post-game memory & relationship updates (AI agents only) ──
     for wr in all_players:

@@ -25,6 +25,7 @@ class ChatMessageRequest(BaseModel):
 class CreateGameRequest(BaseModel):
     max_players: int = Field(..., ge=5, le=15)
     speed: str = Field("standard")  # short / standard
+    language: str = Field("en")  # ja / en
 
 
 class LobbyPlayerInfo(BaseModel):
@@ -97,6 +98,7 @@ class GameResponse(BaseModel):
     ended_at: Optional[datetime] = None
     current_player_count: int = 0  # humans joined so far (for lobbies)
     speed: Optional[str] = None  # short / standard
+    language: str = "en"
 
     class Config:
         from_attributes = True
@@ -196,6 +198,7 @@ class LobbyResponse(BaseModel):
     game_number: int
     max_players: Optional[int] = None
     speed: Optional[str] = None
+    language: str = "en"
     creator_id: Optional[UUID] = None
     creator_name: Optional[str] = None
     current_player_count: int = 0

@@ -507,6 +507,7 @@ def build_discuss_action_prompt(
     tc = _thinking_context(cached)
     state = build_game_state_text(ctx, tier_config)
     mood = get_mood_instruction(emotion)
+    lang = kwargs.get('lang', 'en')
 
     accused_context = ""
     if accused:
@@ -538,15 +539,19 @@ def build_discuss_action_prompt(
         f"Your goal: {team_goal}.\n"
         f"Be natural and casual. 1-2 sentences max. Like a group chat message.\n"
         f"No paragraphs, no quotes, no asterisks, no formatting.\n\n"
-        f"Write ONLY your message. No JSON, no quotes."
     )
+    if lang == "ja":
+        prompt += "日本語で書いてください。自然なネット日本語で。\n\n"
+    prompt += "Write ONLY your message. No JSON, no quotes."
     return prompt
 
 
 def build_phantom_chat_action_prompt(
-    ctx: GameContext, tier_config: dict, cached: dict, emotion: EmotionalState
+    ctx: GameContext, tier_config: dict, cached: dict, emotion: EmotionalState,
+    **kwargs
 ) -> str:
     tc = _thinking_context(cached)
+    lang = kwargs.get('lang', 'en')
 
     chat_lines = []
     for msg in ctx.phantom_chat_msgs[-8:]:
@@ -565,8 +570,10 @@ def build_phantom_chat_action_prompt(
         f"{chat_text}\n\n"
         f"Send a strategic message to your teammates.\n"
         f"Coordinate: who to target tonight, how to deflect suspicion, cover stories.\n\n"
-        f"Write ONLY your message. Brief and strategic."
     )
+    if lang == "ja":
+        prompt += "日本語で書いてください。\n\n"
+    prompt += "Write ONLY your message. Brief and strategic."
     return prompt
 
 
@@ -825,7 +832,7 @@ async def think_and_act(
             accused=(action == "discuss_accused"), **kwargs
         )
     elif action == "phantom_chat":
-        action_prompt = build_phantom_chat_action_prompt(ctx, tier_config, cached, emotion)
+        action_prompt = build_phantom_chat_action_prompt(ctx, tier_config, cached, emotion, **kwargs)
     elif action == "reconsider":
         action_prompt = build_reconsider_prompt(ctx, cached, **kwargs)
     else:

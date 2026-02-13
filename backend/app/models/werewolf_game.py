@@ -100,6 +100,9 @@ class WerewolfGame(Base):
     # Speed preset (short / standard)
     speed: Mapped[str | None] = mapped_column(String(20))
 
+    # Language (ja / en)
+    language: Mapped[str] = mapped_column(String(5), default="en")
+
     # Player counts (snapshot at game start)
     total_players: Mapped[int] = mapped_column(Integer, default=0)
     phantom_count: Mapped[int] = mapped_column(Integer, default=0)

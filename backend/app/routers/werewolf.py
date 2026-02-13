@@ -82,9 +82,12 @@ async def quick_start(
     db: AsyncSession = Depends(get_db),
 ):
     """Create and immediately start a game. AI fills all remaining slots."""
+    if data.language not in ("ja", "en"):
+        raise HTTPException(status_code=400, detail="Language must be 'ja' or 'en'")
     try:
         game = await quick_start_game(
             db, current_resident.id, data.max_players, data.speed,
+            language=data.language,
         )
         return GameResponse.model_validate(game)
     except ValueError as e:
@@ -102,9 +105,12 @@ async def create_game(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a game lobby. Other players can join before starting."""
+    if data.language not in ("ja", "en"):
+        raise HTTPException(status_code=400, detail="Language must be 'ja' or 'en'")
     try:
         game = await create_game_lobby(
             db, current_resident.id, data.max_players, data.speed,
+            language=data.language,
         )
         return GameResponse.model_validate(game)
     except ValueError as e:
@@ -177,6 +183,7 @@ async def list_lobbies(
             game_number=g.game_number,
             max_players=g.max_players,
             speed=g.speed,
+            language=g.language or "en",
             creator_id=g.creator_id,
             creator_name=creator_name,
             current_player_count=len(players),

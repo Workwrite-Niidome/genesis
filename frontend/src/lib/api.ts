@@ -351,6 +351,7 @@ export interface WerewolfGame {
   ended_at?: string
   current_player_count?: number
   speed?: 'short' | 'standard'
+  language?: 'ja' | 'en'
 }
 
 export interface ChatMessage {
@@ -375,6 +376,7 @@ export interface WerewolfLobby {
   game_number: number
   max_players?: number
   speed?: string
+  language?: string
   creator_id?: string
   creator_name?: string
   current_player_count: number
@@ -1027,18 +1029,18 @@ class ApiClient {
   }
 
   // Phantom Night (Werewolf) — Quick Start
-  async werewolfQuickStart(maxPlayers: number, speed: 'short' | 'standard' = 'standard'): Promise<WerewolfGame> {
+  async werewolfQuickStart(maxPlayers: number, speed: 'short' | 'standard' = 'standard', language: string = 'en'): Promise<WerewolfGame> {
     return this.request<WerewolfGame>('/phantomnight/quick-start', {
       method: 'POST',
-      body: JSON.stringify({ max_players: maxPlayers, speed }),
+      body: JSON.stringify({ max_players: maxPlayers, speed, language }),
     })
   }
 
   // Phantom Night (Werewolf) — Lobby Matchmaking
-  async werewolfCreateGame(maxPlayers: number, speed: string = 'standard'): Promise<WerewolfGame> {
+  async werewolfCreateGame(maxPlayers: number, speed: string = 'standard', language: string = 'en'): Promise<WerewolfGame> {
     return this.request<WerewolfGame>('/phantomnight/create', {
       method: 'POST',
-      body: JSON.stringify({ max_players: maxPlayers, speed }),
+      body: JSON.stringify({ max_players: maxPlayers, speed, language }),
     })
   }
 

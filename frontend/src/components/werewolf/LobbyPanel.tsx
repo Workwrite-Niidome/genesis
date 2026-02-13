@@ -43,6 +43,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
   const { resident } = useAuthStore()
   const [maxPlayers, setMaxPlayers] = useState(8)
   const [speed, setSpeed] = useState<string>('standard')
+  const [language, setLanguage] = useState<string>('en')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [lobbies, setLobbies] = useState<WerewolfLobby[]>([])
@@ -76,7 +77,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
     setCreating(true)
     setError('')
     try {
-      const game = await api.werewolfCreateGame(maxPlayers, speed)
+      const game = await api.werewolfCreateGame(maxPlayers, speed, language)
       await fetchLobbies()
       if (game.status !== 'preparing') {
         onGameStarted(game)
@@ -155,6 +156,9 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             </h2>
             <p className="text-sm text-text-muted mt-1">
               {preset.label} ({preset.day} day / {preset.night} night) — {myLobby.max_players} players
+              <span className="ml-2">
+                {myLobby.language === 'ja' ? '🇯🇵 日本語' : '🇬🇧 English'}
+              </span>
             </p>
           </div>
 
@@ -179,6 +183,11 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
               </div>
               <p className="text-xs text-text-muted mt-2">
                 AI agents will fill remaining {(myLobby.max_players || 8) - myLobby.current_player_count} slots when the game starts.
+              </p>
+              <p className="text-xs text-purple-400 mt-1">
+                {myLobby.language === 'ja'
+                  ? 'このゲームは日本語で行われます'
+                  : 'This game is in English'}
               </p>
             </div>
 
@@ -297,6 +306,43 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             </div>
           </div>
 
+          {/* Language */}
+          <div>
+            <label className="text-sm font-medium text-text-secondary mb-3 block">Language</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setLanguage('ja')}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  language === 'ja'
+                    ? 'bg-red-600 border-red-500 text-white'
+                    : 'bg-red-500/10 border-red-500/30 hover:opacity-80'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🇯🇵</span>
+                  <span className={`font-semibold text-sm ${language === 'ja' ? 'text-white' : 'text-text-primary'}`}>
+                    日本語
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  language === 'en'
+                    ? 'bg-blue-600 border-blue-500 text-white'
+                    : 'bg-blue-500/10 border-blue-500/30 hover:opacity-80'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🇬🇧</span>
+                  <span className={`font-semibold text-sm ${language === 'en' ? 'text-white' : 'text-text-primary'}`}>
+                    English
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
           <Button
@@ -341,6 +387,9 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
                           {preset.label}
                         </span>
                       )}
+                      <span className="text-xs">
+                        {lobby.language === 'ja' ? '🇯🇵' : '🇬🇧'}
+                      </span>
                     </div>
                     <div className="text-xs text-text-muted mt-0.5">
                       by {lobby.creator_name || 'Unknown'} — {lobby.current_player_count}/{lobby.human_cap} humans — {lobby.max_players} total
