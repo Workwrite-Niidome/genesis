@@ -495,8 +495,11 @@ async def _call_dify(
     user: str,
     conversation_id: str | None,
 ) -> ConsultResult | None:
-    """Low-level Dify chat-messages call. Returns None on failure (caller may retry).
-    Sets _last_dify_error with the failure reason.
+    """Low-level Dify chat-messages call using streaming mode.
+
+    Uses streaming to avoid Dify's gateway timeout (504) on long queries.
+    Collects SSE chunks and assembles the full answer.
+    Sets _last_dify_error with the failure reason on failure.
     """
     global _last_dify_error
     _last_dify_error = ""
@@ -505,49 +508,82 @@ async def _call_dify(
     payload: dict = {
         "inputs": {},
         "query": query,
-        "response_mode": "blocking",
+        "response_mode": "streaming",
         "user": user,
     }
     if conversation_id:
         payload["conversation_id"] = conversation_id
 
     try:
-        logger.warning(f"[Dify] Calling chat-messages API (query_len={len(query)}, conv_id={conversation_id})")
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
+        logger.warning(f"[Dify] Calling chat-messages API streaming (query_len={len(query)}, conv_id={conversation_id})")
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            async with client.stream(
+                "POST",
                 f"{DIFY_API_URL}/chat-messages",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
-            )
+            ) as response:
+                logger.warning(f"[Dify] Stream response status={response.status_code}")
 
-            logger.warning(f"[Dify] Response status={response.status_code}")
+                if response.status_code != 200:
+                    body = (await response.aread()).decode("utf-8", errors="replace")[:500]
+                    logger.error(f"[Dify] API error: {response.status_code} — {body}")
+                    _last_dify_error = f"Dify API returned {response.status_code}"
+                    return None
 
-            if response.status_code != 200:
-                body = response.text[:500]
-                logger.error(f"[Dify] API error: {response.status_code} — {body}")
-                _last_dify_error = f"Dify API returned {response.status_code}"
-                return None
+                # Parse SSE stream
+                answer_parts: list[str] = []
+                result_conversation_id: str | None = None
+                result_message_id: str | None = None
 
-            data = response.json()
-            answer = data.get("answer", "")
-            if not answer:
-                logger.warning("[Dify] Got 200 but empty answer")
-                _last_dify_error = "Dify returned 200 but empty answer"
-                return None
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if not data_str or data_str == "[DONE]":
+                        continue
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
 
-            logger.warning(f"[Dify] Got response (len={len(answer)}, conv_id={data.get('conversation_id')})")
-            return ConsultResult(
-                answer=answer,
-                conversation_id=data.get("conversation_id"),
-                message_id=data.get("message_id"),
-            )
+                    event = data.get("event", "")
+                    if event == "message":
+                        answer_parts.append(data.get("answer", ""))
+                        if not result_conversation_id:
+                            result_conversation_id = data.get("conversation_id")
+                        if not result_message_id:
+                            result_message_id = data.get("message_id")
+                    elif event == "message_end":
+                        if not result_conversation_id:
+                            result_conversation_id = data.get("conversation_id")
+                        if not result_message_id:
+                            result_message_id = data.get("message_id")
+                    elif event == "error":
+                        err_msg = data.get("message", "Unknown error")
+                        logger.error(f"[Dify] Stream error event: {err_msg}")
+                        _last_dify_error = f"Dify stream error: {err_msg}"
+                        return None
+
+                answer = "".join(answer_parts)
+                if not answer:
+                    logger.warning("[Dify] Stream completed but empty answer")
+                    _last_dify_error = "Dify returned empty answer (streaming)"
+                    return None
+
+                logger.warning(f"[Dify] Got streamed response (len={len(answer)}, conv_id={result_conversation_id})")
+                return ConsultResult(
+                    answer=answer,
+                    conversation_id=result_conversation_id,
+                    message_id=result_message_id,
+                )
 
     except httpx.TimeoutException:
-        logger.error("[Dify] Request timed out (120s)")
-        _last_dify_error = "Dify API timed out (120s)"
+        logger.error("[Dify] Request timed out (180s)")
+        _last_dify_error = "Dify API timed out (180s)"
         return None
     except Exception as e:
         logger.error(f"[Dify] API error: {type(e).__name__}: {e}")
