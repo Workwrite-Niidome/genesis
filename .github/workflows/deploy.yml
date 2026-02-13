@@ -760,8 +760,9 @@ jobs:
             echo "=== Celery Beat Logs (last 50) ==="
             docker logs genesis-celery-beat --tail 50 2>&1 || true
 
-            echo "=== Reset agents and create 50 with STRUCT CODE ==="
-            docker exec -w /app genesis-backend python scripts/reset_agents.py 2>&1 || echo "Agent reset skipped"
+            echo "=== Reset agents and create 50 with STRUCT CODE (background) ==="
+            docker exec -d -w /app genesis-backend python scripts/reset_agents.py
+            echo "Agent reset started in background. Check logs: docker logs genesis-backend"
 
             echo "=== Agent Cycle Diagnostic ==="
             docker exec -w /app genesis-celery-worker python scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"

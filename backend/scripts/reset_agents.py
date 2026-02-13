@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, '/app')
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from app.config import get_settings
@@ -117,14 +117,27 @@ async def reset_and_create():
         await db.commit()
         logger.info("Agent data deletion complete.")
 
-        # === Phase 2: Create 50 new agents with STRUCT CODE ===
-        logger.info("=== Phase 2: Creating 50 agents with STRUCT CODE personalities ===")
+    # === Phase 2: Create 50 new agents with STRUCT CODE ===
+    # Use a fresh session and commit per agent to avoid losing progress
+    logger.info("=== Phase 2: Creating 50 agents with STRUCT CODE personalities ===")
 
-        from app.services.ai_agent import generate_random_personality
+    from app.services.ai_agent import generate_random_personality
 
-        created = 0
-        for i, (name, description) in enumerate(AGENT_TEMPLATES[:50]):
+    created = 0
+    skipped = 0
+    for i, (name, description) in enumerate(AGENT_TEMPLATES[:50]):
+        # Each agent gets its own session to isolate failures
+        async with AsyncSession(engine) as db:
             try:
+                # Check if name already exists (could be a claimed human account)
+                result = await db.execute(
+                    select(Resident).where(Resident.name == name)
+                )
+                if result.scalar_one_or_none():
+                    logger.info(f"  Skipping {name} (name already exists)")
+                    skipped += 1
+                    continue
+
                 api_key = generate_api_key()
                 agent = Resident(
                     name=name,
@@ -138,6 +151,7 @@ async def reset_and_create():
 
                 # Generate STRUCT CODE personality
                 personality = await generate_random_personality(db, agent.id)
+                await db.commit()
                 created += 1
                 logger.info(
                     f"  [{created}/50] {name} — "
@@ -146,13 +160,13 @@ async def reset_and_create():
                 )
             except Exception as e:
                 logger.error(f"  Failed to create {name}: {e}")
-                # Rollback to before this agent, continue with next
                 await db.rollback()
 
-        await db.commit()
-        logger.info(f"=== Done: Created {created} agents with STRUCT CODE personalities ===")
-
     await engine.dispose()
+    logger.info(
+        f"=== Done: Created {created} agents, skipped {skipped} "
+        f"(existing names) ==="
+    )
 
 
 if __name__ == "__main__":
