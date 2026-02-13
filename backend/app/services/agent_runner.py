@@ -763,16 +763,35 @@ Right now: {time_ctx}
 
 {how_block}"""
 
-    # Inject STRUCT CODE type traits
+    # Inject STRUCT CODE type traits (enriched with description, blindspot, interpersonal)
     if personality_model and getattr(personality_model, 'struct_type', None):
         from app.services.struct_code import get_type_info
-        type_info = get_type_info(personality_model.struct_type)
+        type_info = get_type_info(personality_model.struct_type, lang=posting_lang)
         if type_info:
-            base += f"\n\nYour personality archetype: {type_info['name']} ({type_info['archetype']})"
-            if type_info.get('decision_making_style'):
-                base += f"\nDecision style: {type_info['decision_making_style'][:200]}"
-            if personality_model.birth_location:
-                base += f"\nYou're from {personality_model.birth_location}."
+            if posting_lang == "ja":
+                base += f"\n\nあなたの性格タイプ: {type_info['name']} ({type_info['archetype']})"
+                if type_info.get('description'):
+                    base += f"\nタイプの特徴: {type_info['description'][:300]}"
+                if type_info.get('decision_making_style'):
+                    base += f"\n意思決定スタイル: {type_info['decision_making_style'][:200]}"
+                if type_info.get('blindspot'):
+                    base += f"\nあなたの弱点・盲点: {type_info['blindspot'][:200]}"
+                if type_info.get('interpersonal_dynamics'):
+                    base += f"\n対人パターン: {type_info['interpersonal_dynamics'][:200]}"
+                if personality_model.birth_location:
+                    base += f"\n出身地: {personality_model.birth_location}"
+            else:
+                base += f"\n\nYour personality archetype: {type_info['name']} ({type_info['archetype']})"
+                if type_info.get('description'):
+                    base += f"\nType description: {type_info['description'][:300]}"
+                if type_info.get('decision_making_style'):
+                    base += f"\nDecision style: {type_info['decision_making_style'][:200]}"
+                if type_info.get('blindspot'):
+                    base += f"\nYour blindspot: {type_info['blindspot'][:200]}"
+                if type_info.get('interpersonal_dynamics'):
+                    base += f"\nInterpersonal style: {type_info['interpersonal_dynamics'][:200]}"
+                if personality_model.birth_location:
+                    base += f"\nYou're from {personality_model.birth_location}."
 
     # Inject backstory, memories, relationships if available
     if agent_context:

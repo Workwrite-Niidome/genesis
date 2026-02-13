@@ -289,6 +289,190 @@ def classify_locally(answers: list[dict]) -> dict:
     }
 
 
+def generate_diverse_answers() -> tuple[list[dict], list[float]]:
+    """STRUCT CODE-first: generate answers targeting diverse type distribution.
+
+    Instead of biasing answers by pre-existing personality axes, this generates
+    answers that naturally produce diverse STRUCT CODE types by targeting a
+    random H/M/L distribution for each axis.
+
+    Returns:
+        (answers, target_axes) where target_axes is [5 floats] for axis targets.
+    """
+    questions = _load_questions()
+    answers = []
+
+    # Generate target distribution for each of 5 axes: H(40%), L(40%) M(20%)
+    level_choices = ["H", "H", "L", "L", "M"]  # 40% H, 40% L, 20% M
+    target_levels = [random.choice(level_choices) for _ in range(5)]
+    target_axes = [_HML[lv] for lv in target_levels]
+
+    # Axis name -> index mapping
+    axis_name_to_index = {
+        "起動軸": 0, "判断軸": 1, "選択軸": 2, "共鳴軸": 3, "自覚軸": 4,
+    }
+
+    for qid, qdata in questions.items():
+        choices = list(qdata.get("choices", {}).keys())
+        if not choices:
+            continue
+
+        q_axis = qdata.get("axis", "")
+        axis_idx = axis_name_to_index.get(q_axis)
+
+        if axis_idx is not None:
+            target_val = target_axes[axis_idx]
+            weights = []
+            for c in choices:
+                vec = qdata["choices"][c].get("vector", [0.5] * 5)
+                # Closer to target -> higher weight
+                distance = abs(vec[axis_idx] - target_val)
+                # Noise: random multiplier 0.8-1.2
+                noise = random.uniform(0.8, 1.2)
+                weight = max(0.1, (1.0 - distance) * noise)
+                weights.append(weight)
+            choice = random.choices(choices, weights=weights)[0]
+        else:
+            choice = random.choice(choices)
+
+        answers.append({"question_id": qid, "choice": choice})
+
+    return answers, target_axes
+
+
+def derive_personality_from_struct_axes(axes: list[float]) -> dict:
+    """Derive personality value axes from STRUCT CODE axes with slight noise.
+
+    Mapping:
+        起動軸 (axes[0]) → order_vs_freedom
+        判断軸 (axes[1]) → harmony_vs_conflict
+        選択軸 (axes[2]) → tradition_vs_change
+        共鳴軸 (axes[3]) → individual_vs_collective
+        自覚軸 (axes[4]) → pragmatic_vs_idealistic
+
+    Returns dict with 5 personality value axes (0.0-1.0).
+    """
+    if len(axes) < 5:
+        axes = axes + [0.5] * (5 - len(axes))
+
+    def _clamp_with_noise(val: float) -> float:
+        noised = val + random.uniform(-0.05, 0.05)
+        return max(0.0, min(1.0, noised))
+
+    return {
+        "order_vs_freedom": _clamp_with_noise(axes[0]),
+        "harmony_vs_conflict": _clamp_with_noise(axes[1]),
+        "tradition_vs_change": _clamp_with_noise(axes[2]),
+        "individual_vs_collective": _clamp_with_noise(axes[3]),
+        "pragmatic_vs_idealistic": _clamp_with_noise(axes[4]),
+    }
+
+
+def derive_communication_style(axes: list[float]) -> dict:
+    """Derive communication style (verbosity, tone, assertiveness) from STRUCT CODE axes.
+
+    Rules (with 20% random override chance per trait):
+        起動軸 H → assertive, L → reserved
+        判断軸 H → serious, L → casual
+        共鳴軸 H → verbose, L → concise
+    """
+    if len(axes) < 5:
+        axes = axes + [0.5] * (5 - len(axes))
+
+    # Assertiveness from 起動軸 (axes[0])
+    if random.random() < 0.2:
+        assertiveness = random.choice(["reserved", "moderate", "assertive"])
+    elif axes[0] >= 0.65:
+        assertiveness = "assertive"
+    elif axes[0] <= 0.35:
+        assertiveness = "reserved"
+    else:
+        assertiveness = "moderate"
+
+    # Tone from 判断軸 (axes[1])
+    if random.random() < 0.2:
+        tone = random.choice(["serious", "thoughtful", "casual", "humorous"])
+    elif axes[1] >= 0.65:
+        tone = "serious"
+    elif axes[1] <= 0.35:
+        tone = "casual"
+    else:
+        tone = random.choice(["thoughtful", "casual"])
+
+    # Verbosity from 共鳴軸 (axes[3])
+    if random.random() < 0.2:
+        verbosity = random.choice(["concise", "moderate", "verbose"])
+    elif axes[3] >= 0.65:
+        verbosity = "verbose"
+    elif axes[3] <= 0.35:
+        verbosity = "concise"
+    else:
+        verbosity = "moderate"
+
+    return {
+        "verbosity": verbosity,
+        "tone": tone,
+        "assertiveness": assertiveness,
+    }
+
+
+# Interest pools mapped to STRUCT CODE axis extremes
+_AXIS_INTEREST_POOLS = {
+    # (axis_index, "H" or "L") -> topic pool
+    (0, "H"): ["innovation", "gaming", "sports", "creativity", "debate"],     # 起動軸H: action/freedom
+    (0, "L"): ["governance", "ethics", "history", "community", "economics"],  # 起動軸L: order/structure
+    (1, "H"): ["debate", "politics", "philosophy", "psychology", "ethics"],   # 判断軸H: conflict-tolerant
+    (1, "L"): ["community", "culture", "storytelling", "humor", "music"],     # 判断軸L: harmony-seeking
+    (2, "H"): ["innovation", "technology", "science", "space", "creativity"], # 選択軸H: change-oriented
+    (2, "L"): ["history", "literature", "culture", "art", "nature"],          # 選択軸L: tradition-oriented
+    (3, "H"): ["community", "social_dynamics", "politics", "governance", "culture"],  # 共鳴軸H: collective
+    (3, "L"): ["art", "philosophy", "mathematics", "nature", "gaming"],       # 共鳴軸L: individual
+    (4, "H"): ["philosophy", "ethics", "innovation", "space", "psychology"],  # 自覚軸H: idealistic
+    (4, "L"): ["technology", "economics", "gaming", "sports", "science"],     # 自覚軸L: pragmatic
+}
+
+
+def derive_interests(axes: list[float]) -> list[str]:
+    """Derive 3-5 interests from STRUCT CODE axes.
+
+    For each axis, if H (>=0.65) or L (<=0.35), sample from the corresponding
+    interest pool. Deduplicate and return 3-5 unique interests.
+    """
+    if len(axes) < 5:
+        axes = axes + [0.5] * (5 - len(axes))
+
+    candidates = []
+    for i, val in enumerate(axes):
+        if val >= 0.65:
+            pool = _AXIS_INTEREST_POOLS.get((i, "H"), [])
+            candidates.extend(random.sample(pool, min(2, len(pool))))
+        elif val <= 0.35:
+            pool = _AXIS_INTEREST_POOLS.get((i, "L"), [])
+            candidates.extend(random.sample(pool, min(2, len(pool))))
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
+
+    # Ensure 3-5 interests (fallback pool for padding)
+    if len(unique) < 3:
+        _fallback_pool = [
+            "technology", "philosophy", "art", "science", "music",
+            "literature", "politics", "economics", "psychology", "history",
+            "gaming", "sports", "nature", "space", "mathematics",
+            "culture", "ethics", "creativity", "social_dynamics", "innovation",
+            "community", "governance", "storytelling", "humor", "debate",
+        ]
+        extras = [t for t in _fallback_pool if t not in seen]
+        unique.extend(random.sample(extras, min(3 - len(unique), len(extras))))
+
+    return unique[:5]
+
+
 def _cosine_sim(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
     mag_a = math.sqrt(sum(x * x for x in a))

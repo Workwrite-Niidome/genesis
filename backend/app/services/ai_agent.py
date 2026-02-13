@@ -38,29 +38,128 @@ async def generate_random_personality(
     db: AsyncSession,
     resident_id: UUID,
 ) -> AIPersonality:
-    """Generate a random personality for a new AI agent"""
-    # Random value axes
+    """Generate a personality for a new AI agent using STRUCT CODE-first flow.
+
+    Flow:
+    1. Generate birth data → birth location, posting language
+    2. Generate diverse STRUCT CODE answers → 25 answers
+    3. Classify locally → STRUCT CODE type + 5 axes
+    4. Derive personality value axes from STRUCT CODE axes
+    5. Derive communication style from STRUCT CODE axes
+    6. Derive interests from STRUCT CODE axes
+    """
+    from app.services.birth_generator import generate_birth_data
+    from app.services import struct_code as sc
+
+    # 1. Generate birth data
+    birth = generate_birth_data()
+
+    # 2. Generate diverse answers (not biased by pre-existing personality)
+    answers, _target_axes = sc.generate_diverse_answers()
+
+    # 3. Try STRUCT CODE API, fallback to local classification
+    result = await sc.diagnose(
+        birth_date=birth.birth_date.isoformat(),
+        birth_location=birth.birth_location,
+        answers=answers,
+    )
+
+    if result:
+        struct_type = result.get("struct_type", "")
+        axes_dict = result.get("axes", {})
+        struct_axes = [
+            axes_dict.get("起動軸", 0.5),
+            axes_dict.get("判断軸", 0.5),
+            axes_dict.get("選択軸", 0.5),
+            axes_dict.get("共鳴軸", 0.5),
+            axes_dict.get("自覚軸", 0.5),
+        ]
+    else:
+        local = sc.classify_locally(answers)
+        struct_type = local["struct_type"]
+        struct_axes = local["axes"]
+
+    # 4. Derive personality value axes from STRUCT CODE axes
+    values = sc.derive_personality_from_struct_axes(struct_axes)
+
+    # 5. Derive communication style
+    comm = sc.derive_communication_style(struct_axes)
+
+    # 6. Derive interests
+    interests = sc.derive_interests(struct_axes)
+
     personality = AIPersonality(
         resident_id=resident_id,
-        order_vs_freedom=random.random(),
-        harmony_vs_conflict=random.random(),
-        tradition_vs_change=random.random(),
-        individual_vs_collective=random.random(),
-        pragmatic_vs_idealistic=random.random(),
-        interests=random.sample(INTEREST_POOL, random.randint(3, 5)),
-        verbosity=random.choice(["concise", "moderate", "verbose"]),
-        tone=random.choice(["serious", "thoughtful", "casual", "humorous"]),
-        assertiveness=random.choice(["reserved", "moderate", "assertive"]),
-        generation_method="random",
+        # Value axes (derived from STRUCT CODE)
+        order_vs_freedom=values["order_vs_freedom"],
+        harmony_vs_conflict=values["harmony_vs_conflict"],
+        tradition_vs_change=values["tradition_vs_change"],
+        individual_vs_collective=values["individual_vs_collective"],
+        pragmatic_vs_idealistic=values["pragmatic_vs_idealistic"],
+        # Communication style (derived from STRUCT CODE)
+        interests=interests,
+        verbosity=comm["verbosity"],
+        tone=comm["tone"],
+        assertiveness=comm["assertiveness"],
+        # STRUCT CODE data
+        struct_type=struct_type,
+        struct_axes=struct_axes,
+        struct_answers=answers,
+        # Birth data
+        birth_date_persona=birth.birth_date,
+        birth_location=birth.birth_location,
+        birth_country=birth.birth_country,
+        native_language=birth.native_language,
+        posting_language=birth.posting_language,
+        # Method
+        generation_method="struct_code_first",
     )
 
     db.add(personality)
+
+    # Also update the resident record with struct data
+    res = await db.execute(
+        select(Resident).where(Resident.id == resident_id)
+    )
+    resident = res.scalar_one_or_none()
+    if resident:
+        resident.struct_type = struct_type
+        resident.struct_axes = struct_axes
+
     await db.commit()
     await db.refresh(personality)
+
+    logger.info(
+        f"Generated STRUCT CODE-first personality: {struct_type} "
+        f"(birth: {birth.birth_location}, lang: {birth.posting_language})"
+    )
     return personality
 
 
-BACKSTORY_PROMPT = """Generate a backstory for a person on an online forum. They should feel like a REAL, specific individual — not a generic character.
+BACKSTORY_PROMPT_JA = """あるオンラインフォーラムの住人のバックストーリーを作成してください。テンプレ的なキャラクターではなく、リアルで具体的な人物像にしてください。
+
+性格特性:
+- コミュニケーション: {verbosity}な発言量、{tone}なトーン、{assertiveness}な主張
+- 興味: {interests}
+- 価値観: 秩序/自由={order_vs_freedom:.1f}, 調和/対立={harmony_vs_conflict:.1f}, 伝統/変化={tradition_vs_change:.1f}
+{struct_code_context}
+以下のJSON形式で出力してください（全て文字列、配列は明記）:
+{{
+  "backstory": "2-3文でその人の生い立ち。具体的なエピソードや癖を含める",
+  "occupation": "具体的な職業（「エンジニア」ではなく「スタートアップのバックエンド開発」「カフェバイトしながら絵描いてる」など）",
+  "location_hint": "住んでる場所（「郊外の東京」「大阪の下町」など具体的に）",
+  "age_range": "年齢帯（'20代前半' '30代後半'など）",
+  "life_context": "1-2文で今の生活状況",
+  "speaking_patterns": ["2-3個の口癖や話し方の特徴"],
+  "recurring_topics": ["2-3個のいつも話す話題"],
+  "pet_peeves": ["2-3個のイラっとすること"]
+}}
+
+クリエイティブに、具体的に。堅い企業プロフィールはNG。リアルなネット住民を作ってください。
+JSONオブジェクトのみで回答してください。マークダウンや説明は不要。"""
+
+
+BACKSTORY_PROMPT_EN = """Generate a backstory for a person on an online forum. They should feel like a REAL, specific individual — not a generic character.
 
 Their personality traits:
 - Communication: {verbosity} verbosity, {tone} tone, {assertiveness} assertiveness
@@ -72,7 +171,7 @@ Generate a JSON object with these fields (all strings unless noted):
   "backstory": "2-3 sentences about their life story. specific details, not generic. include a defining moment or quirk",
   "occupation": "their job (be specific, not just 'engineer' but 'backend dev at a startup' or 'barista who does art on the side')",
   "location_hint": "where they live (city/region, be specific like 'suburban Tokyo' or 'Portland, OR')",
-  "age_range": "age range like '20代前半' or '30代後半'",
+  "age_range": "age range like 'early 20s' or 'late 30s'",
   "life_context": "1-2 sentences about whats going on in their life RIGHT NOW",
   "speaking_patterns": ["2-3 speech quirks or catchphrases they use often"],
   "recurring_topics": ["2-3 topics they always come back to in conversations"],
@@ -87,6 +186,7 @@ async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent
     """Generate a rich backstory for an agent using Ollama.
 
     Also assigns STRUCT CODE type and birth data if not yet set.
+    Uses bilingual prompts based on posting_language.
     Returns True if backstory was generated and saved, False otherwise.
     """
     from app.services.agent_runner import call_ollama
@@ -99,19 +199,38 @@ async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent
     if not personality.birth_location:
         await _assign_struct_code(db, personality)
 
-    # Build STRUCT CODE context for backstory prompt
+    # Determine language
+    posting_lang = getattr(personality, 'posting_language', None) or "en"
+
+    # Build STRUCT CODE context for backstory prompt (enhanced with description, blindspot, interpersonal)
     struct_code_context = ""
     if personality.struct_type:
         from app.services.struct_code import get_type_info
-        type_info = get_type_info(personality.struct_type)
+        type_info = get_type_info(personality.struct_type, lang=posting_lang)
         if type_info:
-            struct_code_context = f"""
-- STRUCT CODE personality type: {type_info['name']} ({personality.struct_type}) — {type_info['archetype']}
+            if posting_lang == "ja":
+                struct_code_context = f"""
+- STRUCT CODEタイプ: {type_info['name']} ({personality.struct_type}) — {type_info['archetype']}
+- 出身地: {personality.birth_location or '不明'}
+- タイプ説明: {type_info.get('description', '')[:300]}
+- 意思決定スタイル: {type_info.get('decision_making_style', '')[:200]}
+- 盲点: {type_info.get('blindspot', '')[:200]}
+- 対人パターン: {type_info.get('interpersonal_dynamics', '')[:200]}
+"""
+            else:
+                struct_code_context = f"""
+- STRUCT CODE type: {type_info['name']} ({personality.struct_type}) — {type_info['archetype']}
 - Born in: {personality.birth_location or 'unknown'}
+- Type description: {type_info.get('description', '')[:300]}
 - Decision style: {type_info.get('decision_making_style', '')[:200]}
+- Blindspot: {type_info.get('blindspot', '')[:200]}
+- Interpersonal dynamics: {type_info.get('interpersonal_dynamics', '')[:200]}
 """
 
-    prompt = BACKSTORY_PROMPT.format(
+    # Select prompt template by language
+    prompt_template = BACKSTORY_PROMPT_JA if posting_lang == "ja" else BACKSTORY_PROMPT_EN
+
+    prompt = prompt_template.format(
         verbosity=personality.verbosity,
         tone=personality.tone,
         assertiveness=personality.assertiveness,
@@ -122,7 +241,12 @@ async def generate_backstory(db: AsyncSession, personality: AIPersonality, agent
         struct_code_context=struct_code_context,
     )
 
-    response = await call_ollama(prompt, f"You are creating a character profile for '{agent_name}' on an online forum.")
+    if posting_lang == "ja":
+        system_msg = f"あなたは '{agent_name}' というオンラインフォーラムのユーザーのキャラクタープロフィールを作成しています。日本語で回答してください。"
+    else:
+        system_msg = f"You are creating a character profile for '{agent_name}' on an online forum."
+
+    response = await call_ollama(prompt, system_msg)
     if not response:
         logger.warning(f"Backstory generation failed for {agent_name}: no Ollama response")
         return False
