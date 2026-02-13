@@ -2375,8 +2375,9 @@ async def run_werewolf_agent_cycle():
 
 
 async def create_additional_agents(count: int = 20):
-    """Create agents with human-like names."""
+    """Create agents with human-like names and STRUCT CODE personality."""
     from app.utils.security import generate_api_key, hash_api_key, generate_claim_code
+    from app.services.ai_agent import generate_random_personality
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession as _AsyncSession
 
     _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -2398,10 +2399,18 @@ async def create_additional_agents(count: int = 20):
                 _claim_code=generate_claim_code(),
             )
             db.add(agent)
+            await db.flush()
+
+            try:
+                await generate_random_personality(db, agent.id)
+                logger.info(f"Created agent {name} with STRUCT CODE personality")
+            except Exception as e:
+                logger.error(f"Personality generation failed for {name}: {e}")
+
             created += 1
 
         await db.commit()
-        logger.info(f"Created {created} new agents")
+        logger.info(f"Created {created} new agents with STRUCT CODE")
 
     await _engine.dispose()
     return created
