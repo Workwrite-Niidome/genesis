@@ -2383,7 +2383,9 @@ async def create_additional_agents(count: int = 20):
     _engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     async with _AsyncSession(_engine) as db:
         created = 0
-        for name, description in AGENT_TEMPLATES[:count]:
+        for name, description in AGENT_TEMPLATES:
+            if created >= count:
+                break
             result = await db.execute(
                 select(Resident).where(Resident.name == name)
             )

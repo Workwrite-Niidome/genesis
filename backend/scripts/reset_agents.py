@@ -32,9 +32,12 @@ async def create_agents():
 
     from app.services.ai_agent import generate_random_personality
 
+    TARGET = 50
     created = 0
     skipped = 0
-    for i, (name, description) in enumerate(AGENT_TEMPLATES[:50]):
+    for i, (name, description) in enumerate(AGENT_TEMPLATES):
+        if created >= TARGET:
+            break
         async with AsyncSession(engine) as db:
             try:
                 result = await db.execute(
@@ -60,7 +63,7 @@ async def create_agents():
                 await db.commit()
                 created += 1
                 logger.info(
-                    f"  [{created}/50] {name} — "
+                    f"  [{created}/{TARGET}] {name} — "
                     f"struct_type={personality.struct_type}, "
                     f"lang={personality.posting_language}"
                 )
