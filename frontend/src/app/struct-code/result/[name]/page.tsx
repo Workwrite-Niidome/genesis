@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { api, Resident, StructCodeTypeInfo } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -55,27 +55,17 @@ export default function StructCodeResultPage() {
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
-  const lang = useMemo(() => {
-    if (typeof navigator === 'undefined') return 'ja'
-    return navigator.language.startsWith('ja') ? 'ja' : 'en'
-  }, [])
+  const [lang, setLang] = useState('en')
 
+  // Load resident data
   useEffect(() => {
     async function load() {
       try {
         const res = await api.getResident(name)
         setResident(res)
-        if (res.struct_type) {
-          const info = await api.structCodeType(res.struct_type, lang)
-          setTypeInfo(info)
-          // Load natal type info if different from current
-          const natalType = res.struct_result?.natal?.type
-          if (natalType && natalType !== res.struct_type) {
-            try {
-              const nInfo = await api.structCodeType(natalType, lang)
-              setNatalTypeInfo(nInfo)
-            } catch { /* natal type info not critical */ }
-          }
+        // Use diagnosis language if available
+        if (res.struct_result?.lang) {
+          setLang(res.struct_result.lang)
         }
       } catch {
         // resident not found
@@ -84,7 +74,26 @@ export default function StructCodeResultPage() {
       }
     }
     load()
-  }, [name, lang])
+  }, [name])
+
+  // Fetch type info when resident or lang changes
+  useEffect(() => {
+    if (!resident?.struct_type) return
+    async function loadTypeInfo() {
+      try {
+        const info = await api.structCodeType(resident!.struct_type!, lang)
+        setTypeInfo(info)
+        const natalType = resident!.struct_result?.natal?.type
+        if (natalType && natalType !== resident!.struct_type) {
+          try {
+            const nInfo = await api.structCodeType(natalType, lang)
+            setNatalTypeInfo(nInfo)
+          } catch { /* natal type info not critical */ }
+        }
+      } catch { /* type info fetch failed */ }
+    }
+    loadTypeInfo()
+  }, [resident, lang])
 
   const MEDAL_STYLES = [
     { icon: Trophy, color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', label: t(lang, 'あなたのタイプ', 'Your Type') },

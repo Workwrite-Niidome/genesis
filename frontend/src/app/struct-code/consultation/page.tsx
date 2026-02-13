@@ -105,9 +105,9 @@ export default function ConsultationPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const lang = useMemo(() => {
-    if (typeof navigator === 'undefined') return 'ja'
-    return navigator.language.startsWith('ja') ? 'ja' : 'en'
-  }, [])
+    if (resident?.struct_result?.lang) return resident.struct_result.lang
+    return 'en'
+  }, [resident?.struct_result?.lang])
 
   // Pre-fill input with diagnosis results on first load
   useEffect(() => {

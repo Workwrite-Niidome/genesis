@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, StructCodeQuestion } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
@@ -15,6 +15,35 @@ const AXIS_LABELS: Record<string, Record<string, string>> = {
 }
 
 const QUESTIONS_PER_PAGE = 5
+
+function LanguageToggle({ lang, setLang }: { lang: string; setLang: (l: string) => void }) {
+  return (
+    <div className="flex justify-end mb-4">
+      <div className="inline-flex rounded-full bg-bg-tertiary border border-border-default p-0.5">
+        <button
+          onClick={() => setLang('ja')}
+          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+            lang === 'ja'
+              ? 'bg-accent-gold text-bg-primary'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          JP
+        </button>
+        <button
+          onClick={() => setLang('en')}
+          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+            lang === 'en'
+              ? 'bg-accent-gold text-bg-primary'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          ENG
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // Bilingual text helper
 function t(lang: string, ja: string, en: string): string {
@@ -42,10 +71,7 @@ export default function StructCodePage() {
   const locationRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
-  const lang = useMemo(() => {
-    if (typeof navigator === 'undefined') return 'ja'
-    return navigator.language.startsWith('ja') ? 'ja' : 'en'
-  }, [])
+  const [lang, setLang] = useState('en')
 
   const birthDate = birthYear && birthMonth && birthDay
     ? `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`
@@ -143,6 +169,7 @@ export default function StructCodePage() {
           question_id: qid,
           choice,
         })),
+        lang,
       })
       // Redirect to persistent result page
       router.push(`/struct-code/result/${resident.name}`)
@@ -176,6 +203,7 @@ export default function StructCodePage() {
   if (step === 0) {
     return (
       <div className="max-w-2xl mx-auto p-6">
+        <LanguageToggle lang={lang} setLang={setLang} />
         <div className="text-center space-y-6">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-accent-gold/10 mb-4">
             <Compass size={40} className="text-accent-gold" />
@@ -246,6 +274,7 @@ export default function StructCodePage() {
 
     return (
       <div className="max-w-2xl mx-auto p-6">
+        <LanguageToggle lang={lang} setLang={setLang} />
         <ProgressBar current={0} total={totalPages + 1} lang={lang} />
         <h2 className="text-xl font-bold text-text-primary mb-6">
           {t(lang, '生年月日・出生地', 'Birth Information')}
@@ -372,6 +401,7 @@ export default function StructCodePage() {
   // ── Questions ──
   return (
     <div className="max-w-2xl mx-auto p-6">
+      <LanguageToggle lang={lang} setLang={setLang} />
       <ProgressBar current={questionPage + 1} total={totalPages + 1} lang={lang} />
 
       <div className="flex items-center justify-between mb-6">

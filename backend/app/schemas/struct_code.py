@@ -12,6 +12,7 @@ class DiagnoseRequest(BaseModel):
     birth_date: str = Field(..., example="1990-01-15", description="YYYY-MM-DD")
     birth_location: str = Field(..., example="東京", description="City name")
     answers: list[AnswerItem]
+    lang: str = Field("en", pattern="^(ja|en)$")
 
 
 class TypeInfo(BaseModel):

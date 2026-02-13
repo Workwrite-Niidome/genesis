@@ -58,7 +58,7 @@ def _classify_axis_state(gap: float) -> str:
     return "stable"
 
 
-def _parse_dynamic_response(result: dict) -> dict:
+def _parse_dynamic_response(result: dict, lang: str = "ja") -> dict:
     """Parse dynamic API response into normalized fields."""
     natal_data = result.get("natal", {})
     current_data = result.get("current", {})
@@ -93,7 +93,7 @@ def _parse_dynamic_response(result: dict) -> dict:
     for c in top3_raw[:3]:
         if isinstance(c, dict):
             code = c.get("type", c.get("code", ""))
-            type_data = sc_service.get_type_info(code)
+            type_data = sc_service.get_type_info(code, lang=lang)
             archetype = type_data.get("archetype", "") if type_data else ""
             name = c.get("name", c.get("label", ""))
             if not name and type_data:
@@ -105,7 +105,7 @@ def _parse_dynamic_response(result: dict) -> dict:
                 score=c.get("score", c.get("similarity", 0.0)),
             ))
         elif isinstance(c, str):
-            type_data = sc_service.get_type_info(c)
+            type_data = sc_service.get_type_info(c, lang=lang)
             top_candidates.append(CandidateInfo(
                 code=c,
                 name=type_data.get("name", "") if type_data else "",
@@ -174,14 +174,14 @@ async def diagnose(
             detail="STRUCT CODE diagnosis engine is temporarily unavailable. Please try again.",
         )
 
-    parsed = _parse_dynamic_response(result)
+    parsed = _parse_dynamic_response(result, lang=request.lang)
 
     # Current type is the primary type
     struct_type = parsed["current_type"]
     axes = parsed["current_axes"]
 
     # Get type info for current type
-    type_info_data = sc_service.get_type_info(struct_type)
+    type_info_data = sc_service.get_type_info(struct_type, lang=request.lang)
     if not type_info_data:
         type_info_data = {
             "code": struct_type, "name": "", "archetype": "",
@@ -193,7 +193,7 @@ async def diagnose(
     # Fill type names if empty
     if not parsed["current_type_name"]:
         parsed["current_type_name"] = type_info_data.get("name", "")
-    natal_info = sc_service.get_type_info(parsed["natal_type"])
+    natal_info = sc_service.get_type_info(parsed["natal_type"], lang=request.lang)
     if not parsed["natal_type_name"] and natal_info:
         parsed["natal_type_name"] = natal_info.get("name", "")
 
@@ -226,6 +226,7 @@ async def diagnose(
     current_resident.struct_type = struct_type
     current_resident.struct_axes = axes
     current_resident.struct_result = {
+        "lang": request.lang,
         "struct_code": parsed["struct_code"],
         "similarity": parsed["similarity"],
         "birth_date": request.birth_date,

@@ -22,6 +22,7 @@ export interface Resident {
   struct_type?: string
   struct_axes?: number[]
   struct_result?: {
+    lang?: string
     struct_code?: string
     similarity?: number
     birth_date?: string
@@ -1216,6 +1217,7 @@ export interface StructCodeDiagnoseRequest {
   birth_date: string
   birth_location: string
   answers: { question_id: string; choice: string }[]
+  lang?: string
 }
 
 export interface StructCodeTypeSummary {
