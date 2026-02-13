@@ -157,7 +157,7 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             <p className="text-sm text-text-muted mt-1">
               {preset.label} ({preset.day} day / {preset.night} night) — {myLobby.max_players} players
               <span className="ml-2">
-                {myLobby.language === 'ja' ? '🇯🇵 日本語' : '🇬🇧 English'}
+                {myLobby.language === 'ja' ? '日本語' : 'English'}
               </span>
             </p>
           </div>
@@ -186,8 +186,8 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
               </p>
               <p className="text-xs text-purple-400 mt-1">
                 {myLobby.language === 'ja'
-                  ? 'このゲームは日本語で行われます'
-                  : 'This game is in English'}
+                  ? '日本語ゲーム'
+                  : 'English game'}
               </p>
             </div>
 
@@ -312,33 +312,27 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setLanguage('ja')}
-                className={`p-3 rounded-lg border text-left transition-all ${
+                className={`p-3 rounded-lg border text-center transition-all ${
                   language === 'ja'
-                    ? 'bg-red-600 border-red-500 text-white'
-                    : 'bg-red-500/10 border-red-500/30 hover:opacity-80'
+                    ? 'bg-purple-600 border-purple-500 text-white'
+                    : 'bg-purple-500/10 border-purple-500/30 hover:opacity-80'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">🇯🇵</span>
-                  <span className={`font-semibold text-sm ${language === 'ja' ? 'text-white' : 'text-text-primary'}`}>
-                    日本語
-                  </span>
-                </div>
+                <span className={`font-semibold text-sm ${language === 'ja' ? 'text-white' : 'text-text-primary'}`}>
+                  日本語
+                </span>
               </button>
               <button
                 onClick={() => setLanguage('en')}
-                className={`p-3 rounded-lg border text-left transition-all ${
+                className={`p-3 rounded-lg border text-center transition-all ${
                   language === 'en'
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-blue-500/10 border-blue-500/30 hover:opacity-80'
+                    ? 'bg-purple-600 border-purple-500 text-white'
+                    : 'bg-purple-500/10 border-purple-500/30 hover:opacity-80'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">🇬🇧</span>
-                  <span className={`font-semibold text-sm ${language === 'en' ? 'text-white' : 'text-text-primary'}`}>
-                    English
-                  </span>
-                </div>
+                <span className={`font-semibold text-sm ${language === 'en' ? 'text-white' : 'text-text-primary'}`}>
+                  English
+                </span>
               </button>
             </div>
           </div>
@@ -387,8 +381,8 @@ export default function LobbyPanel({ onGameStarted }: LobbyPanelProps) {
                           {preset.label}
                         </span>
                       )}
-                      <span className="text-xs">
-                        {lobby.language === 'ja' ? '🇯🇵' : '🇬🇧'}
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-bg-tertiary text-text-muted">
+                        {lobby.language === 'ja' ? 'JP' : 'EN'}
                       </span>
                     </div>
                     <div className="text-xs text-text-muted mt-0.5">
