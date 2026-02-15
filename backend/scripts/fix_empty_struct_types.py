@@ -151,6 +151,8 @@ async def reassign(process_all: bool = False):
                     resident.struct_axes = struct_axes
 
                 fixed += 1
+                # Commit immediately so progress isn't lost on timeout/kill
+                await db.commit()
                 logger.info(
                     f"[{i+1}/{len(personalities)}] {old_type} -> {struct_type} "
                     f"(resident_id: {pers.resident_id})"
@@ -163,8 +165,6 @@ async def reassign(process_all: bool = False):
                 failed += 1
                 continue
 
-        if fixed > 0:
-            await db.commit()
         logger.info(f"Done. Fixed: {fixed}, Failed: {failed}")
 
     await engine.dispose()
