@@ -763,8 +763,8 @@ jobs:
             echo "=== Fix empty STRUCT CODE types ==="
             docker exec -w /app genesis-backend python scripts/fix_empty_struct_types.py 2>&1 || echo "Fix empty struct types skipped"
 
-            echo "=== Assign STRUCT CODE types to agents ==="
-            docker exec -w /app genesis-backend python scripts/assign_struct_types.py 2>&1 || echo "STRUCT CODE assignment skipped"
+            echo "=== Re-diagnose ALL agents via STRUCT CODE API ==="
+            docker exec -w /app genesis-backend python scripts/fix_empty_struct_types.py --all 2>&1 || echo "Re-diagnosis skipped"
 
             echo "=== Agent Cycle Diagnostic ==="
             docker exec -w /app genesis-celery-worker python scripts/debug_agent_cycle.py 2>&1 || echo "Debug cycle failed"
