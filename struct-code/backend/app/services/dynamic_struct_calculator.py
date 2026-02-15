@@ -16,7 +16,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 import numpy as np
 
-from .struct_calculator_refactored import StructCalculatorRefactored
+from .struct_calculator_refactored import get_struct_calculator
 from .astrological_engine import get_astrological_engine, Chart
 from .temporal_modulator import get_temporal_modulator, TemporalModulation
 from ..models.schemas import AnswerData, DiagnosisResponse
@@ -83,7 +83,7 @@ class DynamicStructCalculator:
     """
 
     def __init__(self):
-        self.static_calculator = StructCalculatorRefactored()
+        self.static_calculator = get_struct_calculator()
         self.astro_engine = get_astrological_engine()
         self.temporal_modulator = get_temporal_modulator()
         logger.info("DynamicStructCalculator initialized")

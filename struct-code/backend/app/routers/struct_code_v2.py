@@ -14,7 +14,7 @@ import hashlib
 import time
 import logging
 
-from app.services.struct_calculator_refactored import StructCalculatorRefactored
+from app.services.struct_calculator_refactored import get_struct_calculator
 from app.models.schemas import AnswerData as AnswerDataModel
 from app.config.database import get_db
 from app.services.diagnosis_storage import save_diagnosis_result
@@ -31,11 +31,11 @@ diagnosis_cache: Dict[str, Dict] = {}
 cache_expiry: Dict[str, datetime] = {}
 
 
-async def get_calculator() -> StructCalculatorRefactored:
-    """計算機インスタンスを取得（遅延初期化）"""
+async def get_calculator():
+    """計算機インスタンスを取得（シングルトン）"""
     global calculator
     if calculator is None:
-        calculator = StructCalculatorRefactored()
+        calculator = get_struct_calculator()
         await calculator.initialize()
     return calculator
 

@@ -59,18 +59,12 @@ class StructCalculatorRefactored:
         self.questions = {}
         self.desc_db = {}
         self.stmap = {}
-        self.ts = load.timescale()
         self.eph = None
-        
-        # 軸定義（設定から取得）
-        self.axis_definitions = self._build_axis_definitions()
-        
-        # タイプ定義
-        self.struct_types = self._build_struct_types()
-        
+        self._initialized = False
+
         self._last_type_candidates = []  # TOP3タイプ候補
 
-        # 占星術エンジン（精密計算用）
+        # 占星術エンジン（精密計算用）— 先に初期化してts/ephを共有
         self._astro_engine = None
         if ASTRO_ENGINE_AVAILABLE:
             try:
@@ -78,6 +72,19 @@ class StructCalculatorRefactored:
                 logger.info("AstrologicalEngine integrated for precise calculations")
             except Exception as e:
                 logger.warning(f"Failed to initialize AstrologicalEngine: {e}")
+
+        # timescaleをAstrologicalEngineから共有（重複ロード防止）
+        if self._astro_engine:
+            self.ts = self._astro_engine.ts
+            logger.info("Sharing timescale from AstrologicalEngine")
+        else:
+            self.ts = load.timescale()
+
+        # 軸定義（設定から取得）
+        self.axis_definitions = self._build_axis_definitions()
+
+        # タイプ定義
+        self.struct_types = self._build_struct_types()
 
         # 動的タイプ分類器（v4.0）- 精密な軸計算に使用
         self._dynamic_classifier = None
@@ -358,33 +365,41 @@ class StructCalculatorRefactored:
     @log_exception()
     @log_performance(threshold_seconds=2.0)
     async def initialize(self) -> None:
-        """システム初期化"""
+        """システム初期化（冪等：二重呼び出しは無視）"""
+        if self._initialized:
+            logger.info("StructCalculatorRefactored already initialized, skipping")
+            return
+
         logger.info(f"Initializing STRUCT CODE Refactored with data path: {self.data_path}")
-        
+
         # 設定検証
         if not validate_config():
             raise ConfigurationError("Configuration validation failed")
-        
+
         # JSONデータ読み込み
         self.questions = self._load_json("question_full_map.json")
         self.desc_db = self._load_json("DESCRIPTION_with_vectors_theoretical.json")
         self.stmap = self._load_json("SymbolicTimeMap.json")
-        
+
         # 高度分析用データ読み込み
         self.drift_profiles = {}  # Optional data file not included
         self.field_weights = self._load_json("StructFieldWeight.json")
-        
-        # 天体暦読み込み
-        bsp_path = self.data_path / config.bsp_file
-        if not bsp_path.exists():
-            raise ConfigurationError(f"BSP file not found: {bsp_path}")
-        
-        self.eph = load(str(bsp_path))
-        
+
+        # ephemerisをAstrologicalEngineから共有（重複ロード防止: de421.bsp = 17MB）
+        if self._astro_engine and self._astro_engine.eph:
+            self.eph = self._astro_engine.eph
+            logger.info("Sharing ephemeris from AstrologicalEngine (no duplicate 17MB load)")
+        else:
+            bsp_path = self.data_path / config.bsp_file
+            if not bsp_path.exists():
+                raise ConfigurationError(f"BSP file not found: {bsp_path}")
+            self.eph = load(str(bsp_path))
+
         log_system_info()
         logger.info(f"Loaded {len(self.questions)} questions")
         logger.info(f"Loaded {len(self.struct_types)} optimized types")
         logger.info("STRUCT CODE Refactored initialized successfully")
+        self._initialized = True
     
     def _load_json(self, filename: str) -> Dict:
         """JSONファイル読み込み（エラーハンドリング付き）"""
@@ -2037,3 +2052,14 @@ STRUCT CODE: {unique_code}
                 'mission': info['mission']
             })
         return types
+
+
+# シングルトンインスタンス
+_calculator_instance = None
+
+def get_struct_calculator() -> StructCalculatorRefactored:
+    """StructCalculatorRefactoredのシングルトンインスタンスを取得"""
+    global _calculator_instance
+    if _calculator_instance is None:
+        _calculator_instance = StructCalculatorRefactored()
+    return _calculator_instance

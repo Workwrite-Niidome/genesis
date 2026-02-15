@@ -23,7 +23,8 @@ import hashlib
 from app.services.dynamic_struct_calculator import (
     DynamicStructCalculator,
     DynamicDiagnosisResult,
-    convert_to_api_response
+    convert_to_api_response,
+    get_dynamic_calculator as _get_dynamic_calculator_sync,
 )
 from app.models.schemas import AnswerData as AnswerDataModel
 from app.config.database import get_db
@@ -42,10 +43,10 @@ cache_expiry: Dict[str, datetime] = {}
 
 
 async def get_dynamic_calculator() -> DynamicStructCalculator:
-    """動的計算機インスタンスを取得（遅延初期化）"""
+    """動的計算機インスタンスを取得（シングルトン）"""
     global dynamic_calculator
     if dynamic_calculator is None:
-        dynamic_calculator = DynamicStructCalculator()
+        dynamic_calculator = _get_dynamic_calculator_sync()
         await dynamic_calculator.static_calculator.initialize()
     return dynamic_calculator
 

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from sqlalchemy import text, inspect
 
-from .services.struct_calculator_refactored import StructCalculatorRefactored
+from .services.struct_calculator_refactored import get_struct_calculator
 from .routers import struct_code_v2
 from .routers import struct_code_dynamic
 from .config.database import engine, Base
@@ -46,7 +46,7 @@ for route in struct_code_dynamic.router.routes:
 app.include_router(struct_code_dynamic.router)
 print("=== Dynamic Router registered ===")
 
-calculator = StructCalculatorRefactored()
+calculator = get_struct_calculator()
 
 def run_migrations():
     """既存テーブルに新しいカラムを追加するマイグレーション"""
