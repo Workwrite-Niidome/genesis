@@ -11,6 +11,7 @@ for Docker to restart the container before continuing.
 import asyncio
 import argparse
 import logging
+import random
 
 import httpx
 from sqlalchemy import select, or_
@@ -99,6 +100,10 @@ async def reassign(process_all: bool = False):
         if not personalities:
             logger.info("No agents to process.")
             return
+
+        # Shuffle so each run processes different agents first
+        personalities = list(personalities)
+        random.shuffle(personalities)
 
         mode = "ALL" if process_all else "empty-only"
         logger.info(f"Processing {len(personalities)} agents ({mode}).")
