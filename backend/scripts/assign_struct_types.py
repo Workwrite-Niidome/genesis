@@ -1,16 +1,15 @@
 """
-Batch assign STRUCT CODE types to all existing AI agents that don't have one.
+Assign STRUCT CODE types to agents that don't have one yet.
 
 Usage (inside backend container):
     python scripts/assign_struct_types.py
 
-Processes agents one at a time with 1-second delays to avoid API overload.
+Uses _assign_struct_code() which calls the STRUCT CODE API directly.
 """
 import asyncio
 import logging
-import time
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from app.config import get_settings
@@ -27,10 +26,14 @@ async def assign_all():
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 
     async with AsyncSession(engine) as db:
-        # Find all agents without struct_type
         result = await db.execute(
             select(AIPersonality)
-            .where(AIPersonality.struct_type.is_(None))
+            .where(
+                or_(
+                    AIPersonality.struct_type.is_(None),
+                    AIPersonality.struct_type == "",
+                )
+            )
             .join(Resident, Resident.id == AIPersonality.resident_id)
             .where(Resident._type == 'agent')
         )
@@ -46,7 +49,6 @@ async def assign_all():
 
         for i, personality in enumerate(personalities):
             try:
-                # Re-fetch within the session to ensure we have a live object
                 res = await db.execute(
                     select(AIPersonality).where(AIPersonality.id == personality.id)
                 )
@@ -60,7 +62,6 @@ async def assign_all():
                     f"(birth: {pers.birth_location}, lang: {pers.posting_language})"
                 )
 
-                # Rate limit: 1 second between API calls
                 await asyncio.sleep(1.0)
 
             except Exception as e:

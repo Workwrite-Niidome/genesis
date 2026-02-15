@@ -43,6 +43,7 @@ services:
     container_name: genesis-backend
     restart: always
     environment:
+      - PYTHONPATH=/app
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
@@ -79,6 +80,7 @@ services:
     restart: always
     command: celery -A app.celery_app worker --loglevel=info
     environment:
+      - PYTHONPATH=/app
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
@@ -98,6 +100,7 @@ services:
     restart: always
     command: celery -A app.celery_app beat --loglevel=info
     environment:
+      - PYTHONPATH=/app
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-genesis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-genesis}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
