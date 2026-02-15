@@ -124,7 +124,7 @@ services:
       - "127.0.0.1:8001:8000"
     networks:
       - genesis-internal
-    mem_limit: 512m
+    mem_limit: 768m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

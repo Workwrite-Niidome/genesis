@@ -6,6 +6,7 @@ Usage (inside backend container):
 
 Calls the STRUCT CODE Dynamic API for every agent using their existing
 struct_answers and birth data, then updates struct_type and struct_axes.
+Includes retry with exponential backoff to handle API container restarts.
 """
 import asyncio
 import logging
@@ -21,6 +22,27 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+MAX_RETRIES = 3
+BATCH_SIZE = 10
+DELAY_BETWEEN_CALLS = 2.0
+DELAY_BETWEEN_BATCHES = 10.0
+
+
+async def diagnose_with_retry(sc, birth_date, birth_location, answers):
+    """Call STRUCT CODE API with retry and exponential backoff."""
+    for attempt in range(MAX_RETRIES):
+        result = await sc.diagnose(
+            birth_date=birth_date,
+            birth_location=birth_location,
+            answers=answers,
+        )
+        if result:
+            return result
+        wait = (attempt + 1) * 5
+        logger.warning(f"API unreachable, retrying in {wait}s (attempt {attempt+1}/{MAX_RETRIES})")
+        await asyncio.sleep(wait)
+    return None
 
 
 async def reassign_all():
@@ -46,7 +68,6 @@ async def reassign_all():
         failed = 0
         for i, pers in enumerate(personalities):
             try:
-                # Use existing struct_answers; generate new if missing
                 answers = pers.struct_answers
                 if not answers or not isinstance(answers, list) or len(answers) < 20:
                     answers, _ = sc.generate_diverse_answers()
@@ -55,14 +76,15 @@ async def reassign_all():
                 birth_date = pers.birth_date_persona
                 birth_location = pers.birth_location or "Tokyo"
 
-                api_result = await sc.diagnose(
+                api_result = await diagnose_with_retry(
+                    sc,
                     birth_date=birth_date.isoformat() if birth_date else "2000-01-01",
                     birth_location=birth_location,
                     answers=answers,
                 )
 
                 if not api_result:
-                    logger.error(f"[{i+1}/{len(personalities)}] API unreachable for {pers.resident_id}")
+                    logger.error(f"[{i+1}/{len(personalities)}] API failed after retries: {pers.resident_id}")
                     failed += 1
                     continue
 
@@ -72,7 +94,7 @@ async def reassign_all():
                 api_sds = current_data.get("sds") or natal_data.get("sds")
 
                 if not struct_type or not api_sds or len(api_sds) < 5:
-                    logger.error(f"[{i+1}/{len(personalities)}] Invalid response for {pers.resident_id}")
+                    logger.error(f"[{i+1}/{len(personalities)}] Invalid response: {pers.resident_id}")
                     failed += 1
                     continue
 
@@ -80,7 +102,6 @@ async def reassign_all():
                 pers.struct_type = struct_type
                 pers.struct_axes = api_sds[:5]
 
-                # Update resident record too
                 res = await db.execute(
                     select(Resident).where(Resident.id == pers.resident_id)
                 )
@@ -95,8 +116,15 @@ async def reassign_all():
                     f"(resident_id: {pers.resident_id})"
                 )
 
-                # Rate limit
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(DELAY_BETWEEN_CALLS)
+
+                # Batch pause to let API container breathe
+                if (i + 1) % BATCH_SIZE == 0:
+                    logger.info(f"Batch pause ({DELAY_BETWEEN_BATCHES}s)...")
+                    # Commit progress so far
+                    if fixed > 0:
+                        await db.commit()
+                    await asyncio.sleep(DELAY_BETWEEN_BATCHES)
 
             except Exception as e:
                 logger.error(f"Failed for personality {pers.id}: {e}")
