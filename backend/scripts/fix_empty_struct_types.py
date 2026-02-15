@@ -79,7 +79,7 @@ async def diagnose_one(sc, pers):
 async def reassign(process_all: bool = False):
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 
-    async with AsyncSession(engine) as db:
+    async with AsyncSession(engine, expire_on_commit=False) as db:
         query = (
             select(AIPersonality)
             .join(Resident, Resident.id == AIPersonality.resident_id)
