@@ -9,7 +9,6 @@ Provides:
 """
 import json
 import logging
-import math
 import os
 import random
 from dataclasses import dataclass
@@ -212,83 +211,6 @@ def generate_random_answers(personality_axes: dict | None = None) -> list[dict]:
     return answers
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# LOCAL FALLBACK: cosine similarity type classification
-# ═══════════════════════════════════════════════════════════════════════════
-
-# Axis signatures from struct_code_engine.py — H=0.8, M=0.5, L=0.2
-_HML = {"H": 0.8, "M": 0.5, "L": 0.2}
-_TYPE_AXIS_SIGNATURES: dict[str, list[str]] = {
-    "ACPU": ["H", "L", "L", "L", "M"],
-    "ACBL": ["H", "M", "L", "M", "L"],
-    "ACCV": ["H", "L", "H", "L", "M"],
-    "ACJG": ["H", "H", "L", "L", "M"],
-    "ACRN": ["H", "L", "M", "H", "M"],
-    "ACCP": ["H", "H", "M", "L", "H"],
-    "JDPU": ["L", "H", "L", "L", "M"],
-    "JDCA": ["L", "H", "M", "L", "H"],
-    "JDRA": ["L", "H", "L", "M", "H"],
-    "JDCP": ["M", "H", "M", "M", "H"],
-    "JDCV": ["M", "H", "H", "L", "H"],
-    "CHRA": ["L", "L", "H", "M", "M"],
-    "CHJA": ["L", "M", "H", "L", "H"],
-    "CHAT": ["H", "L", "H", "L", "M"],
-    "CHJG": ["L", "H", "H", "L", "M"],
-    "CHJC": ["M", "H", "H", "M", "L"],
-    "RSAW": ["L", "L", "M", "H", "H"],
-    "RSCV": ["M", "L", "H", "H", "M"],
-    "RSAB": ["H", "M", "M", "H", "L"],
-    "RSBL": ["M", "M", "M", "H", "H"],
-    "AWJG": ["L", "H", "L", "L", "H"],
-    "AWAB": ["H", "M", "M", "M", "H"],
-    "AWRN": ["M", "L", "M", "H", "H"],
-    "AWJC": ["M", "H", "M", "L", "H"],
-}
-
-
-def classify_locally(answers: list[dict]) -> dict:
-    """Fallback type classification when STRUCT CODE API is unavailable.
-
-    Computes average answer vector, then finds closest type by cosine similarity
-    against the axis signatures extracted from struct_code_engine.py.
-    """
-    questions = _load_questions()
-
-    # Compute average vector from answers
-    total = [0.0] * 5
-    count = 0
-    for ans in answers:
-        qid = ans["question_id"]
-        choice = ans["choice"]
-        if qid in questions and choice in questions[qid].get("choices", {}):
-            vec = questions[qid]["choices"][choice].get("vector", [0.5] * 5)
-            for i in range(5):
-                total[i] += vec[i]
-            count += 1
-
-    if count == 0:
-        return {"struct_type": "ACPU", "axes": [0.5] * 5, "similarity": 0.0}
-
-    avg = [v / count for v in total]
-
-    # Find closest type by cosine similarity
-    best_type = "ACPU"
-    best_sim = -1.0
-
-    for code, hml in _TYPE_AXIS_SIGNATURES.items():
-        type_vec = [_HML[v] for v in hml]
-        sim = _cosine_sim(avg, type_vec)
-        if sim > best_sim:
-            best_sim = sim
-            best_type = code
-
-    return {
-        "struct_type": best_type,
-        "axes": avg,
-        "similarity": best_sim,
-    }
-
-
 def generate_diverse_answers() -> tuple[list[dict], list[float]]:
     """STRUCT CODE-first: generate answers targeting diverse type distribution.
 
@@ -303,9 +225,10 @@ def generate_diverse_answers() -> tuple[list[dict], list[float]]:
     answers = []
 
     # Generate target distribution for each of 5 axes: H(40%), L(40%) M(20%)
+    _hml = {"H": 0.8, "M": 0.5, "L": 0.2}
     level_choices = ["H", "H", "L", "L", "M"]  # 40% H, 40% L, 20% M
     target_levels = [random.choice(level_choices) for _ in range(5)]
-    target_axes = [_HML[lv] for lv in target_levels]
+    target_axes = [_hml[lv] for lv in target_levels]
 
     # Axis name -> index mapping
     axis_name_to_index = {
@@ -471,15 +394,6 @@ def derive_interests(axes: list[float]) -> list[str]:
         unique.extend(random.sample(extras, min(3 - len(unique), len(extras))))
 
     return unique[:5]
-
-
-def _cosine_sim(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    mag_a = math.sqrt(sum(x * x for x in a))
-    mag_b = math.sqrt(sum(x * x for x in b))
-    if mag_a == 0 or mag_b == 0:
-        return 0.0
-    return dot / (mag_a * mag_b)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

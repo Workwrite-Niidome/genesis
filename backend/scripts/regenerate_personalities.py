@@ -89,27 +89,28 @@ async def regenerate_all(dry_run: bool = False, keep_birth: bool = False):
                 answers, _target = sc.generate_diverse_answers()
                 pers.struct_answers = answers
 
-                # 3. STRUCT CODE classification (API or local fallback)
+                # 3. STRUCT CODE classification (API only, no fallback)
                 api_result = await sc.diagnose(
                     birth_date=birth_date.isoformat() if birth_date else "2000-01-01",
                     birth_location=birth_location or "Tokyo",
                     answers=answers,
                 )
 
-                if api_result:
-                    struct_type = api_result.get("struct_type", "")
-                    axes_dict = api_result.get("axes", {})
-                    struct_axes = [
-                        axes_dict.get("起動軸", 0.5),
-                        axes_dict.get("判断軸", 0.5),
-                        axes_dict.get("選択軸", 0.5),
-                        axes_dict.get("共鳴軸", 0.5),
-                        axes_dict.get("自覚軸", 0.5),
-                    ]
-                else:
-                    local = sc.classify_locally(answers)
-                    struct_type = local["struct_type"]
-                    struct_axes = local["axes"]
+                if not api_result:
+                    logger.error(f"[{i+1}/{len(personalities)}] API unreachable, skipping {pers.resident_id}")
+                    continue
+
+                # Parse v2 dynamic API response
+                current_data = api_result.get("current", {})
+                natal_data = api_result.get("natal", {})
+                struct_type = current_data.get("type", "") or natal_data.get("type", "")
+                api_sds = current_data.get("sds") or natal_data.get("sds")
+
+                if not struct_type or not api_sds or len(api_sds) < 5:
+                    logger.error(f"[{i+1}/{len(personalities)}] Invalid API response for {pers.resident_id}")
+                    continue
+
+                struct_axes = api_sds[:5]
 
                 pers.struct_type = struct_type
                 pers.struct_axes = struct_axes

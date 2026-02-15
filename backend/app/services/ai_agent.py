@@ -57,27 +57,26 @@ async def generate_random_personality(
     # 2. Generate diverse answers (not biased by pre-existing personality)
     answers, _target_axes = sc.generate_diverse_answers()
 
-    # 3. Try STRUCT CODE API, fallback to local classification
+    # 3. STRUCT CODE API diagnosis (no fallback — API must be available)
     result = await sc.diagnose(
         birth_date=birth.birth_date.isoformat(),
         birth_location=birth.birth_location,
         answers=answers,
     )
 
-    if result and result.get("struct_type"):
-        struct_type = result["struct_type"]
-        axes_dict = result.get("axes", {})
-        struct_axes = [
-            axes_dict.get("起動軸", 0.5),
-            axes_dict.get("判断軸", 0.5),
-            axes_dict.get("選択軸", 0.5),
-            axes_dict.get("共鳴軸", 0.5),
-            axes_dict.get("自覚軸", 0.5),
-        ]
-    else:
-        local = sc.classify_locally(answers)
-        struct_type = local["struct_type"]
-        struct_axes = local["axes"]
+    if not result:
+        raise RuntimeError("STRUCT CODE API unreachable — cannot create agent without proper diagnosis")
+
+    # Parse v2 dynamic API response
+    current_data = result.get("current", {})
+    natal_data = result.get("natal", {})
+    struct_type = current_data.get("type", "") or natal_data.get("type", "")
+    api_sds = current_data.get("sds") or natal_data.get("sds")
+
+    if not struct_type or not api_sds or len(api_sds) < 5:
+        raise RuntimeError(f"STRUCT CODE API returned invalid response: {result}")
+
+    struct_axes = api_sds[:5]
 
     # 4. Derive personality value axes from STRUCT CODE axes
     values = sc.derive_personality_from_struct_axes(struct_axes)
@@ -348,28 +347,27 @@ async def _assign_struct_code(db: AsyncSession, personality: AIPersonality) -> N
     answers = sc.generate_random_answers(axes)
     personality.struct_answers = answers
 
-    # Try STRUCT CODE API
+    # STRUCT CODE API diagnosis (no fallback)
     result = await sc.diagnose(
         birth_date=birth.birth_date.isoformat(),
         birth_location=birth.birth_location,
         answers=answers,
     )
 
-    if result and result.get("struct_type"):
-        personality.struct_type = result["struct_type"]
-        axes_dict = result.get("axes", {})
-        personality.struct_axes = [
-            axes_dict.get("起動軸", 0.5),
-            axes_dict.get("判断軸", 0.5),
-            axes_dict.get("選択軸", 0.5),
-            axes_dict.get("共鳴軸", 0.5),
-            axes_dict.get("自覚軸", 0.5),
-        ]
-    else:
-        # Fallback: local classification
-        local = sc.classify_locally(answers)
-        personality.struct_type = local["struct_type"]
-        personality.struct_axes = local["axes"]
+    if not result:
+        raise RuntimeError("STRUCT CODE API unreachable — cannot assign diagnosis")
+
+    # Parse v2 dynamic API response
+    current_data = result.get("current", {})
+    natal_data = result.get("natal", {})
+    struct_type = current_data.get("type", "") or natal_data.get("type", "")
+    api_sds = current_data.get("sds") or natal_data.get("sds")
+
+    if not struct_type or not api_sds or len(api_sds) < 5:
+        raise RuntimeError(f"STRUCT CODE API returned invalid response: {result}")
+
+    personality.struct_type = struct_type
+    personality.struct_axes = api_sds[:5]
 
     # Also update the resident record
     res = await db.execute(

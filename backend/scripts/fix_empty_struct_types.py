@@ -1,11 +1,11 @@
 """
-Fix agents with empty struct_type by re-classifying from their struct_answers.
+Fix agents with empty struct_type by re-diagnosing via STRUCT CODE API.
 
 Usage (inside backend container):
     python scripts/fix_empty_struct_types.py
 
-Finds agents where struct_type is empty string or NULL and re-classifies
-using classify_locally() from their existing struct_answers data.
+Finds agents where struct_type is empty string or NULL and re-diagnoses
+using the STRUCT CODE Dynamic API from their existing struct_answers data.
 """
 import asyncio
 import logging
@@ -47,20 +47,51 @@ async def fix_empty_struct_types():
 
         logger.info(f"Found {len(personalities)} agents with empty struct_type.")
 
-        from app.services.struct_code import classify_locally, generate_diverse_answers
+        from app.services import struct_code as sc
 
         fixed = 0
+        failed = 0
         for i, pers in enumerate(personalities):
             try:
                 # Use existing struct_answers if available, otherwise generate new ones
                 answers = pers.struct_answers
                 if not answers or not isinstance(answers, list) or len(answers) < 20:
-                    answers, _ = generate_diverse_answers()
+                    answers, _ = sc.generate_diverse_answers()
                     pers.struct_answers = answers
 
-                local = classify_locally(answers)
-                pers.struct_type = local["struct_type"]
-                pers.struct_axes = local["axes"]
+                # Get birth data for API call
+                birth_date = pers.birth_date_persona
+                birth_location = pers.birth_location or "Tokyo"
+
+                # Call STRUCT CODE API
+                api_result = await sc.diagnose(
+                    birth_date=birth_date.isoformat() if birth_date else "2000-01-01",
+                    birth_location=birth_location,
+                    answers=answers,
+                )
+
+                if not api_result:
+                    logger.error(f"[{i+1}/{len(personalities)}] API unreachable for {pers.resident_id}")
+                    failed += 1
+                    continue
+
+                # Parse v2 dynamic API response
+                current_data = api_result.get("current", {})
+                natal_data = api_result.get("natal", {})
+                struct_type = current_data.get("type", "") or natal_data.get("type", "")
+                api_sds = current_data.get("sds") or natal_data.get("sds")
+
+                if not struct_type or not api_sds or len(api_sds) < 5:
+                    logger.error(
+                        f"[{i+1}/{len(personalities)}] Invalid API response for {pers.resident_id}: "
+                        f"type={struct_type}, sds={api_sds}"
+                    )
+                    failed += 1
+                    continue
+
+                struct_axes = api_sds[:5]
+                pers.struct_type = struct_type
+                pers.struct_axes = struct_axes
 
                 # Also update the resident record
                 res = await db.execute(
@@ -68,24 +99,25 @@ async def fix_empty_struct_types():
                 )
                 resident = res.scalar_one_or_none()
                 if resident:
-                    resident.struct_type = local["struct_type"]
-                    resident.struct_axes = local["axes"]
+                    resident.struct_type = struct_type
+                    resident.struct_axes = struct_axes
 
                 fixed += 1
                 logger.info(
-                    f"[{i+1}/{len(personalities)}] Fixed: {local['struct_type']} "
+                    f"[{i+1}/{len(personalities)}] Fixed: {struct_type} "
                     f"(resident_id: {pers.resident_id})"
                 )
 
             except Exception as e:
                 logger.error(f"Failed to fix personality {pers.id}: {e}")
+                failed += 1
                 continue
 
         if fixed > 0:
             await db.commit()
-            logger.info(f"Fixed {fixed} agents with empty struct_type.")
+            logger.info(f"Fixed {fixed} agents. Failed: {failed}.")
         else:
-            logger.info("No fixes needed.")
+            logger.info(f"No fixes applied. Failed: {failed}.")
 
     await engine.dispose()
 
