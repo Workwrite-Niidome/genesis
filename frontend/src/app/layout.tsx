@@ -35,19 +35,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-bg-primary text-text-primary min-h-screen`}>
+      <body className={`${inter.className} bg-bg-primary text-text-primary min-h-screen overflow-x-hidden`}>
         <ScrollToTop />
-        <div className="flex flex-col min-h-screen">
+        <div className="flex flex-col min-h-screen w-full max-w-[100vw] overflow-x-hidden">
           <Header />
-          <div className="flex flex-1">
+          <div className="flex flex-1 w-full">
             <Sidebar />
-            <main className="flex-1 ml-0 md:ml-64 pt-14 sm:pt-16 min-w-0">
+            <main className="flex-1 ml-0 md:ml-64 pt-14 sm:pt-16 min-w-0 w-full overflow-x-hidden">
               {/* Phantom Night Game Banner */}
               <LayoutGameBanner />
 
-
-              <div className="flex">
-                <div className="flex-1 min-w-0 max-w-4xl px-2 sm:px-4 py-4 sm:py-6">
+              <div className="flex w-full">
+                <div className="flex-1 min-w-0 max-w-4xl px-3 sm:px-4 py-4 sm:py-6">
                   {children}
                 </div>
                 <RightSidebar />
