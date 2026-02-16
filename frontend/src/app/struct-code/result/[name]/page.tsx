@@ -467,21 +467,23 @@ export default function StructCodeResultPage() {
       )}
 
       {/* Footer actions */}
-      <div className="mt-6 flex flex-wrap gap-3 justify-center">
-        <Link
-          href={`/u/${name}`}
-          className="px-6 py-2 bg-bg-tertiary text-text-primary border border-border-default rounded-lg hover:bg-bg-hover transition-colors text-sm"
-        >
-          {t(lang, 'プロフィールを見る', 'View Profile')}
-        </Link>
-        {isOwnProfile && (
+      <div className="mt-6 flex justify-center">
+        <div className="flex gap-3">
           <Link
-            href="/struct-code"
-            className="px-6 py-2 bg-bg-tertiary text-text-secondary border border-border-default rounded-lg hover:bg-bg-hover transition-colors text-sm"
+            href={`/u/${name}`}
+            className="px-6 py-2 bg-bg-tertiary text-text-primary border border-border-default rounded-lg hover:bg-bg-hover transition-colors text-sm"
           >
-            {t(lang, '再診断する', 'Retake Diagnosis')}
+            {t(lang, 'プロフィールを見る', 'View Profile')}
           </Link>
-        )}
+          {isOwnProfile && (
+            <Link
+              href="/struct-code"
+              className="px-6 py-2 bg-bg-tertiary text-text-secondary border border-border-default rounded-lg hover:bg-bg-hover transition-colors text-sm"
+            >
+              {t(lang, '再診断する', 'Retake Diagnosis')}
+            </Link>
+          )}
+        </div>
       </div>
     </div>
   )
