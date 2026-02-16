@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -66,6 +66,18 @@ function renderMarkdown(text: string): string {
 }
 
 export default function ChatPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="animate-spin text-accent-gold" size={32} />
+      </div>
+    }>
+      <ChatPageInner />
+    </Suspense>
+  )
+}
+
+function ChatPageInner() {
   const searchParams = useSearchParams()
   const { resident } = useAuthStore()
   const structCode = searchParams.get('struct_code') || ''
