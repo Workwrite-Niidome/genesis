@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Menu, Plus, Search, User, Command, LogOut, Settings, ChevronDown } from 'lucide-react'
+import { Menu, Plus, Search, User, Command, LogOut, Settings, ChevronDown, Bell } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import Button from '@/components/ui/Button'
@@ -51,10 +51,10 @@ export default function Header() {
   }, [setSearchModalOpen])
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-bg-secondary/95 backdrop-blur-sm border-b border-border-default z-50">
-      <div className="flex items-center justify-between h-full px-4">
+    <header className="fixed top-0 left-0 right-0 h-14 sm:h-16 bg-bg-secondary/95 backdrop-blur-sm border-b border-border-default z-50">
+      <div className="flex items-center justify-between h-full px-2 sm:px-4">
         {/* Left: Logo and menu */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <button
             onClick={toggleSidebar}
             className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md md:hidden"
@@ -64,8 +64,8 @@ export default function Header() {
           </button>
 
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-gold to-accent-gold-dim flex items-center justify-center">
-              <span className="text-bg-primary font-bold text-lg">G</span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-accent-gold to-accent-gold-dim flex items-center justify-center shrink-0">
+              <span className="text-bg-primary font-bold text-base sm:text-lg">G</span>
             </div>
             <span className="hidden sm:block text-xl font-semibold gold-gradient">
               GENESIS
@@ -73,7 +73,7 @@ export default function Header() {
           </Link>
         </div>
 
-        {/* Center: Search */}
+        {/* Center: Search (desktop only) */}
         <div className="hidden md:flex flex-1 max-w-xl mx-8">
           <button
             onClick={() => setSearchModalOpen(true)}
@@ -90,48 +90,44 @@ export default function Header() {
           </button>
         </div>
 
-        {/* Mobile search button */}
-        <button
-          onClick={() => setSearchModalOpen(true)}
-          className="md:hidden p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md"
-          aria-label="Search"
-        >
-          <Search size={20} />
-        </button>
-
         {/* Right: Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          {/* Mobile search button */}
+          <button
+            onClick={() => setSearchModalOpen(true)}
+            className="md:hidden p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md"
+            aria-label="Search"
+          >
+            <Search size={20} />
+          </button>
+
           {resident ? (
             <>
               <Button
                 variant="primary"
                 size="sm"
                 onClick={() => setPostFormOpen(true)}
-                className="flex items-center gap-1"
+                className="flex items-center gap-1 !px-2 sm:!px-3"
               >
                 <Plus size={16} />
                 <span className="hidden sm:inline">Create</span>
               </Button>
 
-              <NotificationBell />
+              <div className="hidden sm:block">
+                <NotificationBell />
+              </div>
 
               {/* User dropdown menu */}
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-bg-tertiary transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-lg hover:bg-bg-tertiary transition-colors"
                 >
                   <Avatar
                     name={resident.name}
                     src={resident.avatar_url}
                     size="sm"
                   />
-                  <div className="hidden sm:block text-left">
-                    <p className="text-sm font-medium text-text-primary leading-tight">
-                      {resident.name}
-                    </p>
-                    <p className="text-xs text-text-muted">{resident.roles?.length || 0} roles</p>
-                  </div>
                   <ChevronDown size={14} className="hidden sm:block text-text-muted" />
                 </button>
 
@@ -157,6 +153,15 @@ export default function Header() {
                       >
                         <Settings size={16} />
                         Settings
+                      </Link>
+                      {/* Mobile-only: Notifications link */}
+                      <Link
+                        href="/notifications"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors sm:hidden"
+                      >
+                        <Bell size={16} />
+                        Notifications
                       </Link>
                     </div>
                     <div className="border-t border-border-default py-1">

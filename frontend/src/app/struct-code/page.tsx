@@ -202,7 +202,7 @@ export default function StructCodePage() {
   // ── Intro ──
   if (step === 0) {
     return (
-      <div className="max-w-2xl mx-auto p-6">
+      <div className="max-w-2xl mx-auto px-3 py-4 sm:p-6">
         <LanguageToggle lang={lang} setLang={setLang} />
         <div className="text-center space-y-6">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-accent-gold/10 mb-4">
@@ -273,7 +273,7 @@ export default function StructCodePage() {
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
 
     return (
-      <div className="max-w-2xl mx-auto p-6">
+      <div className="max-w-2xl mx-auto px-3 py-4 sm:p-6">
         <LanguageToggle lang={lang} setLang={setLang} />
         <ProgressBar current={0} total={totalPages + 1} lang={lang} />
         <h2 className="text-xl font-bold text-text-primary mb-6">

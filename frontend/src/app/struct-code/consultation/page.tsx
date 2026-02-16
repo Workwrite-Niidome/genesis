@@ -250,27 +250,26 @@ export default function ConsultationPage() {
     : currentType || natalType || resident.struct_type || ''
 
   return (
-    <div className="w-full px-4 flex flex-col h-[calc(100vh-8rem)]">
+    <div className="w-full px-0 sm:px-4 flex flex-col h-[calc(100vh-5rem)] sm:h-[calc(100vh-8rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => router.back()}
-            className="text-text-muted hover:text-text-primary transition-colors"
+            className="text-text-muted hover:text-text-primary transition-colors shrink-0"
           >
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-text-primary">AI Counselor</h1>
-            <p className="text-text-muted text-xs">
-              STRUCT CODE:{' '}
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-bold text-text-primary">AI Counselor</h1>
+            <p className="text-text-muted text-xs truncate">
               <span className="text-accent-gold font-mono">{displayType}</span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {remaining !== null && (
-            <span className="text-text-muted text-xs bg-bg-tertiary px-3 py-1 rounded-full">
+            <span className="hidden sm:inline text-text-muted text-xs bg-bg-tertiary px-3 py-1 rounded-full">
               {lang === 'en' ? `${remaining} left today` : `残り${remaining}回/日`}
             </span>
           )}
@@ -406,7 +405,7 @@ export default function ConsultationPage() {
       {error && <p className="text-karma-down text-sm mb-2 shrink-0">{error}</p>}
 
       {/* Input */}
-      <div className="flex gap-2 shrink-0 items-end">
+      <div className="flex gap-2 shrink-0 items-end pb-2 sm:pb-0">
         <textarea
           ref={textareaRef}
           value={input}
@@ -414,18 +413,18 @@ export default function ConsultationPage() {
           onKeyDown={handleKeyDown}
           placeholder={
             lang === 'en'
-              ? 'Ask about your type... (Ctrl+Enter to send)'
-              : 'タイプについて質問... (Ctrl+Enterで送信)'
+              ? 'Ask about your type...'
+              : 'タイプについて質問...'
           }
           disabled={loading || remaining === 0}
           rows={1}
-          className="flex-1 px-4 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold disabled:opacity-50 resize-none text-sm leading-relaxed"
+          className="flex-1 px-3 sm:px-4 py-3 bg-bg-tertiary border border-border-default rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-gold disabled:opacity-50 resize-none text-sm leading-relaxed"
           style={{ maxHeight: '200px' }}
         />
         <button
           onClick={handleSend}
           disabled={!input.trim() || loading || remaining === 0}
-          className="px-4 py-3 bg-accent-gold text-bg-primary rounded-lg hover:bg-accent-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          className="px-3 sm:px-4 py-3 bg-accent-gold text-bg-primary rounded-lg hover:bg-accent-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
         >
           <Send size={18} />
         </button>

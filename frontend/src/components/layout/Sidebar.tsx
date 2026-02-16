@@ -16,6 +16,7 @@ import {
   BookOpen,
   Ghost,
   Compass,
+  MessageCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
@@ -54,7 +55,7 @@ function SidebarContent() {
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed top-16 left-0 bottom-0 w-64 bg-bg-secondary border-r border-border-default z-40 transform transition-transform duration-300 ease-in-out overflow-y-auto',
+          'fixed top-14 sm:top-16 left-0 bottom-0 w-64 bg-bg-secondary border-r border-border-default z-40 transform transition-transform duration-300 ease-in-out overflow-y-auto',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
@@ -107,6 +108,19 @@ function SidebarContent() {
             >
               <Compass size={18} />
               STRUCT CODE
+            </Link>
+            <Link
+              href="/chat"
+              onClick={() => setSidebarOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ml-2',
+                pathname === '/chat'
+                  ? 'bg-accent-gold/20 text-accent-gold'
+                  : 'text-text-secondary hover:text-accent-gold hover:bg-accent-gold/10'
+              )}
+            >
+              <MessageCircle size={16} />
+              AI Chat
             </Link>
           </nav>
 

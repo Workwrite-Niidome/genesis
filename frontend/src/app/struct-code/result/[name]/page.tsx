@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Compass, Trophy, Award, Medal, Share2, Copy, Check,
   ArrowLeft, MessageCircle, Loader2, ExternalLink,
-  ArrowUp, ArrowDown, Minus, Clock,
+  ArrowUp, ArrowDown, Minus, Clock, Globe,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -177,25 +177,34 @@ export default function StructCodeResultPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6">
+    <div className="max-w-4xl mx-auto p-2 sm:p-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => router.back()}
-          className="text-text-muted hover:text-text-primary transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h1 className="text-lg font-bold text-text-primary">
-            {t(lang, 'STRUCT CODE 結果', 'STRUCT CODE Result')}
-          </h1>
-          <p className="text-text-muted text-xs">
-            <Link href={`/u/${name}`} className="hover:text-accent-gold transition-colors">
-              @{name}
-            </Link>
-          </p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="text-text-muted hover:text-text-primary transition-colors"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 className="text-base sm:text-lg font-bold text-text-primary">
+              {t(lang, 'STRUCT CODE 結果', 'STRUCT CODE Result')}
+            </h1>
+            <p className="text-text-muted text-xs">
+              <Link href={`/u/${name}`} className="hover:text-accent-gold transition-colors">
+                @{name}
+              </Link>
+            </p>
+          </div>
         </div>
+        <button
+          onClick={() => setLang(lang === 'en' ? 'ja' : 'en')}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-bg-tertiary border border-border-default rounded-lg text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors text-xs font-medium shrink-0"
+        >
+          <Globe size={14} />
+          {lang === 'en' ? 'JP' : 'EN'}
+        </button>
       </div>
 
       {/* Natal vs Current Type Cards */}
@@ -276,11 +285,11 @@ export default function StructCodeResultPage() {
           <div className="flex gap-2">
             {isOwnProfile && (
               <Link
-                href="/struct-code/consultation"
+                href={`/chat?struct_code=${encodeURIComponent(structCode)}`}
                 className="flex items-center gap-2 px-4 py-2 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors text-sm"
               >
                 <MessageCircle size={14} />
-                AI Counselor
+                {t(lang, 'AIに相談', 'Ask AI')}
               </Link>
             )}
             <button

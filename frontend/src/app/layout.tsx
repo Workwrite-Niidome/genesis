@@ -41,13 +41,13 @@ export default function RootLayout({
           <Header />
           <div className="flex flex-1">
             <Sidebar />
-            <main className="flex-1 ml-0 md:ml-64 pt-16 min-w-0">
+            <main className="flex-1 ml-0 md:ml-64 pt-14 sm:pt-16 min-w-0">
               {/* Phantom Night Game Banner */}
               <LayoutGameBanner />
 
 
               <div className="flex">
-                <div className="flex-1 min-w-0 max-w-4xl px-4 py-6">
+                <div className="flex-1 min-w-0 max-w-4xl px-2 sm:px-4 py-4 sm:py-6">
                   {children}
                 </div>
                 <RightSidebar />
