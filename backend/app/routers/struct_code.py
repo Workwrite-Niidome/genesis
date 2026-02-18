@@ -39,6 +39,8 @@ from app.schemas.struct_code import (
 )
 from app.services import struct_code as sc_service
 from app.services.struct_code import ConsultationError
+from app.models.billing import IndividualSubscription, OrgSubscription
+from app.models.company import CompanyMember
 from app.config import get_settings
 
 settings = get_settings()
@@ -47,6 +49,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/struct-code", tags=["struct-code"])
 
 AXIS_NAMES = ["起動軸", "判断軸", "選択軸", "共鳴軸", "自覚軸"]
+
+
+async def _has_org_subscription(db: AsyncSession, resident_id) -> bool:
+    """Check if resident belongs to any organization with active subscription."""
+    result = await db.execute(
+        select(CompanyMember.company_id).where(
+            CompanyMember.resident_id == resident_id,
+            CompanyMember.status == "active",
+        )
+    )
+    company_ids = [row[0] for row in result.all()]
+    if not company_ids:
+        return False
+    org_result = await db.execute(
+        select(OrgSubscription).where(
+            OrgSubscription.company_id.in_(company_ids),
+            OrgSubscription.status == "active",
+        )
+    )
+    return org_result.scalar_one_or_none() is not None
 
 
 def _classify_axis_state(gap: float) -> str:
@@ -162,6 +184,24 @@ async def diagnose(
     db: AsyncSession = Depends(get_db),
 ):
     """Run STRUCT CODE diagnosis via Dynamic API. No fallback — errors if API unavailable."""
+    # Re-diagnosis requires Pro or Org subscription (first diagnosis is free)
+    if current_resident.struct_type is not None:
+        ADMIN_EXEMPT = {"82417b60"}
+        if str(current_resident.id)[:8] not in ADMIN_EXEMPT:
+            sub_result = await db.execute(
+                select(IndividualSubscription).where(
+                    IndividualSubscription.resident_id == current_resident.id,
+                    IndividualSubscription.status == "active",
+                )
+            )
+            has_pro = sub_result.scalar_one_or_none() is not None
+            has_org = await _has_org_subscription(db, current_resident.id) if not has_pro else False
+            if not has_pro and not has_org:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Re-diagnosis requires a Pro or Organization subscription",
+                )
+
     result = await sc_service.diagnose(
         birth_date=request.birth_date,
         birth_location=request.birth_location,
@@ -304,34 +344,25 @@ async def consultation(
             detail="Please complete STRUCT CODE diagnosis first",
         )
 
-    # Admin accounts exempt from rate limit
+    # Access control: Pro subscribers only (admin exempt)
     RATE_LIMIT_EXEMPT = {"82417b60"}  # Administrator
     resident_id_prefix = str(current_resident.id)[:8]
     is_exempt = resident_id_prefix in RATE_LIMIT_EXEMPT
-    logger.warning(f"[Consultation] resident_id={current_resident.id}, prefix={resident_id_prefix}, is_exempt={is_exempt}")
 
-    # Rate limit: 3 per day via Redis
-    redis_client = None
-    count = 0
-    try:
-        from redis.asyncio import Redis
-        redis_client = Redis.from_url(settings.redis_url)
-        key = f"sc_consult:{current_resident.id}"
-        raw = await redis_client.get(key)
-        count = int(raw) if raw else 0
-        logger.warning(f"[Consultation] count={count}, is_exempt={is_exempt}, will_block={count >= 3 and not is_exempt}")
-        if count >= 3 and not is_exempt:
-            await redis_client.aclose()
-            raise HTTPException(
-                status_code=429,
-                detail="Daily consultation limit reached (3/day)",
+    if not is_exempt:
+        sub_result = await db.execute(
+            select(IndividualSubscription).where(
+                IndividualSubscription.resident_id == current_resident.id,
+                IndividualSubscription.status == "active",
             )
-    except HTTPException:
-        raise
-    except Exception:
-        # Redis unavailable — allow but don't track
-        redis_client = None
-        count = 0
+        )
+        has_pro = sub_result.scalar_one_or_none() is not None
+        has_org = await _has_org_subscription(db, current_resident.id) if not has_pro else False
+        if not has_pro and not has_org:
+            raise HTTPException(
+                status_code=403,
+                detail="AI consultation requires a Pro or Organization subscription",
+            )
 
     # Look up or create session
     session = None
@@ -364,16 +395,12 @@ async def consultation(
         )
     except ConsultationError as e:
         logger.error(f"[Consultation] ConsultationError: {e}")
-        if redis_client:
-            await redis_client.aclose()
         raise HTTPException(
             status_code=503,
             detail=f"Consultation unavailable: {e}",
         )
     except Exception as e:
         logger.exception(f"[Consultation] Unexpected error: {e}")
-        if redis_client:
-            await redis_client.aclose()
         raise HTTPException(
             status_code=503,
             detail=f"Consultation error: {type(e).__name__}: {e}",
@@ -427,23 +454,9 @@ async def consultation(
         await db.rollback()
         session_id_str = ""
 
-    # Only count successful consultations
-    remaining = 2  # default fallback
-    if redis_client:
-        try:
-            await redis_client.incr(key)
-            await redis_client.expire(key, 86400)
-            remaining = 999 if is_exempt else 3 - (count + 1)
-        except Exception:
-            pass
-        finally:
-            await redis_client.aclose()
-    elif is_exempt:
-        remaining = 999
-
     return ConsultationResponse(
         answer=consult_result.answer,
-        remaining_today=remaining,
+        remaining_today=999,
         session_id=session_id_str,
         conversation_id=consult_result.conversation_id or "",
     )

@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     claude_api_key: str = ""
     dify_api_key: str = ""
 
+    # Stripe Billing
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_individual_monthly: str = ""  # ¥980/month
+    stripe_price_individual_annual: str = ""   # ¥9,800/year
+    stripe_price_report: str = ""              # ¥300 one-time
+    stripe_price_org_monthly: str = ""         # ¥490/person/month
+    stripe_price_org_annual: str = ""          # ¥4,900/person/year
+    frontend_url: str = "https://genesis-pj.net"
+
     # STRUCT CODE
     struct_code_url: str = "http://struct-code:8000"
 

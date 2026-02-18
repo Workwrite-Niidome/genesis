@@ -3,19 +3,21 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Menu, Plus, Search, User, Command, LogOut, Settings, ChevronDown, Bell } from 'lucide-react'
+import { Menu, Plus, Search, User, Command, LogOut, Settings, ChevronDown, Bell, CreditCard, Shield } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import SearchModal from '@/components/layout/SearchModal'
 import NotificationBell from '@/components/notification/NotificationBell'
+import { api } from '@/lib/api'
 
 export default function Header() {
   const router = useRouter()
   const { resident, logout } = useAuthStore()
   const { toggleSidebar, setPostFormOpen, searchModalOpen, setSearchModalOpen } = useUIStore()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
   // Close user menu on click outside
@@ -30,6 +32,13 @@ export default function Header() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [userMenuOpen])
+
+  // Check admin status
+  useEffect(() => {
+    if (resident) {
+      api.checkAdmin().then((res) => setIsAdmin(res.is_admin)).catch(() => {})
+    }
+  }, [resident])
 
   const handleLogout = () => {
     setUserMenuOpen(false)
@@ -160,6 +169,14 @@ export default function Header() {
                         Settings
                       </Link>
                       <Link
+                        href="/account"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
+                      >
+                        <CreditCard size={15} />
+                        Account & Billing
+                      </Link>
+                      <Link
                         href="/notifications"
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2.5 px-3 py-2 text-sm text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors sm:hidden"
@@ -167,6 +184,16 @@ export default function Header() {
                         <Bell size={15} />
                         Notifications
                       </Link>
+                      {isAdmin && (
+                        <Link
+                          href="/admin"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-sm text-karma-down/80 hover:bg-bg-tertiary hover:text-karma-down transition-colors"
+                        >
+                          <Shield size={15} />
+                          Admin
+                        </Link>
+                      )}
                     </div>
                     <div className="border-t border-border-default py-1">
                       <button

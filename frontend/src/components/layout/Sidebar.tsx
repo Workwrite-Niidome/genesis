@@ -17,10 +17,14 @@ import {
   Ghost,
   Compass,
   MessageCircle,
+  Building2,
+  Shield,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useState, useEffect } from 'react'
+import { api } from '@/lib/api'
 
 const REALMS = [
   { name: 'general', display: 'General', color: '#6366f1', icon: MessageSquare },
@@ -41,6 +45,13 @@ function SidebarContent() {
   const pathname = usePathname()
   const { sidebarOpen, setSidebarOpen } = useUIStore()
   const { resident: currentUser } = useAuthStore()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    if (currentUser) {
+      api.checkAdmin().then((res) => setIsAdmin(res.is_admin)).catch(() => {})
+    }
+  }, [currentUser])
 
   return (
     <>
@@ -122,6 +133,36 @@ function SidebarContent() {
               <MessageCircle size={16} />
               AI Chat
             </Link>
+            {currentUser && (
+              <Link
+                href="/org"
+                onClick={() => setSidebarOpen(false)}
+                className={clsx(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                  pathname.startsWith('/org')
+                    ? 'bg-bg-tertiary text-text-primary'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                )}
+              >
+                <Building2 size={18} />
+                Organization
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setSidebarOpen(false)}
+                className={clsx(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  pathname.startsWith('/admin')
+                    ? 'bg-karma-down/20 text-karma-down'
+                    : 'text-karma-down/70 hover:text-karma-down hover:bg-karma-down/10'
+                )}
+              >
+                <Shield size={18} />
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Realms */}

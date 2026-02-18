@@ -1231,6 +1231,250 @@ class ApiClient {
   async getConsultationSession(sessionId: string): Promise<ConsultationSessionDetail> {
     return this.request<ConsultationSessionDetail>(`/struct-code/consultation/sessions/${sessionId}`)
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // BILLING
+  // ═══════════════════════════════════════════════════════════════
+
+  async getIndividualStatus(): Promise<IndividualBillingStatus> {
+    return this.request<IndividualBillingStatus>('/billing/individual/status')
+  }
+
+  async createIndividualCheckout(planType: 'monthly' | 'annual'): Promise<{ checkout_url: string }> {
+    return this.request<{ checkout_url: string }>(`/billing/individual/checkout?plan_type=${planType}`, {
+      method: 'POST',
+    })
+  }
+
+  async createIndividualPortal(): Promise<{ portal_url: string }> {
+    return this.request<{ portal_url: string }>('/billing/individual/portal', {
+      method: 'POST',
+    })
+  }
+
+  async createReportCheckout(reportType: string): Promise<{ checkout_url: string }> {
+    return this.request<{ checkout_url: string }>(`/billing/report/checkout?report_type=${reportType}`, {
+      method: 'POST',
+    })
+  }
+
+  async getReport(reportType: string, lang?: string): Promise<ReportContent> {
+    const params = lang ? `?lang=${lang}` : ''
+    return this.request<ReportContent>(`/billing/report/${reportType}${params}`)
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ORGANIZATION
+  // ═══════════════════════════════════════════════════════════════
+
+  async getMyCompanies(): Promise<CompanyListItem[]> {
+    return this.request<CompanyListItem[]>('/company/my/list')
+  }
+
+  async createCompany(data: { name: string; slug?: string }): Promise<CompanyCreated> {
+    return this.request<CompanyCreated>('/company', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getCompany(slug: string): Promise<CompanyDetail> {
+    return this.request<CompanyDetail>(`/company/${slug}`)
+  }
+
+  async updateCompany(slug: string, data: { name?: string; settings?: Record<string, any> }): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async inviteMember(slug: string, data: { display_name: string; email?: string; role?: string }): Promise<{ id: string; invite_code: string }> {
+    return this.request<{ id: string; invite_code: string }>(`/company/${slug}/invite`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async joinCompany(inviteCode: string): Promise<{ success: boolean; company_slug: string; company_name: string }> {
+    return this.request<{ success: boolean; company_slug: string; company_name: string }>(`/company/join/${inviteCode}`, {
+      method: 'POST',
+    })
+  }
+
+  async getCompanyMembers(slug: string, limit = 50, offset = 0): Promise<CompanyMembersResponse> {
+    const params = new URLSearchParams()
+    params.set('limit', limit.toString())
+    params.set('offset', offset.toString())
+    return this.request<CompanyMembersResponse>(`/company/${slug}/members?${params}`)
+  }
+
+  async updateCompanyMember(slug: string, memberId: string, data: {
+    display_name?: string; role?: string; team_id?: string; status?: string
+  }): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}/members/${memberId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeCompanyMember(slug: string, memberId: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}/members/${memberId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async createDepartment(slug: string, data: { name: string; order?: number }): Promise<{ id: string; name: string }> {
+    return this.request<{ id: string; name: string }>(`/company/${slug}/departments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateDepartment(slug: string, deptId: string, data: { name?: string; order?: number }): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}/departments/${deptId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteDepartment(slug: string, deptId: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}/departments/${deptId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async createTeam(slug: string, data: { name: string; department_id: string; order?: number }): Promise<{ id: string; name: string }> {
+    return this.request<{ id: string; name: string }>(`/company/${slug}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTeam(slug: string, teamId: string, data: { name?: string; order?: number }): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}/teams/${teamId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTeam(slug: string, teamId: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/company/${slug}/teams/${teamId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getCompanyDashboard(slug: string): Promise<CompanyDashboard> {
+    return this.request<CompanyDashboard>(`/company/${slug}/dashboard`)
+  }
+
+  // Organization Billing
+  async getOrgBillingStatus(slug: string): Promise<OrgBillingStatus> {
+    return this.request<OrgBillingStatus>(`/billing/org/${slug}/status`)
+  }
+
+  async createOrgCheckout(slug: string, planType: 'monthly' | 'annual' = 'monthly'): Promise<{ checkout_url: string }> {
+    return this.request<{ checkout_url: string }>(`/billing/org/${slug}/checkout?plan_type=${planType}`, {
+      method: 'POST',
+    })
+  }
+
+  async createOrgPortal(slug: string): Promise<{ portal_url: string }> {
+    return this.request<{ portal_url: string }>(`/billing/org/${slug}/portal`, {
+      method: 'POST',
+    })
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ADMIN
+  // ═══════════════════════════════════════════════════════════════
+
+  async checkAdmin(): Promise<{ is_admin: boolean }> {
+    return this.request<{ is_admin: boolean }>('/admin/check')
+  }
+
+  async getAdminStats(): Promise<AdminStats> {
+    return this.request<AdminStats>('/admin/stats')
+  }
+
+  async getAdminSubscriptions(status = 'active', limit = 50, offset = 0): Promise<AdminSubscriptionsResponse> {
+    const params = new URLSearchParams({ status, limit: limit.toString(), offset: offset.toString() })
+    return this.request<AdminSubscriptionsResponse>(`/admin/billing/subscriptions?${params}`)
+  }
+
+  async getAdminReportPurchases(limit = 50, offset = 0): Promise<AdminReportsResponse> {
+    const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() })
+    return this.request<AdminReportsResponse>(`/admin/billing/reports?${params}`)
+  }
+
+  async getAdminOrgSubscriptions(limit = 50, offset = 0): Promise<AdminOrgSubscriptionsResponse> {
+    const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() })
+    return this.request<AdminOrgSubscriptionsResponse>(`/admin/billing/orgs?${params}`)
+  }
+
+  async getAdminResidents(q = '', typeFilter = 'all', limit = 50, offset = 0): Promise<AdminResidentsResponse> {
+    const params = new URLSearchParams({ q, type_filter: typeFilter, limit: limit.toString(), offset: offset.toString() })
+    return this.request<AdminResidentsResponse>(`/admin/residents?${params}`)
+  }
+
+  async getAdminResidentDetail(id: string): Promise<AdminResidentDetail> {
+    return this.request<AdminResidentDetail>(`/admin/residents/${id}`)
+  }
+
+  async grantPro(id: string, planType = 'monthly'): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/residents/${id}/grant-pro?plan_type=${planType}`, {
+      method: 'POST',
+    })
+  }
+
+  async revokePro(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/residents/${id}/revoke-pro`, {
+      method: 'POST',
+    })
+  }
+
+  async grantReport(id: string, reportType: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/residents/${id}/grant-report`, {
+      method: 'POST',
+      body: JSON.stringify({ report_type: reportType }),
+    })
+  }
+
+  async adminBanResident(id: string, data: { reason?: string; is_permanent?: boolean; duration_hours?: number }): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/admin/residents/${id}/ban`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async adminUnbanResident(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/admin/residents/${id}/ban`, {
+      method: 'DELETE',
+    })
+  }
+
+  async adminDeletePost(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/admin/posts/${id}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async adminDeleteComment(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/admin/comments/${id}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getAdminAgents(limit = 50, offset = 0): Promise<AdminAgentsResponse> {
+    const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() })
+    return this.request<AdminAgentsResponse>(`/admin/agents?${params}`)
+  }
+
+  async toggleAgent(id: string): Promise<{ success: boolean; state: string }> {
+    return this.request<{ success: boolean; state: string }>(`/admin/agents/${id}/toggle`, {
+      method: 'POST',
+    })
+  }
 }
 
 // STRUCT CODE types
@@ -1331,5 +1575,224 @@ export interface ConsultationSessionDetail {
   created_at: string
   updated_at: string
 }
+
+// Billing types
+export interface IndividualBillingStatus {
+  plan: 'free' | 'pro'
+  plan_type: 'monthly' | 'annual' | null
+  status: 'none' | 'active' | 'past_due' | 'canceled'
+  current_period_end: string | null
+  purchased_reports: string[]
+  has_diagnosed: boolean
+  can_chat: boolean
+  can_diagnose: boolean
+}
+
+export interface ReportContent {
+  report_type: string
+  label: string
+  content: string
+  cached: boolean
+}
+
+// Organization types
+export interface CompanyListItem {
+  id: string
+  name: string
+  slug: string
+  role: string
+  joined_at: string | null
+}
+
+export interface CompanyCreated {
+  id: string
+  name: string
+  slug: string
+  invite_code: string
+}
+
+export interface CompanyTeam {
+  id: string
+  name: string
+  order: number
+}
+
+export interface CompanyDepartment {
+  id: string
+  name: string
+  order: number
+  teams: CompanyTeam[]
+}
+
+export interface CompanyDetail {
+  id: string
+  name: string
+  slug: string
+  invite_code: string
+  admin_id: string
+  settings: Record<string, any>
+  member_count: number
+  departments: CompanyDepartment[]
+  created_at: string | null
+}
+
+export interface CompanyMemberItem {
+  id: string
+  resident_id: string | null
+  resident_name: string | null
+  display_name: string
+  email: string | null
+  role: string
+  status: string
+  team_id: string | null
+  team_name: string | null
+  struct_type: string | null
+  joined_at: string | null
+}
+
+export interface CompanyMembersResponse {
+  members: CompanyMemberItem[]
+  total: number
+}
+
+export interface CompanyDashboard {
+  member_count: number
+  diagnosed_count: number
+  org_type: string
+  org_type_name: string
+  axis_averages: number[]
+  type_distribution: Record<string, number>
+  departments: { id: string; name: string; member_count: number; avg_axes: number[] }[]
+  balance_score: number
+  gap_types: string[]
+}
+
+export interface OrgBillingStatus {
+  company_id: string
+  company_name: string
+  plan_type: string | null
+  status: string
+  quantity: number
+  member_count: number
+  current_period_end: string | null
+}
+
+// Admin types
+export interface AdminStats {
+  individual_pro: { monthly_count: number; annual_count: number; mrr: number }
+  report_sales: { total_count: number; this_month_count: number; this_month_revenue: number }
+  org: { company_count: number; total_seats: number; mrr: number }
+  total_mrr: number
+  residents: { total: number; humans: number; agents: number; active_today: number; pro_subscribers: number }
+}
+
+export interface AdminSubscriptionItem {
+  id: string
+  resident_id: string
+  resident_name: string
+  plan_type: string
+  status: string
+  current_period_end: string | null
+  created_at: string | null
+}
+
+export interface AdminSubscriptionsResponse {
+  subscriptions: AdminSubscriptionItem[]
+}
+
+export interface AdminReportItem {
+  id: string
+  resident_id: string
+  resident_name: string
+  report_type: string
+  status: string
+  created_at: string | null
+}
+
+export interface AdminReportsResponse {
+  reports: AdminReportItem[]
+}
+
+export interface AdminOrgSubscriptionItem {
+  id: string
+  company_id: string
+  company_name: string
+  company_slug: string
+  plan_type: string
+  status: string
+  quantity: number
+  current_period_end: string | null
+  created_at: string | null
+}
+
+export interface AdminOrgSubscriptionsResponse {
+  subscriptions: AdminOrgSubscriptionItem[]
+}
+
+export interface AdminResidentItem {
+  id: string
+  name: string
+  type: string
+  struct_type: string | null
+  post_count: number
+  comment_count: number
+  follower_count: number
+  is_eliminated: boolean
+  created_at: string | null
+  last_active: string | null
+}
+
+export interface AdminResidentsResponse {
+  residents: AdminResidentItem[]
+  total: number
+}
+
+export interface AdminResidentDetail {
+  id: string
+  name: string
+  type: string
+  bio: string | null
+  roles: string[]
+  struct_type: string | null
+  struct_axes: number[] | null
+  post_count: number
+  comment_count: number
+  follower_count: number
+  following_count: number
+  is_eliminated: boolean
+  created_at: string | null
+  last_active: string | null
+  subscription: { plan_type: string | null; status: string; current_period_end: string | null }
+  purchased_reports: string[]
+  ban: { reason: string | null; is_permanent: boolean | null; created_at: string | null } | null
+  organizations: { id: string; name: string; role: string }[]
+}
+
+export interface AdminAgentItem {
+  id: string
+  name: string
+  bio: string | null
+  roles: string[]
+  struct_type: string | null
+  post_count: number
+  comment_count: number
+  is_eliminated: boolean
+  last_active: string | null
+  created_at: string | null
+}
+
+export interface AdminAgentsResponse {
+  agents: AdminAgentItem[]
+  total: number
+}
+
+export const REPORT_TYPES = [
+  { key: 'work', emoji: '💼', ja: '仕事・キャリア', en: 'Work & Career' },
+  { key: 'romance', emoji: '💕', ja: '恋愛・パートナーシップ', en: 'Romance & Partnership' },
+  { key: 'relationships', emoji: '🤝', ja: '人間関係', en: 'Relationships' },
+  { key: 'stress', emoji: '🧘', ja: 'ストレス・メンタルケア', en: 'Stress & Mental Care' },
+  { key: 'growth', emoji: '🌱', ja: '自己成長', en: 'Self Growth' },
+  { key: 'compatibility', emoji: '✨', ja: '相性分析', en: 'Compatibility' },
+] as const
 
 export const api = new ApiClient()

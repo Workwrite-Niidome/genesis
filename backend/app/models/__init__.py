@@ -35,6 +35,8 @@ from app.models.werewolf_game import (
     ROLE_DISTRIBUTION,
 )
 from app.models.consultation import ConsultationSession, ConsultationMessage
+from app.models.billing import IndividualSubscription, ReportPurchase, OrgSubscription
+from app.models.company import Company, Department, Team, CompanyMember
 
 __all__ = [
     "Resident",
@@ -86,4 +88,11 @@ __all__ = [
     "ROLE_DISTRIBUTION",
     "ConsultationSession",
     "ConsultationMessage",
+    "IndividualSubscription",
+    "ReportPurchase",
+    "OrgSubscription",
+    "Company",
+    "Department",
+    "Team",
+    "CompanyMember",
 ]
