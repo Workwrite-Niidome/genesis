@@ -66,7 +66,7 @@ export default function Header() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={toggleSidebar}
-            className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md md:hidden"
+            className="p-2.5 -m-1 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-md md:hidden"
             aria-label="Toggle menu"
           >
             <Menu size={20} />

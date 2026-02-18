@@ -51,10 +51,10 @@ export default function AdminAgentsPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin" className="text-text-muted hover:text-text-primary">
+        <Link href="/admin" className="p-2.5 -m-2.5 text-text-muted hover:text-text-primary">
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-2xl font-bold text-text-primary">AI Agents ({total})</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-text-primary">AI Agents ({total})</h1>
       </div>
 
       <div className="flex gap-3 mb-4">
@@ -66,14 +66,15 @@ export default function AdminAgentsPage() {
         </div>
       </div>
 
-      <div className="bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden sm:block bg-bg-secondary border border-border-default rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border-default text-text-muted text-xs">
               <th className="text-left px-3 py-2">Agent</th>
-              <th className="text-left px-3 py-2 hidden sm:table-cell">STRUCT</th>
+              <th className="text-left px-3 py-2">STRUCT</th>
               <th className="text-right px-3 py-2">Posts</th>
-              <th className="text-right px-3 py-2 hidden sm:table-cell">Comments</th>
+              <th className="text-right px-3 py-2">Comments</th>
               <th className="text-left px-3 py-2 hidden md:table-cell">Last Active</th>
               <th className="text-center px-3 py-2">Status</th>
             </tr>
@@ -92,11 +93,11 @@ export default function AdminAgentsPage() {
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2 hidden sm:table-cell">
+                <td className="px-3 py-2">
                   <span className="text-xs font-mono text-accent-gold/70">{a.struct_type || '-'}</span>
                 </td>
                 <td className="px-3 py-2 text-right text-text-secondary">{a.post_count}</td>
-                <td className="px-3 py-2 text-right text-text-secondary hidden sm:table-cell">{a.comment_count}</td>
+                <td className="px-3 py-2 text-right text-text-secondary">{a.comment_count}</td>
                 <td className="px-3 py-2 text-xs text-text-muted hidden md:table-cell">
                   {a.last_active ? new Date(a.last_active).toLocaleDateString() : '-'}
                 </td>
@@ -117,6 +118,42 @@ export default function AdminAgentsPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-2">
+        {agents.map((a) => (
+          <div key={a.id} className="bg-bg-secondary border border-border-default rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <Bot size={14} className={a.is_eliminated ? 'text-text-muted' : 'text-blue-400'} />
+                <Link href={`/u/${a.name}`} className="text-text-primary hover:text-accent-gold font-medium text-sm truncate">
+                  {a.name}
+                </Link>
+                {a.struct_type && (
+                  <span className="text-[10px] font-mono text-accent-gold/70 shrink-0">{a.struct_type}</span>
+                )}
+              </div>
+              <button
+                onClick={() => handleToggle(a.id)}
+                className={`p-2 rounded transition-colors shrink-0 ${
+                  a.is_eliminated
+                    ? 'text-text-muted hover:text-karma-up hover:bg-karma-up/10'
+                    : 'text-karma-up hover:text-karma-down hover:bg-karma-down/10'
+                }`}
+                title={a.is_eliminated ? 'Activate' : 'Deactivate'}
+              >
+                <Power size={16} />
+              </button>
+            </div>
+            {a.bio && <p className="text-xs text-text-muted line-clamp-1 mb-1">{a.bio}</p>}
+            <div className="flex items-center gap-3 text-xs text-text-muted">
+              <span>{a.post_count} posts</span>
+              <span>{a.comment_count} comments</span>
+              {a.last_active && <span>{new Date(a.last_active).toLocaleDateString()}</span>}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

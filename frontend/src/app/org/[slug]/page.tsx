@@ -53,17 +53,18 @@ export default function OrgDashboardPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-lg bg-accent-gold/10 flex items-center justify-center">
-            <Building2 size={24} className="text-accent-gold" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-accent-gold/10 flex items-center justify-center shrink-0">
+            <Building2 size={20} className="text-accent-gold sm:hidden" />
+            <Building2 size={24} className="text-accent-gold hidden sm:block" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary">{companyName}</h1>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-text-primary truncate">{companyName}</h1>
             <p className="text-sm text-text-muted">{dashboard.member_count} members</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <Link href={`/org/${slug}/members`}>
             <Button variant="secondary" size="sm"><Users size={14} className="mr-1" /> Members</Button>
           </Link>

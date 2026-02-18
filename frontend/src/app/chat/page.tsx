@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/stores/authStore'
+import { api, IndividualBillingStatus } from '@/lib/api'
 import {
   Send, Plus, MessageSquare, Menu, X, Trash2, Loader2, Compass,
 } from 'lucide-react'
 import Link from 'next/link'
+import ProUpgradeBanner from '@/components/billing/ProUpgradeBanner'
 
 const DIFY_API_URL = 'https://api.dify.ai/v1/chat-messages'
 const DIFY_API_KEY = 'BfeKg4QYX511bD3a'
@@ -88,10 +90,24 @@ function ChatPageInner() {
   const [streaming, setStreaming] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [initialized, setInitialized] = useState(false)
+  const [billingStatus, setBillingStatus] = useState<IndividualBillingStatus | null>(null)
+  const [billingLoading, setBillingLoading] = useState(true)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const streamingContentRef = useRef('')
+
+  // Check billing status for chat access
+  useEffect(() => {
+    if (!resident) {
+      setBillingLoading(false)
+      return
+    }
+    api.getIndividualStatus()
+      .then(setBillingStatus)
+      .catch(() => {})
+      .finally(() => setBillingLoading(false))
+  }, [resident])
 
   useEffect(() => {
     const loaded = loadConversations()
@@ -289,10 +305,19 @@ function ChatPageInner() {
     }
   }
 
-  if (!initialized) {
+  if (!initialized || billingLoading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Loader2 className="animate-spin text-accent-gold" size={32} />
+      </div>
+    )
+  }
+
+  // Gate: require Pro subscription for chat
+  if (resident && billingStatus && !billingStatus.can_chat) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <ProUpgradeBanner lang="ja" context="chat" />
       </div>
     )
   }
@@ -373,9 +398,9 @@ function ChatPageInner() {
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteConversation(c.id) }}
-                  className="p-1.5 text-text-muted hover:text-karma-down transition-colors shrink-0"
+                  className="p-2 text-text-muted/60 hover:text-karma-down transition-colors shrink-0"
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={14} />
                 </button>
               </div>
             ))

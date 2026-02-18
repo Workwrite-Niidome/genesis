@@ -46,10 +46,10 @@ export default function AdminContentPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin" className="text-text-muted hover:text-text-primary">
+        <Link href="/admin" className="p-2.5 -m-2.5 text-text-muted hover:text-text-primary">
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-2xl font-bold text-text-primary">Content Management</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Content Management</h1>
       </div>
 
       {message && (

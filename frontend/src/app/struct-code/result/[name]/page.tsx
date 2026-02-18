@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { api, Resident, StructCodeTypeInfo } from '@/lib/api'
+import { api, Resident, StructCodeTypeInfo, IndividualBillingStatus } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import CategoryReportSection from '@/components/billing/CategoryReportSection'
 import {
   Compass, Trophy, Award, Medal, Share2, Copy, Check,
   ArrowLeft, MessageCircle, Loader2, ExternalLink,
@@ -54,6 +55,7 @@ export default function StructCodeResultPage() {
   const [natalTypeInfo, setNatalTypeInfo] = useState<StructCodeTypeInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [billingStatus, setBillingStatus] = useState<IndividualBillingStatus | null>(null)
 
   const [lang, setLang] = useState('en')
 
@@ -75,6 +77,12 @@ export default function StructCodeResultPage() {
     }
     load()
   }, [name])
+
+  // Fetch billing status when viewing own profile
+  useEffect(() => {
+    if (!currentUser || currentUser.name !== name) return
+    api.getIndividualStatus().then(setBillingStatus).catch(() => {})
+  }, [currentUser, name])
 
   // Fetch type info when resident or lang changes
   useEffect(() => {
@@ -177,13 +185,13 @@ export default function StructCodeResultPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-2 sm:p-6">
+    <div className="max-w-4xl mx-auto px-3 py-4 sm:p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
-            className="text-text-muted hover:text-text-primary transition-colors"
+            className="p-2.5 -m-2.5 text-text-muted hover:text-text-primary transition-colors"
           >
             <ArrowLeft size={20} />
           </button>
@@ -464,6 +472,15 @@ export default function StructCodeResultPage() {
             <Section title={SECTION_TITLES.blindspot[lang]} text={typeInfo.blindspot} />
           </div>
         </div>
+      )}
+
+      {/* Category Reports (own profile only) */}
+      {isOwnProfile && (
+        <CategoryReportSection
+          billingStatus={billingStatus}
+          lang={lang}
+          residentName={name}
+        />
       )}
 
       {/* Footer actions */}

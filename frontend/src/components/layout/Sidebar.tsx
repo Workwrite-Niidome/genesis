@@ -19,7 +19,12 @@ import {
   MessageCircle,
   Building2,
   Shield,
+  Settings,
+  CreditCard,
+  LogOut,
+  LogIn,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import clsx from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -43,8 +48,9 @@ const DISCOVER = [
 
 function SidebarContent() {
   const pathname = usePathname()
+  const router = useRouter()
   const { sidebarOpen, setSidebarOpen } = useUIStore()
-  const { resident: currentUser } = useAuthStore()
+  const { resident: currentUser, logout } = useAuthStore()
   const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
@@ -236,6 +242,75 @@ function SidebarContent() {
                 )
               })}
             </nav>
+          </div>
+
+          {/* Account section (mobile) */}
+          <div className="md:hidden border-t border-border-default pt-4">
+            {currentUser ? (
+              <nav className="space-y-1">
+                {currentUser.struct_type && (
+                  <Link
+                    href={`/struct-code/result/${currentUser.name}`}
+                    onClick={() => setSidebarOpen(false)}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      pathname.startsWith('/struct-code/result')
+                        ? 'bg-accent-gold/20 text-accent-gold'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                    )}
+                  >
+                    <Compass size={18} />
+                    My Diagnosis
+                  </Link>
+                )}
+                <Link
+                  href="/settings"
+                  onClick={() => setSidebarOpen(false)}
+                  className={clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    pathname === '/settings'
+                      ? 'bg-bg-tertiary text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                  )}
+                >
+                  <Settings size={18} />
+                  Settings
+                </Link>
+                <Link
+                  href="/account"
+                  onClick={() => setSidebarOpen(false)}
+                  className={clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    pathname === '/account'
+                      ? 'bg-bg-tertiary text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                  )}
+                >
+                  <CreditCard size={18} />
+                  Account & Billing
+                </Link>
+                <button
+                  onClick={() => {
+                    setSidebarOpen(false)
+                    logout()
+                    router.push('/')
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-karma-down hover:bg-bg-tertiary transition-colors"
+                >
+                  <LogOut size={18} />
+                  Log out
+                </button>
+              </nav>
+            ) : (
+              <Link
+                href="/auth"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-accent-gold text-bg-primary font-semibold rounded-lg hover:bg-accent-gold-dim transition-colors text-sm"
+              >
+                <LogIn size={18} />
+                Join Genesis
+              </Link>
+            )}
           </div>
 
         </div>

@@ -48,15 +48,15 @@ export default function AdminDashboardPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
-        <Shield size={24} className="text-accent-gold" />
-        <h1 className="text-2xl font-bold text-text-primary">Admin Dashboard</h1>
+        <Shield size={24} className="text-accent-gold shrink-0" />
+        <h1 className="text-xl sm:text-2xl font-bold text-text-primary">Admin Dashboard</h1>
       </div>
 
       {/* MRR Card */}
       <div className="bg-gradient-to-r from-accent-gold/10 to-accent-gold/5 border border-accent-gold/20 rounded-lg p-6 mb-6">
         <p className="text-sm text-text-muted mb-1">Total MRR</p>
-        <p className="text-4xl font-bold text-accent-gold">&yen;{stats.total_mrr.toLocaleString()}</p>
-        <div className="grid grid-cols-3 gap-4 mt-4">
+        <p className="text-3xl sm:text-4xl font-bold text-accent-gold">&yen;{stats.total_mrr.toLocaleString()}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
           <div>
             <p className="text-xs text-text-muted">Individual Pro</p>
             <p className="text-lg font-semibold text-text-primary">&yen;{stats.individual_pro.mrr.toLocaleString()}</p>

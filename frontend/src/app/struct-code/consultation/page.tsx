@@ -256,7 +256,7 @@ export default function ConsultationPage() {
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => router.back()}
-            className="text-text-muted hover:text-text-primary transition-colors shrink-0"
+            className="p-2.5 -m-2.5 text-text-muted hover:text-text-primary transition-colors shrink-0"
           >
             <ArrowLeft size={20} />
           </button>
