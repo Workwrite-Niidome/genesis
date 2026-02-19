@@ -1421,8 +1421,8 @@ class ApiClient {
     return this.request<AdminResidentDetail>(`/admin/residents/${id}`)
   }
 
-  async grantPro(id: string, planType = 'monthly'): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/admin/residents/${id}/grant-pro?plan_type=${planType}`, {
+  async grantPro(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/residents/${id}/grant-pro`, {
       method: 'POST',
     })
   }

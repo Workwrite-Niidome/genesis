@@ -98,6 +98,23 @@ async def _get_individual_sub(
     return result.scalar_one_or_none()
 
 
+async def _has_active_org_subscription(
+    db: AsyncSession, resident_id: uuid.UUID
+) -> bool:
+    """Check if user belongs to any organization with an active subscription."""
+    result = await db.execute(
+        select(OrgSubscription.id)
+        .join(CompanyMember, CompanyMember.company_id == OrgSubscription.company_id)
+        .where(
+            CompanyMember.resident_id == resident_id,
+            CompanyMember.status == "active",
+            OrgSubscription.status == "active",
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def _get_purchased_reports(
     db: AsyncSession, resident_id: uuid.UUID
 ) -> list[str]:
@@ -113,9 +130,11 @@ async def _get_purchased_reports(
 async def _has_report_access(
     db: AsyncSession, resident_id: uuid.UUID, report_type: str
 ) -> bool:
-    """Check if user can access a report: Pro subscriber OR purchased that report."""
+    """Check if user can access a report: Pro subscriber, org subscriber, OR purchased that report."""
     sub = await _get_individual_sub(db, resident_id)
     if sub and sub.status == "active":
+        return True
+    if await _has_active_org_subscription(db, resident_id):
         return True
     result = await db.execute(
         select(ReportPurchase).where(
@@ -163,7 +182,7 @@ async def individual_status(
     sub = await _get_individual_sub(db, current_resident.id)
     purchased = await _get_purchased_reports(db, current_resident.id)
 
-    is_pro = sub is not None and sub.status == "active"
+    is_pro = (sub is not None and sub.status == "active") or await _has_active_org_subscription(db, current_resident.id)
     has_diagnosed = current_resident.struct_type is not None
 
     return {

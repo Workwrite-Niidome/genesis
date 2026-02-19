@@ -447,11 +447,10 @@ async def get_resident_detail(
 @router.post("/residents/{resident_id}/grant-pro")
 async def grant_pro(
     resident_id: str,
-    plan_type: str = Query("monthly", regex="^(monthly|annual)$"),
     current_resident: Resident = Depends(get_current_resident),
     db: AsyncSession = Depends(get_db),
 ):
-    """Manually grant Pro subscription."""
+    """Manually grant Pro subscription (admin_grant)."""
     require_superadmin(current_resident)
 
     rid = uuid.UUID(resident_id)
@@ -462,16 +461,16 @@ async def grant_pro(
 
     if sub:
         sub.status = "active"
-        sub.plan_type = plan_type
+        sub.plan_type = "admin_grant"
     else:
         sub = IndividualSubscription(
             resident_id=rid,
-            plan_type=plan_type,
+            plan_type="admin_grant",
             status="active",
         )
         db.add(sub)
 
-    return {"success": True, "message": f"Pro ({plan_type}) granted"}
+    return {"success": True, "message": "Pro (admin_grant) granted"}
 
 
 @router.post("/residents/{resident_id}/revoke-pro")
